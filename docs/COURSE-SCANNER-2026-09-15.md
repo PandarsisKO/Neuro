@@ -166,6 +166,89 @@ directly, bypassing the extension's popup/background wiring entirely, since Clau
 reason). Explicitly NOT a bulk import/download test: `bridge.fetch` was wired to throw, so Strategy A (and any
 accidental use of it) could not have reached the network even if triggered.
 
+## CS6 — Acquisition Ace: lesson CARDS, not lesson controls (extension 1.9.4, 2026-09-18)
+
+Kyle, logged in to Ben Kelly's Acquisition Ace (courses.benkelly.co, three course tracks), pressed "Scan this
+course" on a track's lesson page and got "No lessons found on this page" although every chapter and lesson was
+plainly on screen. Measured in his Chrome: the page is a React SPA whose lesson rows are bare `<div>`s with a
+framework click handler and `cursor: pointer` — no `button`, no `role`, no `tabindex`, no `<a>` — each holding
+one `<h3>` (the title), a blurb and a "Duration 5:00" badge, grouped under `Chapter NN · Title  NN Lessons
+Total` headers; 31 rows across 5 chapters, the last chapter's 9 bonus rows carrying no duration (documents).
+Opening a row moves the URL to a per-lesson route, REPLACES the `<main>` element, and renders one Loom
+`<iframe>`; the breadcrumb (`nav[aria-label=Breadcrumb]`, buttons "All Courses" › "<course>" › current span)
+brings the list back. Fetching a lesson URL directly returns the SPA shell with no content.
+
+Why every strategy missed it: Strategy A saw no lesson links (there are none); Strategy B's control shape needs
+`CONTROL_SEL` (never a bare div) AND `LESSON_TEXT`'s "<ordinal>. <title>" (the site has no ordinals); Strategy C
+saw no player on the list page. The result was honest ("none" with zero links/controls/modules) and wrong.
+
+The fix is a second Strategy B shape, `cardRows()`, on the same principle of positive identification: a CARD is
+the ancestor of a heading whose parent holds >= 2 siblings that each hold exactly one heading (repeated
+structure), and a card GROUP is a lesson list only when at least half its rows carry a duration ("m:ss" or
+"N min") or the group sits under a header that SAYS it is a module ("<title> N lessons" or "Chapter/Module/
+Section/Unit/Week/Part/Day NN"). A card containing a link or a control belongs to the other shapes; a card is
+judged for danger by its TITLE alone (a blurb saying "complete", "share" or "next" is prose). Ordinals are page
+order; the module is the chapter header. No selector names the site (`test_no_platform_selectors_in_the_generic_scanner`).
+
+Three more general repairs the same page forced: `settle()` observes `document.body`, not `<main>` (an observer
+bound to a `<main>` the router replaces goes deaf, and "quiet" is declared at `min_ms`); `findBackControl()`
+returns the crumb NEAREST the current view, never the first (the first is "All Courses" — the site root, which
+would leave the course); and the flat-lesson loop, on failing to find a row, uses the back control and looks
+again (the module loop already did this; a per-lesson-route list needed it per lesson). Lesson records now carry
+the address each lesson rendered at (`page_url` = the per-lesson route, the start address when the URL does not
+move), which is a better referer for `import_course`.
+
+Gate: `tests/fixtures/courses/courses/cards.html` (that shape without the site's classes: 7 cards, a bonus
+chapter without durations, a bare-CTA card among the lessons, a two-card "recommended" grid that is NOT a lesson
+list) and `test_a_course_of_plain_card_rows_with_no_ordinal_and_no_button_is_traversed`; 28/28 in
+`test_s32_course_scanner.py`. Live, the patched library driven directly in Kyle's tab
+(`NSScan.run` with a recording bridge, `fetch` unwired): all 31 cards identified with the right chapters and
+durations, and the traversal reported every video lesson `video_found` with a stable Loom identity — see the
+HANDOFF entry for the final counts. That pass ran in a HIDDEN tab, where Chrome throttles timers to ~1 Hz, so it
+took ~20 s per lesson; the extension runs on the active tab, where CS0's settle numbers apply.
+
+## CS7 — a course's DOCUMENTS come in with its videos (extension 1.9.6, 2026-09-18)
+
+Kyle, after CS6: "there are bonus lessons without video content, I still want the information, spreadsheets,
+pdfs etc that are in them." Measured live on Acquisition Ace: the nine bonus lessons are each one Google Drive
+share link (`drive.google.com/file/d/<id>/view`) to a PDF — Fast Track Checklist, Perfect Deal Finder, Goal
+Setting Worksheet, Deal Calculator, Hands-Off Playbook, Recession-Proof Portfolio Builder, 7-Figure Letter
+Generator, No-Money-Down Secrets, Student Success Stories — behind a "Download Resource" button, with no
+player and a paragraph of sales copy. The scanner called them `no_video`; the importer dropped them.
+
+Scanner: `findAttachments()` records each lesson's document links as stable identities (`documentIdentity`:
+Drive/Docs/Sheets/Slides ids, Dropbox paths, direct addresses with a document extension) on
+`record.attachments`; a lesson with no player and at least one document is `document_found`, a READY outcome
+(`background.summarize`, popup). A video lesson keeps its worksheet on the same record. Nothing is fetched by
+the scanner. A link's text names the file only when short and specific; a button's text ("download Download
+Resource Included with your membership north_east…", live) does not, and the importer names the document after
+its lesson.
+
+Importer: `courses.import_course` queues each distinct attachment once through `ingest_url` (a document two
+lessons link is fetched once and titled for both, exactly like a shared video), with NO cookies file — a
+document host is not a video host and Kyle's Google session is never sent to the app. Response gains
+`documents` (queued) and `nothing` (lessons with neither video nor document); `no_video` keeps its meaning.
+
+App: `webpage.document_download_url()` turns a share link into the address that returns the FILE (Drive
+`uc?export=download`, Docs/Slides `export?format=pdf`, Sheets `export?format=xlsx`, Dropbox `dl=1`, a direct
+document address as itself); `ingest.ingest_url` routes such links to the new `ingest_document_url`, which
+fetches through the J1 boundary (`webpage.fetch_with_headers`, document limits) and hands the bytes to
+`ingest_local_file` — the existing upload path: PDF/DOCX/TXT → `ingest_document`, XLSX/CSV →
+`ingest_spreadsheet` (pages AND a calculator), EPUB/images to theirs; identity is the file's content
+fingerprint. The link is written back onto the file source's `url`, so `sources_for_urls` answers a re-import.
+A share link that answers with HTML (Google's sign-in page for a file not shared "anyone with the link") is
+`Blocked` with the instruction to download it in the browser and add it with Sources → Upload — never read as
+the document.
+
+Gates: `tests/test_s55_course_documents.py` (link → download address; a Drive PDF becomes a document named after
+its lesson and is found by search; a Sheets link becomes a spreadsheet with a calculator; a sign-in wall is
+blocked, not read; the same bytes behind two links are one source; the importer queues each document once and
+sends no cookies for it), `cards.html` extended with Drive links (one shared by two bonus lessons) and a
+worksheet on a video lesson. Live: `findAttachments` run in Kyle's tab on Bonus #4 found the Drive identity.
+NOT yet exercised live: the actual fetch of these nine files by the app (whether Ben Kelly's Drive files are
+shared publicly decides between nine ready documents and nine honest "sign-in" failures) — that is the first
+import on the Mac.
+
 ## Known limitations
 
 - Strategy B's control classification is proven against the shapes CS0 measured and the safety fixture's decoy

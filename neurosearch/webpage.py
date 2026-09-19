@@ -29,6 +29,43 @@ HEAD_TAGS = {"h1", "h2", "h3", "h4"}
 SECTION_MIN, SECTION_MAX = 900, 4500
 
 
+DOC_EXT = (".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".pptx", ".txt", ".rtf", ".epub", ".md")
+_GDRIVE_FILE = re.compile(r"https?://drive\.google\.com/(?:file/d/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{10,})")
+_GDOCS = re.compile(r"https?://docs\.google\.com/(document|spreadsheets|presentation)/d/([A-Za-z0-9_-]{10,})")
+
+
+def document_download_url(url: str) -> str | None:
+    """The address that returns the FILE for a link that points at a document — or None when the link is not one.
+
+    CS7 (Acquisition Ace bonuses): a course's written material is linked, not embedded — nine PDFs behind Google
+    Drive `file/d/<id>/view` share links, which answer with a JavaScript viewer, not the file. The download form
+    of each share link is stable and public when the share is: Drive `uc?export=download&id=`, Docs/Slides
+    `export?format=pdf`, Sheets `export?format=xlsx`, Dropbox `dl=1`. A direct link with a document extension is
+    itself. Anything else is a page, not a document."""
+    if not url:
+        return None
+    m = _GDRIVE_FILE.match(url)
+    if m:
+        return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+    m = _GDOCS.match(url)
+    if m:
+        kind, did = m.group(1), m.group(2)
+        fmt = "xlsx" if kind == "spreadsheets" else "pdf"
+        return f"https://docs.google.com/{kind}/d/{did}/export?format={fmt}"
+    u = urlparse(url)
+    host = u.netloc.lower()
+    if host.endswith("dropbox.com") and (u.path.startswith("/s/") or u.path.startswith("/scl/fi/")):
+        q = [kv for kv in u.query.split("&") if kv and not kv.startswith("dl=")] + ["dl=1"]
+        return u._replace(query="&".join(q)).geturl()
+    if u.path.lower().endswith(DOC_EXT):
+        return url
+    return None
+
+
+def looks_like_document(url: str) -> bool:
+    return document_download_url(url) is not None
+
+
 def looks_like_media(url: str) -> bool:
     u = urlparse(url)
     host = u.netloc.lower()
@@ -135,8 +172,14 @@ def fetch(url: str, timeout: float = 60.0) -> tuple[str, str, bytes]:
     """GET the URL through the J1 network boundary (`safe_fetch`: public addresses only, pinned connection, manual
     revalidated redirects, streamed size/decoded limits, total deadline). Returns (final_url, content_type, body).
     A refused destination raises safe_fetch.FetchBlocked (typed reason, user-safe message)."""
+    final, ctype, body, _ = fetch_with_headers(url, timeout)
+    return final, ctype, body
+
+
+def fetch_with_headers(url: str, timeout: float = 60.0, content_class: str | None = None) -> tuple[str, str, bytes, dict[str, str]]:
+    """`fetch`, plus the response headers (a document link's Content-Disposition names the file)."""
     from .safe_fetch import safe_fetch
-    r = safe_fetch(url, deadline_s=timeout)
+    r = safe_fetch(url, deadline_s=timeout, content_class=content_class)
     if r.status in (401, 403, 429, 503):
         cls = classify_page(r.status, r.body[:4000].decode("utf-8", errors="replace")) or "blocked"
         raise Blocked(f"{urlparse(url).netloc} blocks automated readers (HTTP {r.status}). "
@@ -146,7 +189,7 @@ def fetch(url: str, timeout: float = 60.0) -> tuple[str, str, bytes]:
         raise AcquisitionFailure(f"HTTP 404 — nothing at that address on {urlparse(r.url).netloc}", adapter="web_page", cls="not_found")
     if r.status >= 400:
         raise AcquisitionFailure(f"HTTP {r.status} fetching {urlparse(r.url).netloc}", adapter="web_page", cls="http_error", detail=f"HTTP {r.status}")
-    return r.url, r.content_type, r.body
+    return r.url, r.content_type, r.body, dict(r.headers or {})
 
 
 def LOGIN_OR_CHALLENGE(head: str) -> str | None:

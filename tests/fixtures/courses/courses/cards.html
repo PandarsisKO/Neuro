@@ -1,0 +1,31 @@
+<!doctype html><html><head><title>Academy | Lessons</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a,[data-card]");if(b)window.__clicks.push((b.querySelector("h3")||b).textContent.replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<header><a href="/courses">Academy</a><button>Logout</button><button>Courses</button></header>
+<div id="app"></div>
+<script>
+// CS6 fixture: Acquisition Ace's SHAPE without its classes. Lesson rows are plain <div>s with a click handler
+// (no button/role/tabindex/link, no ordinal), one <h3> + blurb + "Duration m:ss" each, grouped under
+// "Chapter NN · Title  NN Lessons Total" headers. Opening a lesson REPLACES <main> (a new element), moves the
+// URL, and renders a Loom iframe; the breadcrumb's course crumb comes back to the list. The last chapter's
+// rows carry no duration (bonus documents) and are lessons because their chapter header says so. A grid of
+// two "recommended" cards with no duration and no chapter header is NOT a lesson list; a card titled with a
+// bare purchase CTA is never activated.
+const CH=[["Chapter 01 · Introduction",[["About me","5:00","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],["The market opportunity","3:00","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","/files/market-notes.pdf"],["Purchase the full course","",null]]],
+          ["Chapter 02 · Deal Economics",[["Cash flow basics","11:30","cccccccccccccccccccccccccccccccc"],["SDE multiples explained","4:00","dddddddddddddddddddddddddddddddd"]]],
+          ["Chapter 03 · Conclusion",[["Conclusion","1:00","eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],["[Bonus #1] Goal setting worksheet","",null,"https://drive.google.com/file/d/1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/view?usp=sharing"],["[Bonus #2] Deal calculator","",null,"https://drive.google.com/file/d/1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/view?usp=drive_link"]]]];
+const app=document.getElementById('app'); let n=0;
+function list(){history.pushState({},'', '/courses/demo'); document.title='Academy | Lessons';
+  app.innerHTML='<main><h1>Demo Course</h1><div class="filters"><button>All Lessons</button><button>Completed</button></div><div class="chapters">'+
+   CH.map(([t,ls],ci)=>'<div class="chapter"><div class="chapter-header"><h2>'+t+'</h2><span>0'+ls.length+' Lessons Total</span></div><div class="grid">'+
+     ls.map((l,li)=>'<div data-card data-ci="'+ci+'" data-li="'+li+'"><div><span>check_circle</span><div><h3>'+l[0]+'</h3><p>Explore how to complete this step, share it, and mark the next one.</p></div></div>'+(l[1]?'<div><span>Duration</span><span>'+l[1]+'</span></div>':'')+'</div>').join('')+
+     '</div></div>').join('')+
+   '</div><div class="recommended"><h2>Recommended</h2><div class="grid"><div data-card><h3>Community hub</h3><p>Meet other students.</p></div><div data-card><h3>Bonuses</h3><p>Extra material.</p></div></div></div></main>';
+  app.querySelectorAll('[data-card][data-ci]').forEach(d=>d.onclick=()=>{const l=CH[+d.dataset.ci][1][+d.dataset.li]; setTimeout(()=>lesson(+d.dataset.ci,+d.dataset.li),20);});}
+function lesson(ci,li){const [t,ls]=CH[ci]; const l=ls[li]; history.pushState({},'', '/courses/demo/'+l[0].toLowerCase().replace(/[^a-z0-9]+/g,'-')); document.title='Academy | Lesson';
+  app.innerHTML='<main><nav aria-label="Breadcrumb"><button>All Courses</button><span>›</span><button>Demo Course</button><span>›</span><span aria-current="page">'+t+'</span></nav><h1>'+l[0]+'</h1>'+
+   (l[2]?'<div class="stage"><iframe src="https://www.loom.com/embed/'+l[2]+'?hide_owner=true&hideEmbedTopBar=true" allow="fullscreen"></iframe></div>':'<div class="doc"><p>A worksheet to fill in.</p></div>')+
+   (l[3]?'<a class="cta" href="'+l[3]+'"><span>download</span>Download Resource<small>Included with your membership</small></a><a class="card" href="'+l[3]+'">Download Resource</a>':'')+
+   '<button>Lesson Completed</button><button>Previous Lesson</button><button>Next Lesson</button><button>Post comment</button></main>';
+  app.querySelectorAll('nav button')[0].onclick=()=>{app.innerHTML='<main><h1>All courses</h1></main>';};
+  app.querySelectorAll('nav button')[1].onclick=()=>setTimeout(list,20);}
+list();
+</script></body></html>

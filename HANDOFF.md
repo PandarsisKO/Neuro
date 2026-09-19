@@ -1,5 +1,15 @@
 # HANDOFF — shared Codex / Claude delivery mechanics
 
+## Queued subreddit mission — planning only, 2026-09-19
+
+Kyle requested a repository-grounded revision of the subreddit catalog plan. The canonical plan is
+[docs/SUBREDDIT-CATALOG-MISSION.md](docs/SUBREDDIT-CATALOG-MISSION.md). Phase A is complete; implementation
+has not started. Codex will execute this mission; Claude is no longer its executor. Kyle will choose the
+Codex model and effort after planning and must explicitly authorize Phase B. Do not infer authorization
+from the queued plan or a model-setting change. The first implementation unit is SUB2's identity and
+catalog-membership gates after an isolated baseline. Existing course/Sources edits and the unfinished
+CHR2 handoff remain preserved; this planning entry does not close or execute them.
+
 ## Start here
 
 1. Find every `STATE-OF-THE-APP-YYYY-MM-DD-HHMM.md`; read the newest timestamp.
@@ -6530,3 +6540,236 @@ video is filed in the Candidate Index as `needs_membership` with its relevance a
 🔒 and an "Open on YouTube" link, no Capture action, never a preference signal; a refused download is filed the
 same way. Pre-existing gap fixed on the way: `approve_proposed` filed every skipped candidate scoreless because it
 fetched proposals before it knew the project. Gate `test_s73`.
+
+## "Scan this course" found nothing on Acquisition Ace — lesson CARDS, not lesson controls (Claude, 2026-09-18, extension 1.9.4)
+
+Kyle, logged in to Ben Kelly's Acquisition Ace (courses.benkelly.co, three tracks), pressed "Scan this course"
+on a track and got "No lessons found on this page" with every chapter and lesson visibly on screen. Measured in
+his Chrome: lesson rows are bare React `<div>`s (click handler + `cursor:pointer`; no button/role/tabindex/link,
+no "1." ordinal), one `<h3>` + blurb + "Duration m:ss" each, under "Chapter NN · Title  NN Lessons Total"
+headers — 31 rows in 5 chapters, the last chapter's 9 bonus rows being Google-Drive documents without a
+duration. Opening a row moves the URL to a per-lesson route, REPLACES `<main>`, renders one Loom iframe; the
+breadcrumb's course crumb brings the list back. Neither strategy could see it: no links (A), no controls and no
+ordinals (B), no player on the list page (C).
+
+Fix, all generic (no site selector; `test_no_platform_selectors_in_the_generic_scanner` still holds):
+- `scan-lib.js` `cardRows()`: second Strategy B shape — repeated single-heading siblings whose group carries
+  durations (≥ half) or sits under a header that says it is a module/chapter; card danger judged by title only;
+  ordinals = page order; module = chapter header. Used by `findLessonStructure` when no control shape matches,
+  by `allLessonRows`, and re-found by title in `findRow`.
+- `settle()` observes `document.body` (an observer on a `<main>` the router replaces goes deaf).
+- `findBackControl()` returns the crumb nearest the current view, never the first ("All Courses" = leaving the
+  course).
+- The flat-lesson loop goes back through the breadcrumb and re-finds a row that vanished (per-lesson routes).
+- Lesson records carry the address the lesson rendered at (`page_url`), a real referer for `import_course`.
+- Extension `1.9.3 → 1.9.4`; docs/COURSE-SCANNER-2026-09-15.md §CS6.
+
+Verified: `tests/test_s32_course_scanner.py` 28/28 (new fixture `courses/cards.html` + two tests; run in the
+Cowork VM with a user-installed pytest against the shipped jsdom harness — the Mac `.venv` is not runnable from
+the VM, so the FULL pytest/release-check is NOT re-run here and is pending on the Mac). Live, the patched library
+driven directly in Kyle's tab (recording bridge, `fetch` unwired, no import): 31/31 cards identified with the
+right chapter and duration; traversal returned `video_found` with a stable Loom identity for every one of the 22
+video lessons; the 9 bonus rows open a document view (Google Drive links, no player) and are `no_video`, which
+is the honest outcome. That pass ran in a hidden tab under Chrome's timer throttling (20 s → 60 s per lesson
+after five minutes hidden), which is a harness artifact — the extension runs on the active tab.
+
+Pending (needs Kyle or the Mac): reload the unpacked extension so `background.js`/manifest pick up 1.9.4, press
+"Scan this course" on each of the three tracks from the track's lesson list page (not a lesson page) and import;
+run full pytest + `release-check` on the Mac.
+
+## Popup lesson list unreadable — checkbox took the whole row (Claude, 2026-09-18, extension 1.9.5)
+
+Kyle's screenshot after the 1.9.4 scan (22 of 31 ready, correct): every lesson's text squeezed into a sliver at
+the right of the row, one word per line. Cause: `popup.html`'s global `input,select{width:100%;padding;border}`
+is written for text fields and also hits the row's `<input type=checkbox>`, so the checkbox's flex basis is the
+full row. Fix: `.les input[type=checkbox]{width:auto;flex:none;…}` + `.les .t{min-width:0}`; verified by
+rendering the popup with sample rows in headless Chromium before/after. Extension 1.9.4 → 1.9.5 (reload the
+unpacked extension). No JS change; `test_s32` still 28/28.
+
+## Course documents come in with the videos — Acquisition Ace bonuses (Claude, 2026-09-18, extension 1.9.6)
+
+Kyle: the nine bonus lessons are PDFs behind Google Drive share links; he wants them, not just the videos.
+Implemented end to end — see docs/COURSE-SCANNER-2026-09-15.md §CS7 for the design. Touched:
+`extension/scan-lib.js` (`documentIdentity`, `findAttachments`, `document_found` outcome, back-control
+preference for an inner crumb + never "back" from the list page), `extension/background.js` (summary counts),
+`extension/popup.js` (document words, attachments sent, result line), `extension/manifest.json` 1.9.6,
+`neurosearch/webpage.py` (`document_download_url`, `looks_like_document`, `fetch_with_headers`),
+`neurosearch/ingest.py` (`ingest_document_url`, routed from `ingest_url`), `neurosearch/courses.py`
+(`import_course` queues attachments, no cookies for them), tests `test_s55_course_documents.py` (new),
+`test_s32` cards fixture/test extended.
+
+Verified in the Cowork VM with a throwaway `uv` 3.11 env (`~/nsenv`, outside the repo; the Mac `.venv` is not
+runnable from the VM): `test_s55` 7/7, `test_s32` 28/28, `test_core -k "course or webpage"` 4/4. The FULL
+pytest + `release-check` are still pending on the Mac. Live: attachment detection confirmed in Kyle's tab on a
+real bonus page; the app-side fetch of the Drive files is not yet exercised (VM egress 403s drive.google.com;
+robots blocks it from the cloud) — the first import will show either nine ready documents or nine "asked for
+a sign-in" failures with the upload instruction, both honest.
+
+Pending (Kyle / Mac): reload the unpacked extension (1.9.6), restart the app so `ingest.py`/`webpage.py`/
+`courses.py` reload (or rely on `reload_includes=["*.py"]`), re-scan each track from its lesson list, tick the
+bonuses (now "document ready"), import, and read the Sources tab; run full pytest + release-check.
+- Follow-up (same day): Kyle confirms the Drive links are "anyone with the link" and resolve to a download.
+  Added `ingest._drive_confirm_url` — Drive's virus-scan "download anyway" interstitial (large files) is an
+  HTML form; its action + hidden inputs (id/export/confirm/uuid) are followed ONCE to the file
+  (`test_drives_virus_scan_interstitial_is_followed_once_to_the_file`, `test_s55` now 8/8). Small public files
+  never see it (302 → `drive.usercontent.google.com` → bytes, already covered by the boundary's validated
+  cross-host redirects). Still unexercised live: the first real import from the Mac.
+
+## Sources tab: newest additions were buried, "Vanader" pinned at the top (Claude, 2026-09-18, 0.63.93)
+
+Kyle, live, after the course import: "the sorting of our sources page makes it very difficult to find the most
+recent content … Vanader keeps staying stuck at the top … our filtering feels pretty lackluster." Two causes:
+the default sort ("activity") with Group-by-origin on ordered the GROUPS by size, so the biggest channel led
+whatever had just landed; and "newest" sorted by the video's PUBLISH date, which a course lesson or a document
+does not carry, so what he had added a minute ago sank to the bottom. Neither view answered "what did I just
+add?".
+
+Fix (UI only, `neurosearch/web/`): a "recently added" sort (`created_at` desc) is the default; groups follow the
+active sort by first appearance (only the explicit "activity" sort keeps biggest-group-first); "newest" is
+relabelled "newest published"; every row's meta line now says "added 3h ago" (`agoShort`, utils.js). Package
+and UI markers bumped 0.63.92 → 0.63.93 (release-check's marker agreement). Gates `test_s63`, `test_s44` pass.
+
+Follow-up, same session (Kyle: "should we fix that now?" — yes): `db.list_sources` now orders by `created_at
+DESC` (then publish date). Every caller was checked: all but the capped listings ask for everything and
+re-filter; the capped ones (project page 2,000, library picker 500, MCP search, CLI's last-20-failed) all want
+"most recently added first". Gate `tests/test_s64_sources_listing_order.py` (a cap of one keeps the row added
+last, publish date or not; the project API agrees); `test_s36`, `test_s63`, `test_core -k source/library/list`
+pass. `test_core::test_delete_source_marks_evidence_removed` fails in the VM only because the embeddings
+provider is unreachable from there (breaker OPEN) — not related; will pass on the Mac. The other half of the
+complaint ("filtering feels lackluster") is not addressed and not diagnosed; Kyle should say which filters he
+reaches for and cannot find.
+
+## Source rows: everyday controls out from behind "⋯" (Claude, 2026-09-18, 0.63.94)
+
+Kyle, live: "we hid a lot of functions/options in the sources behind a '...' button which just adds a lot of
+steps for the user to select items that are priority etc. Only hide things that truly should be hidden by
+default." W4 (0.63.69) folded everything but one primary into the overflow to cure six equal-weight buttons
+with Delete beside Remove; that over-reached. Rule now, stated in `sourceRowActions`: VISIBLE = routine row
+work — Transcript/Contents/Read, a one-click ★/☆ Priority toggle (`aria-pressed`), and Read deeper when it
+applies (long source, not yet deep); HIDDEN behind ⋯ = destructive (Remove from project, Delete everywhere)
+and paid REPEATS (Suggest findings again, Read again with the model). Primary/special buttons unchanged.
+Visible buttons are `.small.ghost` so the row still has one dominant action (CL-1). Markers 0.63.93 → 0.63.94
+(a same-version stale tab would not be prompted to reload). Gates `test_s44`, `test_s41`, `test_s63` pass.
+
+## "Delete N members-only" in the Failed view (Claude, 2026-09-18, 0.63.94)
+
+Kyle: "find out which sources failed due to member only and remove them completely." Measured through the
+app's API in his browser (never the database): 41 failed sources library-wide, 22 of them `members_only`
+(YouTube "Join this channel" / "available to this channel's members") — 17 in the business-buying project, 5 in
+the web-apps design project, none with content or citations. "Clear all failed" would also have taken the 19
+retryable failures (timeouts, not-founds). `POST /api/sources/clear-failed-in-project` takes an optional
+`error_classes` filter (matched on `error_class` or `access_gate`); the Failed view shows "🔒 Delete N
+members-only" when any are present (`clearMembersOnly`, own confirm). Gate in `test_s64`. Claude prepared the
+press; Kyle presses it — deletion is his call, per project and once per project.
+
+
+## CHR2 live usability gate: in progress, handed off to Codex (Claude, 2026-09-19)
+
+Kyle handed this effort off to Codex mid-pass. Status below is exact — do not assume more is done than
+this says, and do not claim CHR2 closed until it explicitly is.
+
+**What this was:** CHR1 (`docs/CHAT-REFRESH-PLAN.md` §13, commit `cefdafe`) needed a live-browser usability
+pass — jsdom can't judge spacing/hierarchy/disclosure/loading-feel. Kyle authorized operating the Mac directly
+(no Terminal work for him) to run clean `cefdafe` on the Mac's real localhost/browser, fully isolated from the
+normal checkout, Codex's own working tree, `./start`, and the live database.
+
+**Isolation setup (still on disk, reusable or safe to delete):** `.chr2_livetest/` at the repo root —
+`worktree/` is a `git worktree add --detach cefdafe` (a separate checkout, not this branch); `data/` is a
+Mac-local copy of `data/backups/neurosearch-20260919-0852.db` (or similar — see directory for the latest
+snapshot copy actually in use), never the live DB; `run_server.command` is a double-click launcher (Terminal
+can only be click-driven, not typed into, from this session, so a `.command` file opened via Finder is how the
+server gets started) — it sets `NEUROSEARCH_FAKE_AI=1` (zero spend) and picks port 8010 or 8020 if 8010 is
+taken; `server.log` is the running log. **The server was not running at last check (no `neurosearch.cli serve`
+process, nothing on :8010/:8020)** — it stopped sometime after the last confirmed-good request; restart it by
+double-clicking `run_server.command` in Finder before continuing any live testing. Login uses the app token
+already in the parent repo's real `.env` (`NEUROSEARCH_APP_TOKEN`), auto-loaded by dotenv's upward search.
+
+**Bug found and fixed — hard blocker (in `.chr2_livetest/worktree/neurosearch/db.py` only, NOT yet in the
+main checkout):** `conversation_delta.get_delta()`'s caching wrapper (added as part of CHR2 itself) calls
+`db.conversation_message_revision(conversation_id)`, which was never actually added to `db.py` — an
+`AttributeError` 500'd every single `/delta` call regardless of mode, blocking all of Tests A/B/C. Fixed by
+adding that function (append-only `COUNT(*):MAX(id)` fingerprint over `messages` for the conversation,
+mirroring the existing `conversation_delta_revision(project_id)` pattern). This is CHR2-scope (new caching-key
+plumbing CHR2 itself introduced), not a reopening of CHR1 semantics.
+
+**Bug found and fixed — presentation defect (in `.chr2_livetest/worktree/neurosearch/web/js/chats.js` only,
+NOT yet in the main checkout):** on the real legacy corpus (`6320f26515a143edb964175ed109f143`, the big
+1072-source "buying businesses" project), the expanded "What's new" panel leaked backend jargon and produced
+many duplicate rows:
+- `conversation_delta.py`'s `tension` unit's `why_relevant` is a fixed backend-jargon template ("a new open …
+  tension appeared on a Claim …") that repeats verbatim across every open tension on the same Claim set —
+  fixed on the frontend only (`deltaJargonFreeText`, a display-only reword) plus a new `deltaDedupeRows` that
+  collapses exact-duplicate rows into one with a "× N" count.
+- The `evidence_target`/`resolves_gap` unit's `why_relevant` repeats a 9-word boilerplate prefix ("an open
+  research question this conversation touched on was resolved: …") in front of every row even though only the
+  tail differs — trimmed to "Resolved: …" (same `deltaJargonFreeText` helper).
+- The dedupe count badge ("× N") was landing on its own line, detached from its sentence, whenever the unit
+  also carried a "Touches N things you asked" sub-line (`deltaDedupeRows` was inserting the badge before the
+  row's *outer* closing tag, which lands after that sub-line). Fixed by wrapping the sentence in its own
+  `<span class="deltaRowText">` and inserting the count right after that span instead.
+- Confirmed NOT jargon and deliberately left alone: "Claim" itself is legitimate normal-chat vocabulary
+  (Research tab has a whole "Claims workbench," "See all Claims," citation "why" links) — only "tension" and
+  the resolves_gap boilerplate were backend-only terms a normal-chat user never sees elsewhere.
+- `conversation_delta.py` was NOT touched — all three fixes are frontend display-only, per Kyle's fix policy
+  (no CHR1 relevance/semantics changes).
+
+**Test C (legacy Approximate, the real conversation above) — core checks done and passed live in the actual
+Mac browser (Claude-in-Chrome):** opening the chat does NOT auto-fire `/delta` (confirmed via network log);
+messages render immediately; clicking "Check what's new" gives immediate loading feedback ("⟳ Checking for
+changes…"); the chat stays fully interactive (typed in the input) during the ~8-10s wait; the computation
+completed successfully and returned "84 meaningful changes since 9/3/2026 · Approximate" — matching Kyle's own
+figure from his original spec, confirming this is the real target data, not a stand-in. The expanded panel
+was inspected end-to-end (Changes an earlier answer → Adds useful information, with working "Show N more"
+progressive disclosure → More supporting evidence, an aggregate rollup sentence, never enumerated → the
+Approximate-limitations sentence, which appears only after the check). Both fixes above were verified visually
+correct on this exact conversation after being applied. **Not fully closed out:** light-theme and
+narrow-viewport (mobile) rendering were attempted but not practically verifiable in this remote-automation
+environment (a theme-toggle button was located but its click had no visible effect; window resize didn't
+visibly propagate to the automated screenshot) — genuinely untested, not "tested and passed."
+
+**Test B (modern Exact chat, nothing_new) — mostly done:** created a brand-new chat
+(`9cf17d525d9847658656e8027aa631a7`, in the same big project) and asked it a question under
+`NEUROSEARCH_FAKE_AI=1`. The open chat renders with **no** delta widget/clutter at all — clean, matching "leaves
+normal Chat visually unchanged." One nuance worth knowing: `chats.js`'s exact-mode auto-check
+(`scheduleChatDelta`) deliberately defers firing while `document.hidden` (comment: "An automatic Exact check
+must not launch while the tab is hidden") and only fires on `visibilitychange` — in this remote-browser-
+automation setup the tab reports `document.hidden === true` most of the time (it's not the real OS-frontmost
+window), so the auto-check didn't fire at the moment I first checked. The server log later showed the
+`/delta` call for this exact conversation DID fire automatically at some point and returned 200 OK, so the
+underlying behavior works — just wasn't caught in a live screenshot at the instant it fired. This is a real
+artifact of the automation environment, not a product defect (the "don't auto-check a hidden tab" behavior is
+correct/intentional and should not be changed).
+
+**Test A (modern Exact chat, meaningful changes) — not started.** Still needs: create a modern Exact
+conversation with complete evidence snapshots, then introduce a deterministic relevant change into the copied
+project (via the app's normal seams, or a small one-off script against the copied DB — never by weakening
+Conversation Delta logic), then open it live and inspect: immediate render, no blocking, compact state, count
+matches the returned delta, one-click reveal, correct category priority order, progressive disclosure,
+compact Claim rollups, no jargon leaks, no cross-chat stale-paint bug when switching chats mid-request.
+
+**What Codex should do to pick this up:**
+1. Restart the isolated test server (`.chr2_livetest/run_server.command`, double-click via Finder — do not
+   point it at the live DB or the normal checkout).
+2. Finish Test A (build the meaningful-change fixture, inspect live) and Test B's remaining piece (catch the
+   auto-check actually firing on-screen at least once, on a real visible/foregrounded browser, not just via
+   the server log). Finish Test C's light-theme/narrow-viewport checks if practical.
+3. Port the two fixes out of `.chr2_livetest/worktree/` into the real branch on top of `cefdafe` in the normal
+   checkout — they currently exist ONLY in the disposable isolated worktree:
+   - `neurosearch/db.py`: add `conversation_message_revision(conversation_id)` (see the isolated worktree's
+     copy for the exact function — it's a small, self-contained addition right before `project_view_revision`).
+   - `neurosearch/web/js/chats.js`: the `deltaJargonFreeText`/`deltaRow`/`deltaDedupeRows` changes (see the
+     isolated worktree's copy — all three edits are localized to those three functions, ~lines 415-450).
+4. Re-run `tests/js/run-chat-delta.mjs` and `tests/test_s50_design_drift.py` (plus any other design/static
+   test that touches these files) against the real ported changes.
+5. Update the CHR2 execution record in `docs/CHAT-REFRESH-PLAN.md` with what was actually observed live (both
+   bugs found/fixed, the Test A/B/C results, and the untested light-theme/narrow-viewport gap).
+6. Commit the ported fixes + execution-record update on the real checkout (normal lock/checksum discipline),
+   push, verify `origin/main` contains them.
+7. Only then mark CHR2 closed — and per Kyle's repeated instruction, stop there; do not proceed into CHR3
+   without further sign-off.
+8. Once ported and closed out, `.chr2_livetest/` is disposable — safe to delete (isolated worktree, DB copy,
+   launcher, log) so it doesn't linger on Kyle's Mac.
+
+No application code outside the two files above was touched. No CHR1 relevance/semantics, Claim logic,
+Approximate reconstruction, backend performance, or Plan-mutation code was touched or reopened, per Kyle's
+explicit fix-scope limits for this pass.

@@ -82,6 +82,8 @@ globalThis.toast = function toast(msg, kind = '') {
 globalThis.put = (p, b) => api(p, { method: 'PUT', body: JSON.stringify(b) });
 globalThis.del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : undefined });
 globalThis._t = undefined; const debounce = (f, ms = 300) => { clearTimeout(_t); globalThis._t = setTimeout(f, ms); };
+// "added 3h ago" / "added 4d ago": coarse, for a row's meta line (`ago` is the fine one for a running job)
+globalThis.agoShort = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : s < 86400 * 30 ? `${Math.floor(s / 86400)}d ago` : new Date(t * 1000).toLocaleDateString(); };
 globalThis.ago = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; };
 globalThis.fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
 globalThis.ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐', spreadsheet: '🧮', book: '📖', community: '💬' };

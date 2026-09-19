@@ -180,6 +180,54 @@ def test_collapsed_modules_are_expanded_in_place_and_rows_attributed_to_their_mo
     assert s["diagnosis"]["back_control"] is False, "an accordion keeps its module cards: no way-back control is needed or used"
 
 
+def test_a_course_of_plain_card_rows_with_no_ordinal_and_no_button_is_traversed():
+    """CS6, live Acquisition Ace (courses.benkelly.co): lesson rows are bare <div>s with a framework click
+    handler -- no button/role/tabindex/link and no "1." ordinal -- one heading + blurb + "Duration m:ss" each,
+    grouped under "Chapter NN · Title  NN Lessons Total" headers; opening one REPLACES <main>, moves the URL and
+    renders a Loom iframe, and the breadcrumb's course crumb brings the list back. The popup said "No lessons
+    found on this page". The card shape is positive identification, same principle as the control shape:
+    repeated single-heading siblings whose rows carry durations or whose chapter header says they are lessons.
+    Fixture is that shape without the site's classes (test_no_platform_selectors_in_the_generic_scanner)."""
+    r = scan("courses/cards.html", "--url", "https://course.test/courses/demo")
+    s = r["summary"]
+    assert s["strategy"] == "interactive" and s["status"] == "done" and s["expected"] == 7 and s["diagnosis"]["cards"] == 7
+    assert [(l["module"], l["title"], l["duration_min"], l["outcome"]) for l in s["lessons"]] == [
+        ("Chapter 01 · Introduction", "About me", 5, "video_found"),
+        ("Chapter 01 · Introduction", "The market opportunity", 3, "video_found"),
+        ("Chapter 02 · Deal Economics", "Cash flow basics", 12, "video_found"),
+        ("Chapter 02 · Deal Economics", "SDE multiples explained", 4, "video_found"),
+        ("Chapter 03 · Conclusion", "Conclusion", 1, "video_found"),
+        # bonus documents: no duration, lessons because their chapter header says so; each is a Drive link
+        # (CS7) — a lesson that IS a document is document_found, a ready outcome, not no_video
+        ("Chapter 03 · Conclusion", "[Bonus #1] Goal setting worksheet", None, "document_found"),
+        ("Chapter 03 · Conclusion", "[Bonus #2] Deal calculator", None, "document_found")]
+    atts = {l["title"]: [(a["provider"], a["url"], a["kind"]) for a in l["attachments"]] for l in s["lessons"]}
+    assert atts["[Bonus #1] Goal setting worksheet"] == atts["[Bonus #2] Deal calculator"] == \
+        [("gdrive", "https://drive.google.com/file/d/1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/view", "gdrive")], "the same file behind two share links is one identity"
+    assert atts["The market opportunity"] == [("file", "https://course.test/files/market-notes.pdf", "pdf")], "a video lesson keeps its worksheet too"
+    assert atts["About me"] == []
+    # every lesson rendered at its own address, and the list was brought back through the COURSE crumb (the
+    # crumb nearest the current view), never "All Courses" (the site root, which would leave the course)
+    assert [l["page_url"].rsplit("/", 1)[1] for l in s["lessons"]][:2] == ["about-me", "the-market-opportunity"]
+    assert s["diagnosis"]["back_control"] is True
+    assert r["clicks"] == ["About me", "Demo Course", "The market opportunity", "Demo Course", "Cash flow basics", "Demo Course",
+                           "SDE multiples explained", "Demo Course", "Conclusion", "Demo Course",
+                           "[Bonus #1] Goal setting worksheet", "Demo Course", "[Bonus #2] Deal calculator", "Demo Course"]
+    assert "All Courses" not in r["clicks"]
+    # a card titled with a bare purchase CTA among the lessons, and a two-card "recommended" grid with no
+    # durations and no chapter header, are not lessons and were never activated
+    assert not any(c.startswith("Purchase") or c in ("Community hub", "Bonuses") for c in r["clicks"])
+    ids = [l["media"][0]["id"] for l in s["lessons"] if l["media"]]
+    assert len(ids) == 5 and len(set(ids)) == 5
+
+
+def test_card_durations_and_chapter_headers_are_read_generically():
+    dur = _lib_js("['Duration 5:00', 'Duration 11:30', '7 min', '1:00 check_circle', 'Explore 2024 deals', 'Step 3'].map(t => NSScan._re.CARD_DURATION.test(t))")
+    assert json.loads(dur) == [True, True, True, True, False, False]
+    head = _lib_js("['Chapter 05 · Conclusion', 'Module 2: Sourcing', 'Week 1', 'Introduction', 'Recommended'].map(t => NSScan._re.CHAPTER_HEAD.test(t))")
+    assert json.loads(head) == [True, True, True, False, False]
+
+
 def test_a_player_that_arrives_late_is_still_found():
     r = scan("courses/delayed.html")
     assert outcomes(r) == [("Slow one", "video_found"), ("Slow two", "video_found")]

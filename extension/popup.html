@@ -9,8 +9,11 @@
   button:disabled{opacity:.5}
   .muted{color:#5f6878;font-size:12px}
   #lessons{max-height:260px;overflow:auto;border:1px solid #e1e5eb;border-radius:8px;background:#fff;margin-top:8px;padding:6px}
-  .les{display:flex;gap:6px;align-items:flex-start;padding:4px 2px;border-bottom:1px solid #eef1f5;font-size:12px}
-  .les .t{flex:1} .les .m{color:#5f6878}
+  .les{display:flex;gap:8px;align-items:flex-start;padding:5px 2px;border-bottom:1px solid #eef1f5;font-size:12px;line-height:1.35}
+  /* the global input rule above is for text fields: a checkbox must not take width:100% or the row's text
+     is squeezed into a sliver at the right (seen live, 1.9.4) */
+  .les input[type=checkbox]{width:auto;flex:none;margin:2px 0 0;padding:0;border:0}
+  .les .t{flex:1;min-width:0} .les .m{color:#5f6878}
   .les.nov{opacity:.55}
   .ok{color:#1a9d63} .bad{color:#d2413a} .warn{color:#b8730a}
   details{margin-top:8px} summary{cursor:pointer;color:#5f6878}

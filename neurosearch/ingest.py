@@ -144,6 +144,10 @@ def ingest_url(
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
 
     if kind == "web":
+        from .webpage import looks_like_document
+        if looks_like_document(url):
+            return ingest_document_url(url, tags=tags, project_id=project_id, title=title, progress=progress,
+                                       collection_id=collection_id)
         return ingest_webpage(url, tags=tags, project_id=project_id, title=title, progress=progress, html=None)
     if kind == "instagram_profile":
         if not cookies_file:
@@ -865,6 +869,108 @@ def ingest_image(path: Path, title: str, tags: list[str] | None, project_id: str
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise
+
+
+_DOC_SUFFIX_BY_TYPE = (("application/pdf", ".pdf"), ("application/vnd.openxmlformats-officedocument.wordprocessingml", ".docx"),
+                       ("application/msword", ".doc"), ("application/vnd.openxmlformats-officedocument.spreadsheetml", ".xlsx"),
+                       ("application/vnd.ms-excel", ".xls"), ("application/vnd.openxmlformats-officedocument.presentationml", ".pptx"),
+                       ("application/epub", ".epub"), ("application/rtf", ".rtf"), ("text/csv", ".csv"), ("text/plain", ".txt"),
+                       ("text/markdown", ".md"))
+
+
+def _document_name(final_url: str, content_type: str, headers: dict[str, str], title: str | None) -> str | None:
+    """A file name with the RIGHT suffix for what arrived, from Content-Disposition, else the address, else the
+    content type. None when the body is not a document at all (an HTML viewer or a sign-in page)."""
+    from .documents import DOC_EXTS
+    from .sheets import SHEET_EXT
+    from urllib.parse import unquote
+    disp = next((v for k, v in headers.items() if k.lower() == "content-disposition"), "")
+    m = re.search(r"filename\*=(?:UTF-8'')?([^;]+)|filename=\"?([^\";]+)\"?", disp, re.I)
+    name = unquote((m.group(1) or m.group(2)).strip()) if m else ""
+    if not name:
+        tail = urlparse(final_url).path.rsplit("/", 1)[-1]
+        name = tail if "." in tail else ""
+    ct = (content_type or "").lower()
+    suffix = next((s for t, s in _DOC_SUFFIX_BY_TYPE if ct.startswith(t)), None)
+    known = set(DOC_EXTS) | set(SHEET_EXT) | {".doc", ".xls", ".pptx", ".epub"}
+    if Path(name).suffix.lower() in known:
+        return name
+    if suffix and not ct.startswith("text/plain"):
+        stem = re.sub(r"[^\w .()-]+", "", (title or Path(name).stem or "document")).strip() or "document"
+        return stem[:100] + suffix
+    return None
+
+
+def _drive_confirm_url(html: str) -> str | None:
+    """The address behind Drive's virus-scan interstitial, built from its form (`action` + hidden inputs, which
+    carry `id`, `export`, `confirm` and a one-time `uuid`); None when the page is not that form."""
+    m = re.search(r'<form[^>]+id="download-form"[^>]*action="([^"]+)"', html) or re.search(r'<form[^>]+action="([^"]+)"[^>]+id="download-form"', html)
+    if not m:
+        return None
+    action = m.group(1).replace("&amp;", "&")
+    fields = dict(re.findall(r'<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"', html))
+    fields.setdefault("confirm", "t")
+    from urllib.parse import urlencode
+    return f"{action}?{urlencode(fields)}"
+
+
+def ingest_document_url(url: str, tags: list[str] | None = None, project_id: str | None = None, title: str | None = None,
+                        progress: Progress = _noop, collection_id: str | None = None) -> dict[str, Any]:
+    """A LINK to a document (a PDF/DOCX/XLSX address, a Google Drive/Docs/Sheets share link, a Dropbox link) as a
+    source — fetched through the network boundary, then read by exactly the path an uploaded file takes.
+
+    CS7 (Acquisition Ace bonuses, 2026-09-18): a course's written material — checklists, worksheets, a deal
+    calculator — is linked from lesson pages, not embedded; the scanner now records those links and the importer
+    queues them here. Nothing new reads a document: `ingest_local_file` already routes PDF/DOCX/TXT to
+    `ingest_document`, XLSX/CSV to `ingest_spreadsheet` (sheets become pages AND a calculator), EPUB and images
+    to theirs, and identity is the file's content fingerprint (the same bytes under two links are one source).
+    A share link whose file needs a sign-in answers with an HTML page: that is reported as blocked, never read as
+    the document. No cookies are sent — a document host is not a video host."""
+    import tempfile
+    from .acquire import AcquisitionFailure
+    from .webpage import Blocked, LOGIN_OR_CHALLENGE, document_download_url, fetch_with_headers
+    dl = document_download_url(url) or url
+    progress(0.05, "fetching document…")
+    final, ctype, body, headers = fetch_with_headers(dl, content_class="document")   # document limits, whatever the type says
+    ct = (ctype or "").lower()
+    if ct.startswith("text/html") and "google.com" in urlparse(final).netloc:
+        # Google Drive's "can't scan this file for viruses — download anyway" interstitial (large files): an HTML
+        # form whose inputs name the real download. Followed ONCE, from the form's own fields; anything else
+        # Google answers with HTML (a sign-in page) falls through to the blocked report below.
+        follow = _drive_confirm_url(body[:20000].decode("utf-8", errors="replace"))
+        if follow:
+            progress(0.1, "confirming the download…")
+            final, ctype, body, headers = fetch_with_headers(follow, content_class="document")
+            ct = (ctype or "").lower()
+    name = _document_name(final, ct, headers, title)
+    if ct.startswith("text/html") or name is None:
+        head = body[:8000].decode("utf-8", errors="replace")
+        wall = LOGIN_OR_CHALLENGE(head)
+        host = urlparse(final).netloc
+        if wall or "drive.google.com" in host or "docs.google.com" in host:
+            raise Blocked(f"{host} asked for a sign-in instead of returning the file — the document is not shared "
+                          "with 'anyone with the link'. Download it in your browser and add it with Sources → Upload.", cls=wall or "login_wall")
+        raise AcquisitionFailure(f"{host} returned a web page, not a document ({ct.split(';')[0] or 'unknown type'})",
+                                 adapter="document_link", cls="not_a_document")
+    with tempfile.NamedTemporaryFile(suffix=Path(name).suffix, delete=False) as fh:
+        fh.write(body)
+        tmp = Path(fh.name)
+    try:
+        progress(0.3, f"reading {name}…")
+        res = ingest_local_file(tmp, title=title or Path(name).stem, tags=tags, project_id=project_id, progress=progress, original_name=name)
+    finally:
+        tmp.unlink(missing_ok=True)
+    sid = res.get("source_id")
+    if sid:
+        # remember the LINK on the file source so a re-import is answered from the library (`sources_for_urls`)
+        with db.tx() as conn:
+            conn.execute("UPDATE sources SET url=?, canonical_url=COALESCE(canonical_url, ?), updated_at=? WHERE id=? AND (url IS NULL OR url='' OR url LIKE 'file://%')",
+                         (url, dl, db.now(), sid))
+        if collection_id:
+            db.link_source_collection(sid, collection_id)
+    res["kind"] = res.get("kind") or "document_link"
+    res["download_url"] = dl
+    return res
 
 
 def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | None = None,

@@ -123,20 +123,31 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
     cookies_file = write_cookie_file(cookies, coll["id"]) if cookies else None
 
     by_url: dict[str, dict[str, Any]] = {}   # normalised video url -> {referer, titles: [lesson titles using it]}
+    # CS7: a lesson's DOCUMENTS (the scanner's `attachments`: a PDF/DOCX/XLSX link, a Drive/Docs/Sheets share link)
+    # are acquired too — through `ingest_document_url`, never through a video job — keyed on the link as the page
+    # shows it, so a document two lessons both link is fetched once and named for both, exactly like a video.
+    docs: dict[str, dict[str, Any]] = {}     # attachment url -> {referer, titles, name}
     no_video = []
+    nothing = []
     for i, les in enumerate(lessons, 1):
         vids = [normalise_embed(v) for v in (les.get("video_urls") or []) if isinstance(v, str) and v.startswith("http")]
-        if not vids:
-            no_video.append(les.get("title") or les.get("page_url"))
-            continue
+        atts = [a for a in (les.get("attachments") or []) if isinstance(a, dict) and isinstance(a.get("url"), str) and a["url"].startswith("http")]
         module = (les.get("module") or "").strip()
         lesson_title = (les.get("title") or f"Lesson {i}").strip()
         full_title = f"{module} › {lesson_title}" if module else lesson_title
+        if not vids:
+            no_video.append(les.get("title") or les.get("page_url"))
+        if not vids and not atts:
+            nothing.append(les.get("title") or les.get("page_url"))
+            continue
         for v in vids:
             entry = by_url.setdefault(v, {"referer": les.get("page_url"), "titles": []})
             entry["titles"].append(full_title)
+        for a in atts:
+            entry = docs.setdefault(a["url"], {"referer": les.get("page_url"), "titles": [], "name": (a.get("title") or "").strip()})
+            entry["titles"].append(full_title)
 
-    have = db.sources_for_urls(list(by_url))
+    have = db.sources_for_urls(list(by_url) + list(docs))
     shared = [u for u, e in by_url.items() if len(e["titles"]) > 1]
 
     queued = 0
@@ -151,6 +162,21 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
         })
         queued += 1
 
-    return {"collection_id": coll["id"], "title": title, "lessons": len(lessons), "queued": queued,
-            "already_present": [have[u] for u in by_url if u in have], "shared": shared, "no_video": no_video,
-            "cookies": bool(cookies_file)}
+    documents = 0
+    for u, e in docs.items():
+        if u in have:
+            continue
+        titles = e["titles"]
+        t = titles[0] if len(titles) == 1 else f"{titles[0]} (+{len(titles) - 1} more lesson{'s' if len(titles) > 2 else ''})"
+        if e["name"] and e["name"].lower() not in t.lower():
+            t = f"{t} — {e['name']}"[:200]
+        # no cookies: a document host is not a video host; a file that needs a sign-in is reported, not smuggled
+        jobs.enqueue("ingest_url", {
+            "url": u, "tags": [], "project_id": project_id, "force": False,
+            "referer": e["referer"], "title": t, "collection_id": coll["id"],
+        })
+        documents += 1
+
+    return {"collection_id": coll["id"], "title": title, "lessons": len(lessons), "queued": queued, "documents": documents,
+            "already_present": [have[u] for u in list(by_url) + list(docs) if u in have], "shared": shared, "no_video": no_video,
+            "nothing": nothing, "cookies": bool(cookies_file)}

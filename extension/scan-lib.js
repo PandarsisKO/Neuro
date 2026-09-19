@@ -1,4 +1,4 @@
-// Neuro Search — course scanner library (extension 1.7.0, mission CS, docs/COURSE-SCANNER-2026-09-15.md).
+// Neuro Search — course scanner library (extension 1.7.0, mission CS, docs/COURSE-SCANNER-2026-09-15.md; card rows 1.9.4).
 //
 // Plain script, no imports: it runs as a content script in the course tab (injected before scanner.js) AND under
 // node/jsdom in tests/js/run.mjs, which is why every function takes the window/document it works on instead of
@@ -76,6 +76,51 @@
   }
   const renderedPlayers = (doc, base) => findPlayers(doc, base, { rendered: true, root: doc.querySelector('main') || doc.body });
 
+  // ------------------------------------------------------------------ attachments: the DOCUMENTS a lesson links
+  // CS7 (live Acquisition Ace): a course's written material — checklists, worksheets, a deal calculator — is not on
+  // the lesson page, it is LINKED from it (nine PDFs behind Google Drive share links), and a lesson can be nothing
+  // but that link. Recorded here as identities, never fetched here: the app fetches the file through its own
+  // network boundary on import (`ingest_document_url`), with no cookies — a document host is not a video host.
+  // Stable identities only: a Drive/Docs/Sheets/Slides id, a Dropbox path, or a direct address with a document
+  // extension. The link's own text is usually a button ("Download Resource"): a title is taken from it only when
+  // it names the file; otherwise the importer names the document after its lesson.
+  const DOC_EXT = /\.(pdf|docx?|xlsx?|csv|pptx|epub|rtf|txt|md)(?:[?#]|$)/i;
+  const DOC_IDENTITY = [
+    ['gdrive', /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{10,})/i, id => `https://drive.google.com/file/d/${id}/view`],
+    ['gdocs', /docs\.google\.com\/document\/d\/([A-Za-z0-9_-]{10,})/i, id => `https://docs.google.com/document/d/${id}`],
+    ['gsheets', /docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]{10,})/i, id => `https://docs.google.com/spreadsheets/d/${id}`],
+    ['gslides', /docs\.google\.com\/presentation\/d\/([A-Za-z0-9_-]{10,})/i, id => `https://docs.google.com/presentation/d/${id}`],
+  ];
+  const GENERIC_LINK_TEXT = /^(?:\W|download|open|view|get|click|here|tap|resource|file|document|the|your|pdf|link|attachment|included|with|membership|to|and|now|it|this)*$/i;
+  function documentIdentity(url) {
+    if (!url) return null;
+    for (const [provider, re, canon] of DOC_IDENTITY) {
+      const m = url.match(re);
+      if (m) return { provider, id: m[1], url: canon(m[1]) };
+    }
+    let u; try { u = new URL(url); } catch (e) { return null; }
+    if (/(^|\.)dropbox\.com$/i.test(u.host) && /^\/(s|scl\/fi)\//.test(u.pathname)) return { provider: 'dropbox', id: u.pathname, url: u.origin + u.pathname };
+    if (DOC_EXT.test(u.pathname)) return { provider: 'file', id: u.host + u.pathname, url: u.href.split('#')[0], ext: (u.pathname.match(DOC_EXT) || [])[1] };
+    return null;
+  }
+  const docKey = d => d.provider + ':' + d.id;
+  function findAttachments(doc, base, opts) {
+    const root = (opts && opts.root) || doc.querySelector('main') || doc.body;
+    const byKey = new Map();
+    root.querySelectorAll('a[href]').forEach(a => {
+      if (inChrome(a)) return;
+      let u; try { u = new URL(a.getAttribute('href'), base).href; } catch (e) { return; }
+      const d = documentIdentity(u); if (!d || byKey.has(docKey(d))) return;
+      let title = '';
+      if (d.ext) { const f = decodeURIComponent(d.id.split('/').pop() || ''); if (f) title = f.slice(0, 120); }
+      // a short, specific label names the file ("Deal Calculator.xlsx"); a button's text does not ("download
+      // Download Resource Included with your membership north_east verified…", live — icon ligatures included)
+      if (!title) { const t = wordsOf(a, 160); if (t && t.length <= 60 && !GENERIC_LINK_TEXT.test(t.replace(/[^a-z]+/gi, ' ').trim())) title = t; }
+      byKey.set(docKey(d), { provider: d.provider, id: d.id, url: d.url, title, kind: d.ext ? d.ext.toLowerCase() : d.provider });
+    });
+    return [...byKey.values()];
+  }
+
   // ------------------------------------------------------------------ text helpers
   const textOf = el => (el && el.textContent || '').replace(/\s+/g, ' ').trim();
   const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -152,8 +197,10 @@
   const DANGER = /\b(buy|purchase|checkout|cart|pay|billing|subscribe|enrol|enroll|upgrade|unlock|log ?out|sign ?out|sign ?in|log ?in|delete|remove|submit|post|reply|comment|save|complete|mark|quiz|certificate|download|share|report|next|prev|previous|start course|resume|continue)\b/i;
   const CONTROL_SEL = 'button,[role=button],[role=tab],[role=option],[role=menuitem],[role=treeitem],li[tabindex],div[tabindex]';
 
-  function isDangerous(el) {
-    const t = rowText(el);
+  function isDangerous(el, text) {
+    // `text`: what to judge by wording. A control row IS its text; a card row is judged by its TITLE (a card's
+    // blurb is prose that may say "complete", "next" or "share" as ordinary language, never as an action).
+    const t = text != null ? text : rowText(el);
     if (el.matches && el.matches('a[href]')) {
       const href = el.getAttribute('href') || '';
       if (/^(mailto:|tel:|javascript:)/i.test(href)) return 'link-scheme';
@@ -215,6 +262,75 @@
     return groups.sort((a, b) => b.rows.length - a.rows.length);
   }
 
+  // ------------------------------------------------------------------ Strategy B, second shape: lesson CARDS
+  // CS6 (live Acquisition Ace, courses.benkelly.co): a course whose lesson rows are plain <div>s — no button, no
+  // role, no tabindex, no link, no ordinal — each holding ONE heading (the title), a blurb and a "Duration 5:00"
+  // badge, laid out under "Chapter NN · Title  NN Lessons Total" headers; a framework click handler on the div
+  // opens the lesson (the URL moves, the whole <main> is replaced, a Loom iframe renders). Nothing in the
+  // control shape above sees it: CONTROL_SEL never matches a bare div and LESSON_TEXT wants "<ordinal>. <title>".
+  // Positive identification, same principle as the control shape: a CARD is the ancestor of a heading whose
+  // parent holds >= 2 siblings that each hold exactly one heading (the repeated structure a lesson list has),
+  // and a card GROUP is a lesson list only when its rows carry durations (at least half of them) or the group
+  // sits under a module/chapter header ("Chapter 05 · Conclusion 10 Lessons Total" — the ordinal-less bonus
+  // rows are lessons because their chapter says so). A card that contains a link or a control belongs to the
+  // other shapes (its click target is ambiguous), and a card is judged for danger by its title alone.
+  // Ordinals are page order (the site has none); durations parse "m:ss" (rounded up) or "N min".
+  const CARD_HEAD = 'h2,h3,h4,h5';
+  const CARD_DURATION = /(?:^|\s)(\d{1,3}):(\d{2})(?=\s|$)|(?:^|\s)(\d{1,3})\s*(?:m|min|mins|minutes)(?=\s|$)/i;
+  const CHAPTER_HEAD = /\b(chapter|module|section|unit|week|part|day)\s*\d{1,3}\b/i;
+  function cardDuration(t) {
+    const m = t.match(CARD_DURATION); if (!m) return null;
+    if (m[3]) return +m[3];
+    return Math.max(1, +m[1] + (+m[2] > 0 ? 1 : 0));
+  }
+  function cardModule(container) {
+    // the header this card list sits under: the container's own previous sibling, or its parent's. `module` is
+    // true only for a header that SAYS it is one ("<title> N lessons", "Chapter 05 · …"); a plain heading is
+    // kept as the module title but proves nothing about the cards below it.
+    for (const c of [container, container.parentElement]) {
+      if (!c) break;
+      let p = c.previousElementSibling;
+      for (let i = 0; i < 2 && p; i++, p = p.previousElementSibling) {
+        const t = wordsOf(p, 200); if (!t) continue;
+        const m = t.match(MODULE_TEXT); if (m) return { title: m[1].trim().slice(0, 120), module: true };
+        if (CHAPTER_HEAD.test(t) && t.length <= 160) return { title: t.slice(0, 120), module: true };
+        if (p.matches && p.matches(CARD_HEAD) && t.length <= 160) return { title: t.slice(0, 120), module: false };
+      }
+    }
+    return { title: '', module: false };
+  }
+  function cardRows(doc) {
+    const root = doc.querySelector('main') || doc.body;
+    const oneHead = el => el.nodeType === 1 && el.querySelectorAll(CARD_HEAD).length === 1;
+    const byContainer = new Map();
+    root.querySelectorAll(CARD_HEAD).forEach(h => {
+      const title = textOf(h); if (title.length < 2 || title.length > 140 || inChrome(h)) return;
+      let e = h.parentElement, card = null;
+      for (let i = 0; i < 4 && e && e !== root; i++, e = e.parentElement) {
+        const p = e.parentElement; if (!p) break;
+        const sibs = [...p.children].filter(oneHead);
+        if (sibs.length >= 2 && sibs.includes(e)) { card = e; break; }
+      }
+      if (!card) return;
+      if (card.querySelector('a[href],' + CONTROL_SEL) || card.closest('a[href]')) return;
+      if (card.matches && card.matches(CONTROL_SEL)) return;                 // a control is the control shape's
+      const c = card.parentElement;
+      if (!byContainer.has(c)) byContainer.set(c, []);
+      byContainer.get(c).push({ el: card, title: title.slice(0, 140), duration_min: cardDuration(wordsOf(card, 300)) });
+    });
+    const out = [];
+    for (const [container, rows] of byContainer) {
+      if (rows.length < 2 || inChrome(container)) continue;
+      const head = cardModule(container);
+      const timed = rows.filter(r => r.duration_min != null).length;
+      if (timed * 2 < rows.length && !head.module) continue;
+      for (const r of rows) out.push({ ...r, module: head.title, danger: isDangerous(r.el, r.title) });
+    }
+    // page order, ordinals by position; danger is a per-row verdict, never a group one
+    out.sort((a, b) => (a.el.compareDocumentPosition(b.el) & 4) ? -1 : 1);
+    return out.filter(r => !r.danger).map((r, i) => ({ ...r, ordinal: i + 1, shape: 'card' }));
+  }
+
   // every lesson row on the page, whatever group it sits in (an accordion shows several modules' rows at once)
   function allLessonRows(doc) {
     const out = [];
@@ -222,7 +338,7 @@
       const m = rowText(el).match(LESSON_TEXT); const l = { el, ordinal: +m[1], title: m[2].trim(), duration_min: m[3] ? +m[3] : null, danger: isDangerous(el) };
       if (!l.danger) out.push(l);
     }
-    return out;
+    return out.length ? out : cardRows(doc);
   }
   function findLessonStructure(doc) {
     const lessonGroups = siblingGroups(doc, LESSON_TEXT, 2).map(g => ({
@@ -237,9 +353,11 @@
                      .filter(x => !x.danger),
     })).filter(g => g.modules.length >= 2);
     // the module heading a lesson list sits under: nearest preceding h1-h3 inside main, else the page title
-    const lessons = lessonGroups[0] ? lessonGroups[0].lessons : [];
+    let lessons = lessonGroups[0] ? lessonGroups[0].lessons : [];
     const modules = moduleGroups[0] ? moduleGroups[0].modules : [];
-    return { lessons, modules, lesson_groups: lessonGroups.length, module_groups: moduleGroups.length,
+    let cards = 0;
+    if (lessons.length < 2 && modules.length < 2) { const cr = cardRows(doc); if (cr.length >= 2) { lessons = cr; cards = cr.length; } }
+    return { lessons, modules, cards, lesson_groups: lessonGroups.length, module_groups: moduleGroups.length,
              expected_from_modules: modules.reduce((n, m) => n + (m.lesson_count || 0), 0) };
   }
 
@@ -252,7 +370,16 @@
       if (el.matches('a[href]')) { try { return new URL(el.getAttribute('href'), startUrl).href.split('#')[0] === startUrl.split('#')[0]; } catch (e) { return false; } }
       return true;
     });
-    return usable.length ? usable[0] : null;
+    // the LAST usable crumb is the level just above the current view (its module list); the first is the
+    // site root ("All Courses"), which would leave the course. A `[aria-current]` crumb is the view itself.
+    // The lesson LIST page shows "All Courses" alone (found live), and clicking it leaves the course; a lesson
+    // view shows "All Courses › <course> › <current>". Prefer a crumb with something AFTER it (a separator, the
+    // current crumb): that is a level inside the trail. A trail whose only crumb is a lone button (an SMB-shaped
+    // "Learning" link with the current name outside the trail) keeps working: it is the fallback, not refused.
+    const up = usable.filter(el => !el.hasAttribute('aria-current'));
+    const inner = up.filter(el => !!((el.closest('li,[data-slot=breadcrumb-item]') || el).nextElementSibling));
+    const pick = inner.length ? inner : up;
+    return pick.length ? pick[pick.length - 1] : null;
   }
 
   // ------------------------------------------------------------------ settle + change verdict (CS0 outputs)
@@ -273,7 +400,9 @@
   }
   function settle(win, doc, opts) {
     const o = { ...SETTLE, ...(opts || {}) };
-    const root = doc.querySelector('main') || doc.body;
+    // observe the document, not <main>: a router that replaces the <main> element on every route (found live on
+    // Acquisition Ace) leaves an observer bound to the old node deaf, and "quiet" would be declared at min_ms
+    const root = doc.body || doc.documentElement;
     const t0 = Date.now(); let mutations = 0, lastMut = Date.now();
     let mo = null;
     if (win.MutationObserver) { mo = new win.MutationObserver(ms => { mutations += ms.length; lastMut = Date.now(); }); mo.observe(root, { subtree: true, childList: true, attributes: true }); }
@@ -304,14 +433,17 @@
   }
 
   // ------------------------------------------------------------------ outcome contract
-  const OUTCOMES = ['video_found', 'multiple_videos', 'no_video', 'needs_user_play', 'blocked', 'scan_failed', 'not_scanned'];
+  // document_found (CS7): no player, but the lesson links at least one document — a lesson whose content IS a
+  // file. A lesson with a player AND documents stays video_found; its documents ride on the record.
+  const OUTCOMES = ['video_found', 'multiple_videos', 'document_found', 'no_video', 'needs_user_play', 'blocked', 'scan_failed', 'not_scanned'];
   const BLOCKED_TEXT = /\b(sign in to (view|watch|continue)|log in to (view|watch|continue)|upgrade to (access|unlock|watch)|subscribe to (unlock|watch)|this content is locked|members only|purchase to unlock|not enrolled)\b/i;
   const PLAYER_SHELL = '[class*=player],[data-player],.plyr,.video-js,[class*=video-container],[data-testid*=player]';
-  function outcomeFor(doc, players) {
+  function outcomeFor(doc, players, attachments) {
     const main = doc.querySelector('main') || doc.body;
     if (players.length === 1) return 'video_found';
     if (players.length > 1) return 'multiple_videos';
     if (BLOCKED_TEXT.test(wordsOf(main, 4000))) return 'blocked';
+    if (attachments && attachments.length) return 'document_found';
     if (main.querySelector(PLAYER_SHELL)) return 'needs_user_play';
     return 'no_video';
   }
@@ -347,12 +479,18 @@
   function findRow(doc, lesson) {
     // controls are re-rendered by SPAs; find the row again by ordinal + title, never by a stale node
     const want = norm(lesson.title);
+    if (lesson.shape === 'card') {
+      const cards = cardRows(doc).filter(r => norm(r.title) === want);
+      const hit = cards.find(r => r.ordinal === lesson.ordinal) || cards[0];
+      return hit ? hit.el : (lesson.el && lesson.el.isConnected ? lesson.el : null);
+    }
     const rows = [...doc.querySelectorAll(CONTROL_SEL)].filter(el => { const m = rowText(el).match(LESSON_TEXT); return m && +m[1] === lesson.ordinal && norm(m[2]) === want; });
     return rows.find(el => !rows.some(o => o !== el && el.contains(o))) || (lesson.el && lesson.el.isConnected ? lesson.el : null);
   }
   function lessonRecord(lesson, moduleTitle, page_url, players, outcome, extra) {
-    return { title: lesson.title, module: moduleTitle || '', page_url, ordinal: lesson.ordinal, duration_min: lesson.duration_min || null,
-             outcome, media: players, video_urls: players.map(p => p.url), ...(extra || {}) };
+    const x = extra || {};
+    return { title: lesson.title, module: lesson.module || moduleTitle || '', page_url, ordinal: lesson.ordinal, duration_min: lesson.duration_min || null,
+             outcome, media: players, video_urls: players.map(p => p.url), attachments: x.attachments || [], ...x };
   }
 
   async function run(win, bridge, opts) {
@@ -377,7 +515,7 @@
     const structure = (adapters.find(a => { try { return a.match(doc); } catch (e) { return false; } }) || null);
     if (structure) diagnosis.adapter = structure.name;
     const st = structure && structure.lessons ? { lessons: structure.lessons(doc), modules: [], expected_from_modules: 0 } : findLessonStructure(doc);
-    diagnosis.controls = st.lessons.length; diagnosis.modules = st.modules.length;
+    diagnosis.controls = st.lessons.length; diagnosis.modules = st.modules.length; diagnosis.cards = st.cards || 0;
 
     if (cands.length >= 2 && st.lessons.length < 2) {
       diagnosis.strategy = 'linked'; expected = Math.min(cands.length, o.limit);
@@ -392,9 +530,9 @@
             if (r.status === 401 || r.status === 403) { results[idx] = lessonRecord({ title: c.title, ordinal: idx + 1 }, c.module, c.page_url, [], 'blocked', { detail: 'http ' + r.status }); continue; }
             const html = await r.text();
             const d = new win.DOMParser().parseFromString(html, 'text/html');
-            const players = findPlayers(d, c.page_url);
+            const players = findPlayers(d, c.page_url); const atts = findAttachments(d, c.page_url);
             const h1 = d.querySelector('h1'); const t = h1 ? textOf(h1) : '';
-            results[idx] = lessonRecord({ title: (t && t.length < 140 ? t : c.title), ordinal: idx + 1 }, c.module, c.page_url, players, outcomeFor(d, players));
+            results[idx] = lessonRecord({ title: (t && t.length < 140 ? t : c.title), ordinal: idx + 1 }, c.module, c.page_url, players, outcomeFor(d, players, atts), { attachments: atts });
           } catch (e) { results[idx] = lessonRecord({ title: c.title, ordinal: idx + 1 }, c.module, c.page_url, [], 'scan_failed', { detail: String(e).slice(0, 200) }); }
         }
       }));
@@ -448,7 +586,14 @@
         if (mod && mod.lesson_count && rows.length !== mod.lesson_count) diagnosis.count_mismatch = (diagnosis.count_mismatch || 0) + 1;
         for (const lesson of rows) {
           if (await cancelled()) break;
-          const el = findRow(doc, lesson);
+          let el = findRow(doc, lesson);
+          if (!el && signature(doc, win).heading !== homeSig.heading) {
+            // a lesson view that REPLACED the list (one address per lesson, the list only on the course page):
+            // go back the way a module does, then look for the row again. Never from the list itself — there
+            // the only crumb is the site root, and "back" would leave the course.
+            const b = (structure && structure.back && structure.back(doc)) || findBackControl(doc, startUrl);
+            if (b) { diagnosis.back_control = true; await activate(win, b); await settle(win, doc, o.settle); el = findRow(doc, lesson); }
+          }
           if (!el) { await emitLesson(lessonRecord(lesson, moduleTitle, startUrl, [], 'scan_failed', { detail: 'lesson row vanished before it could be opened' })); continue; }
           const s0 = signature(doc, win);
           const alreadyShown = norm(s0.heading).includes(norm(lesson.title)) && s0.players;
@@ -465,8 +610,11 @@
             const grace = o.settle.grace_ms != null ? o.settle.grace_ms : SETTLE.grace_ms;
             const t0 = Date.now(); while (Date.now() - t0 < grace && !players.length) { await new Promise(r => win.setTimeout(r, o.settle.sample_ms || SETTLE.sample_ms)); players = renderedPlayers(doc, startUrl); }
           }
-          const outcome = outcomeFor(doc, players); if (outcome === 'blocked') diagnosis.blocked_signals++;
-          await emitLesson(lessonRecord(lesson, moduleTitle, startUrl, players, outcome, { heading: headingOf(doc).slice(0, 140) }));
+          const atts = findAttachments(doc, startUrl);
+          const outcome = outcomeFor(doc, players, atts); if (outcome === 'blocked') diagnosis.blocked_signals++;
+          if (atts.length) diagnosis.attachments = (diagnosis.attachments || 0) + atts.length;
+          const shownAt = (doc.location && doc.location.href) || startUrl;
+          await emitLesson(lessonRecord(lesson, moduleTitle, shownAt, players, outcome, { heading: headingOf(doc).slice(0, 140), attachments: atts }));
         }
       }
       // restore: back to where the user started (the module list, or the lesson that was showing)
@@ -484,7 +632,7 @@
     return finish('done');
   }
 
-  globalThis.NSScan = { PLAYER, mediaIdentity, mediaKey, findPlayers, classifyLinks, findLessonStructure, findBackControl, isDangerous,
+  globalThis.NSScan = { PLAYER, mediaIdentity, mediaKey, findPlayers, documentIdentity, findAttachments, classifyLinks, findLessonStructure, cardRows, findBackControl, isDangerous,
                         settle, signature, changed, outcomeFor, duplicates, adapters, run, OUTCOMES, SETTLE,
-                        _re: { LESSON_TEXT, MODULE_TEXT, DANGER, BAD_LINK, GOOD_LINK, CHROME } };
+                        _re: { LESSON_TEXT, MODULE_TEXT, DANGER, BAD_LINK, GOOD_LINK, CHROME, CARD_DURATION, CHAPTER_HEAD } };
 })();

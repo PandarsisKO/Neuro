@@ -132,7 +132,7 @@ globalThis.srcRowHtml = function srcRowHtml(s) {
     ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy" onerror="this.outerHTML=${esc(JSON.stringify(`<div class="ico">${ICON[s.platform] || '•'}</div>`))}">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div class="grow min-w-0">
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
-      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.r6_provisional ? ' <span class="tag" title="Fast-wave result: useful early evidence, still provisional while the warm/deep queue continues. Later evidence can revise it.">⚡ provisional</span>' : ''}${s.under_read ? ' <span class="tag status-warn" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.created_at ? ` <span title="added ${new Date(s.created_at * 1000).toLocaleString()}">· added ${agoShort(s.created_at)}</span>` : ''}${s.r6_provisional ? ' <span class="tag" title="Fast-wave result: useful early evidence, still provisional while the warm/deep queue continues. Later evidence can revise it.">⚡ provisional</span>' : ''}${s.under_read ? ' <span class="tag status-warn" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted status-bad">${esc(s.error)}${s.error_class && !s.error_class.startsWith('browser_solvable') ? ` <span class="tag" title="${PERMANENT_FAILURES.has(s.error_class) ? 'A retry cannot help with this one — the material is gone or has no audio. Remove it from the project when you are ready.' : 'This one could work on another try.'}">${PERMANENT_FAILURES.has(s.error_class) ? 'will not work' : 'retryable'} · ${esc(s.error_class.replace(/_/g, ' '))}</span>` : ''}</div>` : ''}
       ${s.status === 'skipped' && s.pool_potential ? `<div class="muted" style="margin-top:3px" title="${esc((s.pool_potential.why || []).join('; ') || 'no signal either way')}"><span class="tag${s.pool_potential.score >= 40 ? ' status-ok' : ''}">🔎 ${s.pool_potential.score >= 40 ? 'worth a look' : 'low potential'} — ${s.pool_potential.score}/100</span>${s.pool_potential.fits ? ` · fits: ${esc(s.pool_potential.fits)}` : ''}</div>` : ''}
       ${completenessLine(s)}
@@ -177,21 +177,36 @@ globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
   else if (s.status === 'ready' && allVideos.length) special += `<span class="tag" title="${esc(doneVideos.join(', '))}">🎬 ${doneVideos.length} video${doneVideos.length === 1 ? '' : 's'} from this page added</span>`;
   if (s.status === 'ready' && s.long && s.depth === 'deep') special += `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>`;
 
+  // 0.63.93 — Kyle, live: "we hid a lot of functions behind a '...' button which just adds a lot of steps for the
+  // user to select items that are priority etc. Only hide things that truly should be hidden by default." W4's
+  // reason for the overflow was a row of six equal-weight buttons with Delete next to Remove; the cure over-
+  // reached and buried the everyday controls too. The rule now: VISIBLE = what a person does routinely on a row
+  // while working the list — read it (Transcript / Contents / Read), mark it ★ priority (a one-click toggle,
+  // routinely applied to many rows in a pass), and a conditional one-off that only appears when it applies
+  // (Read deeper on a long source not yet read deeply). HIDDEN behind ⋯ = what is destructive (Remove, Delete
+  // everywhere) or a paid REPEAT of something already done (Suggest findings again, Read again with the model)
+  // — the things a person should have to reach for on purpose. Retry stays visible as the primary when it is
+  // the way forward.
+  const star = `<button class="small ghost" title="${s.priority ? 'Priority source for this project — retrieval favours it. Click to stop favouring it.' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" aria-pressed="${s.priority ? 'true' : 'false'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Priority'}</button>`;
+  let visible = '';
+  if (s.status === 'ready') {
+    visible += `<button class="small ghost" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>`;
+    if (s.long && s.depth !== 'deep') visible += `<button class="small ghost" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">Read deeper</button>`;
+  }
+  visible += star;
+
   const items = [];
   if (s.status === 'ready') {
-    if (s.analysed) items.push(`<button onclick="suggestSource('${s.id}')" title="Reads this source with the model to extract findings again — uses your model budget">Suggest findings</button>`);
+    if (s.analysed) items.push(`<button onclick="suggestSource('${s.id}')" title="Reads this source with the model to extract findings again — uses your model budget">Suggest findings again</button>`);
     else items.push(`<button onclick="sourceDrawer('${s.id}')" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is">What this gave</button>`);
-    items.push(`<button onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>`);
     if (s.platform === 'image') items.push(`<button title="Read the picture again with the model instead of the free local OCR. Costs a small amount, and is worth it when the free read missed labels or small type. Text already stored is never replaced by a shorter read." onclick="readImageAgain('${s.id}')">Read again with the model</button>`);
-    if (s.long && s.depth !== 'deep') items.push(`<button title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">Read deeper</button>`);
   }
   if (!canRetry && !needsBrowser && (s.status === 'failed' || s.status === 'pending')) items.push(`<button onclick="retry('${s.id}')">Retry</button>`);
-  items.push(`<button title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>`);
   items.push(`<button onclick="removeFromProject('${s.id}')">Remove from project</button>`);
   items.push(`<div style="border-top:1px solid var(--line);margin:4px 0"></div>`);
   items.push(`<button class="danger" onclick="delSource('${s.id}')">Delete everywhere</button>`);
 
-  return `<div class="actions">${primary}${special}<button class="small ghost" onclick="toggleMenu(this)" aria-label="More actions for this source" title="More actions">⋯</button><div class="menu" hidden>${items.join('')}</div></div>`;
+  return `<div class="actions">${primary}${special}${visible}<button class="small ghost" onclick="toggleMenu(this)" aria-label="More actions for this source" title="More actions">⋯</button><div class="menu" hidden>${items.join('')}</div></div>`;
 }
 globalThis.toggleMenu = function toggleMenu(btn) {
   const m = btn.nextElementSibling; if (!m || !m.classList.contains('menu')) return;
@@ -210,9 +225,11 @@ globalThis.renderSourceList = function renderSourceList() {
   rows.forEach(s => { const k = srcGroupKey(s); (groups[k] = groups[k] || []).push(s); });
   // Kyle, live: "the grouped items don't sort properly if I am sorting by newest — it should also move the groups".
   // Right: a sort the user chose has to order the GROUPS too, or the newest source is buried three groups down.
-  // `rows` is already sorted, so first appearance IS the group order under whatever sort is active. Only the
-  // default (activity) view keeps the size ordering, where "the biggest channel first" is the useful shape.
-  const sortSel = $('#srcSort') ? $('#srcSort').value : 'default';
+  // `rows` is already sorted, so first appearance IS the group order under whatever sort is active. The
+  // "activity" sort alone keeps the size ordering (the biggest channel first is the useful shape for a status
+  // overview); it is no longer the default, so a source added a minute ago heads the list (2026-09-18, Kyle:
+  // "Vanader keeps staying stuck at the top").
+  const sortSel = $('#srcSort') ? $('#srcSort').value : 'added';
   const seen = [];
   rows.forEach(s => { const k = srcGroupKey(s); if (!seen.includes(k)) seen.push(k); });
   const keys = sortSel === 'default'
@@ -317,7 +334,7 @@ globalThis.renderSourcesView = function renderSourcesView() {
   const f = state.srcFilter || 'all';
   // S2: composable value filters (AND), a length band and a sort — every one a column on the row, no model calls
   const F = state.srcFilters || {};
-  const lenBand = $('#srcLen') ? $('#srcLen').value : '', sortBy = $('#srcSort') ? $('#srcSort').value : 'default';
+  const lenBand = $('#srcLen') ? $('#srcLen').value : '', sortBy = $('#srcSort') ? $('#srcSort').value : 'added';
   const inBand = s => !lenBand || (lenBand === 'books' ? ['book', 'document', 'spreadsheet', 'file'].includes(s.platform) : lenBand === 'short' ? (s.duration || 0) > 0 && s.duration < 900 : lenBand === 'mid' ? s.duration >= 900 && s.duration < 2700 : lenBand === 'long' ? (s.duration || 0) >= 2700 : true);
   const v = s => s.value || {};
   const passes = s => (!F.matters || v(s).matters) && (!F.stale || v(s).stale) && (!F.priority || s.priority) && (!F.under_read || s.under_read) && (!F.deep || s.depth === 'deep')
@@ -327,6 +344,12 @@ globalThis.renderSourcesView = function renderSourcesView() {
   $('#srcFilterNote').textContent = activeF.length || lenBand ? `${all.filter(passes).length} match` : '';
   const sorter = (a, b) => sortBy === 'value' ? (v(b).score || 0) - (v(a).score || 0) || (b.approved || 0) - (a.approved || 0)
     : sortBy === 'unused' ? ((v(a).used && (v(a).used.plan_evidence + v(a).used.chat_citations)) || 0) - ((v(b).used && (v(b).used.plan_evidence + v(b).used.chat_citations)) || 0) || (v(a).score || 0) - (v(b).score || 0)
+    // Kyle, live (2026-09-18): "why are [the newest] not displayed on the top? Vanader keeps staying stuck at the top".
+    // Two reasons, both fixed here: the old default ordered GROUPS by size (biggest channel first, whatever just
+    // landed), and "newest" meant the video's PUBLISH date, which a course lesson or a document does not have,
+    // so what he added a minute ago sank to the bottom. "recently added" is when the source entered the library
+    // (`created_at`), the default now; groups follow the sort (below); "newest published" keeps its old meaning.
+    : sortBy === 'added' ? (b.created_at || 0) - (a.created_at || 0)
     : sortBy === 'longest' ? (b.duration || 0) - (a.duration || 0) : sortBy === 'newest' ? (b.published_at || '').localeCompare(a.published_at || '') : sortBy === 'title' ? (a.title || '').localeCompare(b.title || '')
     : f === 'deep' ? ((b.under_read ? 1 : 0) - (a.under_read ? 1 : 0)) || ((b.duration || 0) - (a.duration || 0)) : bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0);
   const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : f === 'deep' ? (s.status === 'ready' && s.long) : s.status === f && !needsBrowser(s))).filter(passes).sort(sorter);
@@ -337,6 +360,10 @@ globalThis.renderSourcesView = function renderSourcesView() {
     (f === 'skipped' && rows.some(s => !s.thumbnail_url) ? ` <button class="small ghost" title="Re-fetches metadata only (no download, stays skipped) for skipped sources with no thumbnail yet — catches up rows skipped before this was fixed." onclick="refreshSkippedMeta()">Refresh info</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
     (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">Clear all failed</button>` : '') +
+    // Kyle, 2026-09-18: "find out which sources failed due to member only and remove them completely" — 22 of 41
+    // failures were YouTube members-only videos, which no retry can ever fix; "Clear all failed" would have taken the
+    // 19 retryable ones with them. One press for exactly the hopeless class, nothing else.
+    (f === 'failed' && rows.some(s => s.error_class === 'members_only' || s.access_gate === 'members_only') ? ` <button class="small danger" title="Members-only videos cannot be downloaded without a membership on that channel — no retry will help. Deletes just those; other failures stay for Retry." onclick="clearMembersOnly(${rows.filter(s => s.error_class === 'members_only' || s.access_gate === 'members_only').length})">🔒 Delete ${rows.filter(s => s.error_class === 'members_only' || s.access_gate === 'members_only').length} members-only</button>` : '') +
     // music-only shorts/reels: the audio said nothing, but the caption often holds the substance
     (capRecover.n ? ` <button class="small ghost" title="${capRecover.n} source${capRecover.n === 1 ? '' : 's'} said nothing out loud but carry real text in the caption — read that text so they can produce findings. No download, no re-transcription." onclick="recoverCaptions()">Read ${capRecover.n} caption-only source${capRecover.n === 1 ? '' : 's'}</button>` : '');
   SRCG.rows = rows;
@@ -569,6 +596,12 @@ globalThis.clearFailedSources = async function clearFailedSources() {
   const r = await post('/api/sources/clear-failed-in-project', { project_id: state.project.id });
   toast(`✕ ${r.cleared} cleared (${r.deleted} deleted, ${r.excluded} removed from this project, ${r.jobs_cancelled} job${r.jobs_cancelled === 1 ? '' : 's'} cancelled)`);
   state.srcFilter = 'all'; loadSources(); loadJobs();
+}
+globalThis.clearMembersOnly = async function clearMembersOnly(n) {
+  if (!confirm(`Delete the ${n} members-only video${n === 1 ? '' : 's'} that failed in this project? They cannot be downloaded without a membership on their channel, so no retry can bring them back. Other failed sources are untouched.`)) return;
+  const r = await post('/api/sources/clear-failed-in-project', { project_id: state.project.id, error_classes: ['members_only'] });
+  toast(`🔒 ${r.cleared} members-only cleared (${r.deleted} deleted, ${r.excluded} removed from this project)`);
+  loadSources(); loadJobs();
 }
 globalThis.retryAllSources = async function retryAllSources() { const r = await post('/api/sources/retry-failed-in-project', { project_id: state.project.id }); toast(`↻ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 globalThis.retry = async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
