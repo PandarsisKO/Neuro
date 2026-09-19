@@ -404,6 +404,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     last_verified_at REAL,
     availability     TEXT NOT NULL DEFAULT 'available',   -- available | unavailable | stale_metadata
     metadata_revision INTEGER NOT NULL DEFAULT 1,
+    metadata_json    TEXT,                               -- bounded provider observation; never a thread payload
     source_id        TEXT REFERENCES sources(id) ON DELETE SET NULL,   -- set once acquired: the candidate RESOLVES to the global source
     UNIQUE (platform, external_id)
 );
@@ -1059,6 +1060,8 @@ MIGRATIONS = [
     # OFF, so no pre-existing attachment silently starts being monitored the moment this migration runs).
     ("project_collections", "source_role", "ALTER TABLE project_collections ADD COLUMN source_role TEXT NOT NULL DEFAULT 'unspecified'"),
     ("project_collections", "monitor_policy", "ALTER TABLE project_collections ADD COLUMN monitor_policy TEXT NOT NULL DEFAULT 'auto'"),
+    # SUB4: catalog providers can refresh small, explicitly observed metadata without overwriting user decisions.
+    ("candidates", "metadata_json", "ALTER TABLE candidates ADD COLUMN metadata_json TEXT"),
 ]
 
 
@@ -3402,6 +3405,24 @@ def kv_set(key: str, value: str | None) -> None:
             conn.execute("DELETE FROM kv WHERE key=?", (key,))
         else:
             conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+def kv_compare_set(key: str, expected: str | None, value: str | None) -> bool:
+    """Set a KV value only when its serialized prior value still matches.
+
+    Catalog page workers use this optimistic generation guard inside their short write batch.  A stale worker
+    therefore rolls back its candidate/membership writes rather than moving a newer scan cursor backwards.
+    """
+    with tx() as conn:
+        row = conn.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
+        actual = row["value"] if row else None
+        if actual != expected:
+            return False
+        if value is None:
+            conn.execute("DELETE FROM kv WHERE key=?", (key,))
+        else:
+            conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+    return True
 
 
 def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | None = None,

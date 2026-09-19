@@ -140,15 +140,16 @@ def test_resumable_pages_keep_partial_progress_and_never_create_sources():
         return (([_listing("a"), _listing("b")], "t3_b") if after is None else ([_listing("b"), _listing("c")], None))
 
     first = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=pages)
-    assert first["status"] == "partial" and first["new"] == 2 and first["total"] == 2
+    assert first["status"] == "partial" and first["new"] == 0 and first["initial_known"] == 2 and first["total"] == 2
     candidates.dismiss(project, first["candidate_ids"][0], "not useful")
     second = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=pages)
-    assert second["status"] == "complete" and second["new"] == 1 and second["total"] == 4
+    assert second["status"] == "complete" and second["new"] == 0 and second["initial_known"] == 1 and second["total"] == 3
     assert calls == [("smallbusiness", None), ("smallbusiness", "t3_b")]
     assert len(db.collection_candidate_ids(catalog["id"])) == 3
     assert db.connect().execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
     state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
     assert state["status"] == "complete" and state["reason"] == "listing ended"
+    assert state["known_posts"] == 3 and state["observed"] == 4 and state["initial_known"] == 3
     assert db.connect().execute("SELECT state FROM candidate_projects WHERE candidate_id=? AND project_id=?",
                                 (first["candidate_ids"][0], project)).fetchone()["state"] == "user_dismissed"
 
@@ -188,3 +189,35 @@ def test_catalog_enumerator_requires_official_api_and_keeps_listing_metadata_sma
     assert seen == ["/r/smallbusiness/new?raw_json=1&limit=100&after=t3%20before"]
     assert after == "t3_next" and rows[0]["external_id"] == "reddit:one"
     assert rows[0]["description"] == "x" * 2000 and rows[0]["view_count"] == 0
+    assert rows[0]["metadata"] == {"version": 1, "subreddit": "smallbusiness", "score": 0, "comment_count": 12,
+                                    "flair": "Question", "created_utc": 1, "outbound_url": None,
+                                    "outbound_domain": None, "availability": "available"}
+
+
+def test_refresh_tracks_distinct_new_posts_and_semantic_metadata_changes():
+    project = _project("refresh")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    initial = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([_listing("a")], None))
+    assert initial["initial_known"] == 1 and initial["new"] == 0
+    started = reservoir.begin_subreddit_refresh(project, catalog["id"])
+    assert started["mode"] == "refresh" and started["known_posts"] == 1
+    changed = _listing("a") | {"title": "Post a revised", "observed_metadata": True,
+                                "metadata": {"version": 1, "score": -2, "comment_count": 4, "subreddit": "smallbusiness"}}
+    refreshed = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([changed, _listing("b")], None))
+    assert refreshed["new"] == 1 and refreshed["total"] == 2 and refreshed["observed"] == 2
+    row = db.connect().execute("SELECT title, metadata_json, metadata_revision FROM candidates WHERE external_id='reddit:a'").fetchone()
+    assert row["title"] == "Post a revised" and __import__("json").loads(row["metadata_json"])["score"] == -2
+    assert row["metadata_revision"] == 2
+
+
+def test_stale_scan_cannot_commit_after_a_newer_refresh_starts():
+    project = _project("stale")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+
+    def replaced_mid_fetch(_sub, _after):
+        reservoir.begin_subreddit_refresh(project, catalog["id"])
+        return [_listing("lost")], None
+
+    result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=replaced_mid_fetch)
+    assert result["status"] == "stale"
+    assert db.collection_candidate_ids(catalog["id"]) == []

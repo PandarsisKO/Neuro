@@ -252,11 +252,19 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
         post = child.get("data") if isinstance(child, dict) else None
         if not isinstance(post, dict) or not post.get("id") or not post.get("permalink"):
             continue
+        outbound = post.get("url_overridden_by_dest") or post.get("url")
+        from urllib.parse import urlparse
+        outbound_domain = urlparse(outbound).hostname.lower() if isinstance(outbound, str) and outbound else None
         rows.append({"external_id": f"reddit:{post['id']}", "url": "https://www.reddit.com" + post["permalink"],
                      "title": post.get("title"), "description": (post.get("selftext") or "")[:2000] or None,
                      "creator": post.get("author"),
                      "published_at": time.strftime("%Y-%m-%d", time.gmtime(post.get("created_utc") or 0)) if post.get("created_utc") else None,
-                     "view_count": post.get("score"), "content_type": "post"})
+                     "view_count": post.get("score"), "content_type": "post", "observed_metadata": True,
+                     "metadata": {"version": 1, "subreddit": subreddit.lower(), "score": post.get("score"),
+                                  "comment_count": post.get("num_comments"), "flair": post.get("link_flair_text"),
+                                  "created_utc": post.get("created_utc"), "outbound_url": outbound,
+                                  "outbound_domain": outbound_domain,
+                                  "availability": "deleted" if post.get("removed_by_category") or post.get("author") in ("[deleted]", None) else "available"}})
     next_cursor = listing.get("after")
     return rows, str(next_cursor) if next_cursor else None
 

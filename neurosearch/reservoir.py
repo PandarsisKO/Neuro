@@ -130,6 +130,40 @@ def rescan(project_id: str, collection_id: str, *, enumerate: Callable[[str], tu
 # ---------------------------------------------------------------- subreddit catalog scans (SUB3)
 
 SUBREDDIT_PAGE_SIZE = 100
+SUBREDDIT_MAX_PAGES = 50
+SUBREDDIT_MAX_OBSERVATIONS = 5_000
+
+
+class _StaleSubredditScan(RuntimeError):
+    """A newer manual run replaced this worker while it was fetching a page."""
+
+
+def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, Any]:
+    """Begin a new head-first, manual catalog run without touching the provider.
+
+    This is intentionally a state transition, not another queue or scheduler. A later page worker owns the
+    provider call. Keeping the prior completed summary lets the UI describe a failed refresh honestly.
+    """
+    collection = db.get_collection(collection_id)
+    if not collection or collection.get("kind") != "subreddit":
+        raise ValueError("subreddit refresh needs a subreddit catalog")
+    key = _scan_key(project_id, collection_id)
+    raw = db.kv_get(key)
+    try:
+        prior = json.loads(raw or "{}")
+    except ValueError:
+        prior = {}
+    t = time.time()
+    state = {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
+             "mode": "refresh", "status": "queued", "cursor": None, "pages": 0, "observed": 0,
+             "new": 0, "initial_known": 0, "known_posts": len(db.collection_candidate_ids(collection_id)),
+             "baseline_known": len(db.collection_candidate_ids(collection_id)), "started_at": t, "updated_at": t,
+             "finished_at": None, "reason": None, "access": "reddit_api", "endpoint": "new",
+             "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS,
+             "previous_completed": prior if prior.get("status") == "complete" else prior.get("previous_completed")}
+    if not db.kv_compare_set(key, raw, json.dumps(state, sort_keys=True)):
+        raise RuntimeError("subreddit scan changed; retry refresh")
+    return state
 
 
 def scan_subreddit_page(project_id: str, collection_id: str, *,
@@ -147,13 +181,21 @@ def scan_subreddit_page(project_id: str, collection_id: str, *,
     if not name:
         raise ValueError("subreddit catalog is missing its identity")
     key = _scan_key(project_id, collection_id)
+    prior_raw = db.kv_get(key)
     try:
-        prior = json.loads(db.kv_get(key) or "{}")
+        prior = json.loads(prior_raw or "{}")
     except ValueError:
         prior = {}
     if prior.get("status") == "complete":
         return {"collection_id": collection_id, "status": "complete", "new": 0, "total": int(prior.get("total") or 0),
                 "reason": prior.get("reason"), "candidate_ids": []}
+    if not prior:
+        t = time.time()
+        prior = {"run_id": db.new_id(), "generation": 1, "mode": "initial", "status": "queued", "cursor": None,
+                 "pages": 0, "observed": 0, "new": 0, "initial_known": 0,
+                 "baseline_known": len(db.collection_candidate_ids(collection_id)), "started_at": t, "updated_at": t,
+                 "access": "reddit_api", "endpoint": "new", "page_limit": SUBREDDIT_MAX_PAGES,
+                 "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
     cursor = prior.get("cursor")
     fetch = fetch_page
     if fetch is None:
@@ -163,9 +205,10 @@ def scan_subreddit_page(project_id: str, collection_id: str, *,
         rows, next_cursor = fetch(name, cursor)
     except Exception as e:  # preserve any committed pages and make the block visible/retryable
         state = {**prior, "status": "blocked", "error": str(e), "updated_at": time.time(), "cursor": cursor,
-                 "total": int(prior.get("total") or 0), "pages": int(prior.get("pages") or 0)}
-        db.kv_set(key, json.dumps(state, sort_keys=True))
-        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["total"], "error": state["error"], "candidate_ids": []}
+                 "known_posts": len(db.collection_candidate_ids(collection_id)), "pages": int(prior.get("pages") or 0)}
+        if not db.kv_compare_set(key, prior_raw, json.dumps(state, sort_keys=True)):
+            return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
+        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["known_posts"], "error": state["error"], "candidate_ids": []}
     if next_cursor and next_cursor == cursor:
         next_cursor = None
         terminal_reason = "cursor did not advance"
@@ -180,18 +223,34 @@ def scan_subreddit_page(project_id: str, collection_id: str, *,
     entries = [r for r in rows if r.get("external_id")]
     new_count = sum(1 for r in entries if r["external_id"] not in known)
     now = time.time()
-    status = "complete" if not next_cursor else "partial"
-    state = {"status": status, "cursor": next_cursor, "pages": int(prior.get("pages") or 0) + 1,
-             "total": int(prior.get("total") or 0) + len(entries), "new": int(prior.get("new") or 0) + new_count,
+    pages = int(prior.get("pages") or 0) + 1
+    observed = int(prior.get("observed") or 0) + len(entries)
+    capped = pages >= SUBREDDIT_MAX_PAGES or observed >= SUBREDDIT_MAX_OBSERVATIONS
+    status = "complete" if not next_cursor or capped else "partial"
+    terminal_reason = "application limit reached" if capped and next_cursor else terminal_reason
+    known_posts = len(known) + new_count
+    mode = prior.get("mode") or "initial"
+    state = {**prior, "status": status, "cursor": None if status == "complete" else next_cursor, "pages": pages,
+             "observed": observed, "known_posts": known_posts,
+             "new": int(prior.get("new") or 0) + (new_count if mode == "refresh" else 0),
+             "initial_known": int(prior.get("initial_known") or 0) + (new_count if mode == "initial" else 0),
              "started_at": prior.get("started_at") or now, "updated_at": now, "finished_at": now if status == "complete" else None,
-             "reason": terminal_reason, "access": "reddit_api", "endpoint": "new"}
-    with db.batch():
-        ids = candidates.remember(entries, "reddit", project_id,
-                                  {"kind": "subreddit_catalog", "collection_id": collection_id, "subreddit": name})
-        db.link_collection_candidates(collection_id, ids)
-        db.kv_set(key, json.dumps(state, sort_keys=True))
-    return {"collection_id": collection_id, "status": status, "new": new_count, "total": state["total"],
-            "pages": state["pages"], "cursor": next_cursor, "reason": terminal_reason, "candidate_ids": ids}
+             "reason": terminal_reason, "access": "reddit_api", "endpoint": "new",
+             "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
+    state_raw = json.dumps(state, sort_keys=True)
+    try:
+        with db.batch():
+            ids = candidates.remember(entries, "reddit", project_id,
+                                      {"kind": "subreddit_catalog", "collection_id": collection_id, "subreddit": name})
+            db.link_collection_candidates(collection_id, ids)
+            if not db.kv_compare_set(key, prior_raw, state_raw):
+                raise _StaleSubredditScan()
+    except _StaleSubredditScan:
+        return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
+    return {"collection_id": collection_id, "status": status, "new": new_count if mode == "refresh" else 0,
+            "initial_known": new_count if mode == "initial" else 0, "total": state["known_posts"],
+            "observed": state["observed"], "pages": state["pages"], "cursor": state["cursor"],
+            "reason": terminal_reason, "candidate_ids": ids}
 
 
 def effective_monitor_active(source_role: str, monitor_policy: str) -> bool:

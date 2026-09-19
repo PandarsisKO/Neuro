@@ -74,22 +74,43 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
             source = _source_for_candidate_identity(platform, ext)
             source_id = e.get("source_id") or (source or {}).get("id")
             r = conn.execute("SELECT * FROM candidates WHERE platform=? AND external_id=?", (platform, ext)).fetchone()
+            observed = bool(e.get("observed_metadata"))
+            metadata = e.get("metadata") if isinstance(e.get("metadata"), dict) else None
             if r:
                 cid = r["id"]
                 patch: dict[str, Any] = {"last_seen_at": t}
+                semantic_changed = False
                 for k in ("title", "description", "creator", "published_at", "duration", "view_count", "canonical_url"):
-                    if e.get(k) is not None and not r[k]:              # fill what is empty; never overwrite what we knew
+                    # Ordinary discovery remains fill-only. An explicitly observed listing refresh may update
+                    # mutable provider metadata, but absence never erases a previously observed value.
+                    if e.get(k) is not None and (not r[k] or (observed and e[k] != r[k])):
                         patch[k] = e[k] if k != "description" else str(e[k])[:2000]
+                        semantic_changed = semantic_changed or patch[k] != r[k]
                 if source_id and not r["source_id"]:
                     patch["source_id"] = source_id
+                if metadata is not None:
+                    try:
+                        previous = json.loads(r["metadata_json"] or "{}")
+                    except ValueError:
+                        previous = {}
+                    # A provider can omit optional fields in one response. Keep their last observation rather
+                    # than treating omission as deletion; explicit availability/deletion markers remain values.
+                    merged = {**previous, **{k: v for k, v in metadata.items() if v is not None}}
+                    encoded = json.dumps(merged, sort_keys=True, separators=(",", ":"))
+                    if encoded != (r["metadata_json"] or ""):
+                        patch["metadata_json"] = encoded
+                        semantic_changed = True
+                if semantic_changed:
+                    patch["metadata_revision"] = int(r["metadata_revision"] or 1) + 1
                 conn.execute("UPDATE candidates SET " + ", ".join(f"{k}=?" for k in patch) + " WHERE id=?", (*patch.values(), cid))
             else:
                 cid = db.new_id()
                 conn.execute("INSERT INTO candidates (id, platform, external_id, canonical_url, url, title, description, creator, published_at, duration, view_count, "
-                             "content_type, language, first_seen_at, last_seen_at, source_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             "content_type, language, first_seen_at, last_seen_at, source_id, metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (cid, platform, ext, e.get("canonical_url"), e.get("url") or "", e.get("title"), (e.get("description") or "")[:2000] or None, e.get("creator"),
                               e.get("published_at"), e.get("duration"), e.get("view_count"), e.get("content_type") or CONTENT_TYPE.get(platform, "page"),
-                              e.get("language"), t, t, source_id))
+                              e.get("language"), t, t, source_id,
+                              json.dumps(metadata, sort_keys=True, separators=(",", ":")) if metadata is not None else None))
             if project_id:
                 conn.execute("INSERT INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) VALUES (?,?,?,?,?,?) "
                              "ON CONFLICT(candidate_id, project_id) DO UPDATE SET updated_at=excluded.updated_at, origin=COALESCE(candidate_projects.origin, excluded.origin)",
