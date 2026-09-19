@@ -961,12 +961,15 @@ def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: 
     page, limit = max(0, page), max(1, min(limit, 100))
     conn = db.connect()
     rows = conn.execute("""SELECT c.*, cp.state, cp.relevance, cp.relevance_why, cp.reason, cp.origin,
+                                  s.status AS source_status, ps.source_id AS attached_source_id,
                                   cp.updated_at AS state_at
                            FROM collection_candidates cc
                            JOIN candidates c ON c.id=cc.candidate_id
                            JOIN candidate_projects cp ON cp.candidate_id=c.id AND cp.project_id=?
                            JOIN project_collections pc ON pc.collection_id=cc.collection_id AND pc.project_id=?
-                           WHERE cc.collection_id=?""", (project_id, project_id, collection_id)).fetchall()
+                           LEFT JOIN sources s ON s.id=c.source_id
+                           LEFT JOIN project_sources ps ON ps.project_id=? AND ps.source_id=c.source_id AND ps.excluded=0
+                           WHERE cc.collection_id=?""", (project_id, project_id, project_id, collection_id)).fetchall()
     qs, vocab, qidx = gap_terms_cached(project_id)
     cy = creator_yield(project_id)
     terms = _toks(q or "")
@@ -982,11 +985,14 @@ def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: 
             metadata = json.loads(c.get("metadata_json") or "{}")
         except ValueError:
             metadata = {}
-        score, fits, why = _potential(title, desc, qs, vocab, c.get("relevance"), [], creator=c.get("creator"),
-                                      creator_stats=cy, qindex=qidx)
-        source = db.get_source(c["source_id"]) if c.get("source_id") else None
-        captured = bool(source and source.get("status") == "ready" and conn.execute(
-            "SELECT 1 FROM project_sources WHERE project_id=? AND source_id=? AND excluded=0", (project_id, source["id"])).fetchone())
+        # Ranking is deterministic from the catalog semantic revision. Cache the per-candidate calculation so
+        # paging and state filters reuse it without another scoring pass.
+        from . import cache
+        score, fits, why = cache.get_or_compute(
+            f"subreddit-catalog-score:{project_id}:{collection_id}:{c['id']}", current_revision,
+            lambda: _potential(title, desc, qs, vocab, c.get("relevance"), [], creator=c.get("creator"),
+                               creator_stats=cy, qindex=qidx), label="subreddit_catalog_score")
+        captured = bool(c.get("source_status") == "ready" and c.get("attached_source_id"))
         firsthand = bool(FIRSTHAND_LANGUAGE.search(title + " " + desc))
         items.append({"id": c["id"], "title": title, "url": c["url"], "creator": c.get("creator"),
                       "published_at": c.get("published_at"), "state": c.get("state"), "potential": score,

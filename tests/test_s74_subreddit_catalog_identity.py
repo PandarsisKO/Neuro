@@ -409,3 +409,17 @@ def test_catalog_query_pages_a_5000_post_fixture():
     last = candidates.catalog(project, catalog["id"], page=49, limit=100)
     assert first["total"] == 5_000 and len(first["items"]) == 100 and first["next_page"] == 1
     assert len(last["items"]) == 100 and last["next_page"] is None
+
+
+def test_catalog_warm_reads_reuse_project_scoring(monkeypatch):
+    from neurosearch import cache
+    project = _project("catalog cache")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    ids = candidates.remember([_listing("one"), _listing("two")], "reddit", project, {"kind": "fixture"})
+    db.link_collection_candidates(catalog["id"], ids)
+    cache.invalidate("subreddit-catalog-score:")
+    original, calls = candidates._potential, []
+    monkeypatch.setattr(candidates, "_potential", lambda *a, **kw: calls.append(a[0]) or original(*a, **kw))
+    candidates.catalog(project, catalog["id"])
+    candidates.catalog(project, catalog["id"], page=0, limit=1)
+    assert len(calls) == 2
