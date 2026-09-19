@@ -102,6 +102,8 @@ def rescan(project_id: str, collection_id: str, *, enumerate: Callable[[str], tu
     collection = db.get_collection(collection_id)
     if not collection:
         raise ValueError(f"no such collection: {collection_id}")
+    if collection.get("kind") == "subreddit":
+        raise ValueError("use explicit subreddit catalog refresh, not a YouTube reservoir rescan")
 
     _info, raw_entries = enumerate_fn(collection["url"])
     fp = fingerprint(raw_entries)
@@ -149,7 +151,8 @@ def _subreddit_catalog(project_id: str, collection_id: str) -> dict[str, Any]:
 
 def _scan_state(raw: str | None) -> dict[str, Any]:
     try:
-        return json.loads(raw or "{}")
+        value = json.loads(raw or "{}")
+        return value if isinstance(value, dict) else {}
     except ValueError:
         return {}
 
@@ -220,12 +223,15 @@ def admit_subreddit_scan(project_id: str, collection_id: str, *, refresh: bool =
     it reuses a presently active run but otherwise creates a new generation.
     State and job are committed together so neither can be stranded by a crash.
     """
-    collection = _subreddit_catalog(project_id, collection_id)
     key = _scan_key(project_id, collection_id)
     with db.batch():
+        conn = db.connect()
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        collection = _subreddit_catalog(project_id, collection_id)
         raw = db.kv_get(key)
         prior = _scan_state(raw)
-        active_state = prior.get("status") in ("queued", "partial")
+        active_state = prior.get("status") in ("queued", "partial", "scanning")
         if active_state and _catalog_job_is_active(prior):
             return {"state": prior, "job": db.get_job(prior["job_id"]), "reused": True}
 
@@ -233,6 +239,8 @@ def admit_subreddit_scan(project_id: str, collection_id: str, *, refresh: bool =
             # A non-active explicit refresh is a new head run.  Its run-bound
             # dedupe key prevents an old retry from being returned here.
             state = _new_subreddit_run(prior, collection_id)
+            if _catalog_job_is_active(prior):
+                db.request_cancel(prior["job_id"])
         elif not prior:
             state = _new_subreddit_run({}, collection_id)
         elif active_state:
@@ -251,6 +259,13 @@ def admit_subreddit_scan(project_id: str, collection_id: str, *, refresh: bool =
             state = {**prior, "status": "queued", "updated_at": time.time(), "finished_at": None,
                      "reason": None, "error": None}
 
+        # Explicit resume of pre-run-bound checkpoints retains their cursor and limits.
+        state.setdefault("run_id", db.new_id())
+        state.setdefault("generation", 1)
+        state.setdefault("page_limit", SUBREDDIT_MAX_PAGES)
+        state.setdefault("observation_limit", SUBREDDIT_MAX_OBSERVATIONS)
+        for field in ("error", "error_type", "provider_status", "retry_after", "retryable"):
+            state.pop(field, None)
         from . import jobs
         job = jobs.enqueue("explore", {
             "url": collection.get("url"), "kind": "subreddit", "project_id": project_id,
@@ -270,10 +285,7 @@ def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
     out = []
     for row in rows:
         catalog = dict(row)
-        try:
-            scan = json.loads(db.kv_get(_scan_key(project_id, catalog["id"])) or "{}")
-        except ValueError:
-            scan = {}
+        scan = _scan_state(db.kv_get(_scan_key(project_id, catalog["id"])))
         # Scan state owns cursor/coverage; the existing job ledger owns live
         # retry, cancellation and failure truth.  Surface a small derived view
         # so a retrying or cancelled job is never presented as a live scan.
@@ -291,6 +303,8 @@ def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
                 }.get(job_status, scan.get("status"))
                 if job.get("not_before"):
                     scan["retry_at"] = job["not_before"]
+        elif scan and scan.get("status") != "complete":
+            scan.update(status="blocked", error="No associated job; resume or refresh the catalog.")
         catalog["scan"] = scan
         out.append(catalog)
     return out
@@ -298,16 +312,20 @@ def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
 
 def cancel_subreddit_scan(project_id: str, collection_id: str) -> dict[str, Any]:
     """Cancel the current run through the normal job ledger, never by editing scan state directly."""
-    _subreddit_catalog(project_id, collection_id)
-    state = _scan_state(db.kv_get(_scan_key(project_id, collection_id)))
-    job_id = state.get("job_id")
-    job = db.get_job(job_id) if job_id else None
-    if not job or job.get("payload", {}).get("catalog_run_id") != state.get("run_id"):
-        raise LookupError(collection_id)
-    if job.get("status") in db.JOB_TERMINAL:
-        return {"state": state, "job": job, "status": job["status"]}
-    status = db.request_cancel(job_id)
-    return {"state": state, "job": db.get_job(job_id), "status": status}
+    with db.batch():
+        conn = db.connect()
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        _subreddit_catalog(project_id, collection_id)
+        state = _scan_state(db.kv_get(_scan_key(project_id, collection_id)))
+        job_id = state.get("job_id")
+        job = db.get_job(job_id) if job_id else None
+        if not job or job.get("payload", {}).get("catalog_run_id") != state.get("run_id"):
+            raise LookupError(collection_id)
+        if job.get("status") in db.JOB_TERMINAL:
+            return {"state": state, "job": job, "status": job["status"]}
+        status = db.request_cancel(job_id)
+        return {"state": state, "job": db.get_job(job_id), "status": status}
 
 
 def reject_legacy_subreddit_job(project_id: str, collection_id: str, job_id: str) -> dict[str, Any]:
@@ -320,7 +338,7 @@ def reject_legacy_subreddit_job(project_id: str, collection_id: str, job_id: str
     key = _scan_key(project_id, collection_id)
     raw = db.kv_get(key)
     state = _scan_state(raw)
-    error = "legacy subreddit scan job lacks run identity; refresh or re-paste the catalog"
+    error = "legacy subreddit scan job lacks run identity; resume, refresh or re-paste the catalog"
     if state and state.get("job_id") in (None, job_id):
         blocked = {**state, "job_id": job_id, "status": "blocked", "error": error,
                    "reason": "legacy job requires refresh", "updated_at": time.time(), "finished_at": time.time()}
@@ -349,6 +367,22 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     key = _scan_key(project_id, collection_id)
     prior_raw = db.kv_get(key)
     prior = _scan_state(prior_raw)
+
+    def owns_claim() -> bool:
+        if not db.project_has_collection(project_id, collection_id):
+            return False
+        if expected_job_id is None:
+            return True  # deterministic direct-page fixtures; production passes the actual claim
+        job = db.get_job(expected_job_id)
+        if not job or prior.get("job_id") != expected_job_id or not expected_job_run_id or job.get("run_id") != expected_job_run_id or job["status"] != "running" or (job.get("lease_until") or 0) <= time.time():
+            return False
+        if job.get("cancel_requested_at"):
+            from .jobs import Cancelled
+            raise Cancelled()
+        return True
+
+    if not owns_claim():
+        return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
     if expected_run_id and (prior.get("run_id") != expected_run_id or
                             (expected_generation is not None and prior.get("generation") != expected_generation)):
         return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
@@ -357,17 +391,6 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
                 "reason": prior.get("reason"), "candidate_ids": []}
     if expected_job_id and prior.get("job_id") != expected_job_id:
         return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
-    if expected_job_run_id:
-        # A lease recovery claims the same durable job with a new run id.  Set
-        # that id before network work; an older worker's later CAS then loses
-        # and rolls its whole page back instead of committing after reclaim.
-        fenced = {**prior, "status": "scanning", "worker_run_id": expected_job_run_id,
-                  "updated_at": time.time()}
-        fenced_raw = json.dumps(fenced, sort_keys=True)
-        if prior.get("worker_run_id") != expected_job_run_id:
-            if not db.kv_compare_set(key, prior_raw, fenced_raw):
-                return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
-            prior, prior_raw = fenced, fenced_raw
     if not prior:
         t = time.time()
         prior = {"run_id": db.new_id(), "generation": 1, "mode": "initial", "status": "queued", "cursor": None,
@@ -376,29 +399,37 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
                  "access": "reddit_api", "endpoint": "new", "page_limit": SUBREDDIT_MAX_PAGES,
                  "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
     cursor = prior.get("cursor")
+    from . import community
+    from .jobs import Cancelled
     fetch = fetch_page
     if fetch is None:
-        from . import community
         fetch = lambda sub, after: community.enumerate_subreddit_page(sub, after, limit=SUBREDDIT_PAGE_SIZE)
     try:
         rows, next_cursor = fetch(name, cursor)
+        cursor_history = [str(value) for value in prior.get("cursor_history", []) if value][-50:]
+        if next_cursor and (next_cursor == cursor or str(next_cursor) in cursor_history):
+            raise community.RedditApiError(None, "cursor cycle", kind="cursor_cycle")
+        if next_cursor and not rows:
+            raise community.RedditApiError(None, "listing returned no usable posts with an advancing cursor", kind="empty_page")
+    except Cancelled:
+        raise
     except Exception as e:  # preserve any committed pages and make the block visible/retryable
         state = {**prior, "status": "blocked", "error": str(e), "updated_at": time.time(), "cursor": cursor,
-                 "known_posts": len(db.collection_candidate_ids(collection_id)), "pages": int(prior.get("pages") or 0)}
-        if not db.kv_compare_set(key, prior_raw, json.dumps(state, sort_keys=True)):
-            return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
+                 "known_posts": len(db.collection_candidate_ids(collection_id)), "pages": int(prior.get("pages") or 0),
+                 "provider_status": e.status if isinstance(e, community.RedditApiError) else None,
+                 "retry_after": e.retry_after if isinstance(e, community.RedditApiError) else None,
+                 "error_type": e.kind if isinstance(e, community.RedditApiError) else "unknown",
+                 "retryable": isinstance(e, community.RedditApiError) and e.retryable, "reason": str(e)}
+        with db.batch():
+            conn = db.connect()
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            if not owns_claim() or not db.kv_compare_set(key, prior_raw, json.dumps(state, sort_keys=True)):
+                return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
         return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["known_posts"],
-                "error": state["error"], "provider_status": getattr(e, "status", None),
-                "retry_after": getattr(e, "retry_after", None), "candidate_ids": []}
-    cursor_history = [str(value) for value in prior.get("cursor_history", []) if value][-50:]
-    if next_cursor and next_cursor == cursor:
-        next_cursor = None
-        terminal_reason = "cursor did not advance"
-    elif next_cursor and str(next_cursor) in cursor_history:
-        next_cursor = None
-        terminal_reason = "cursor cycle"
-    else:
-        terminal_reason = "listing ended" if not next_cursor else None
+                "error": state["error"], "provider_status": state["provider_status"],
+                "retry_after": state["retry_after"], "retryable": state["retryable"], "candidate_ids": []}
+    terminal_reason = "listing ended" if not next_cursor else None
     if next_cursor:
         cursor_history = [*cursor_history, str(next_cursor)][-50:]
 
@@ -431,6 +462,11 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
     try:
         with db.batch():
+            conn = db.connect()
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            if not owns_claim():
+                raise _StaleSubredditScan()
             # The user can detach a catalog while this worker is fetching.
             # Recheck inside the page transaction so that a formerly valid
             # request cannot create catalog candidates or project state after
@@ -461,6 +497,8 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
                      "access": "reddit_api", "endpoint": "new", "observed_oldest": oldest,
                      "observed_newest": newest, "page_limit": page_limit, "observation_limit": observation_limit,
                      "error": terminal_reason if empty_advanced_page else None, "wait_reason": None, "retry_at": None}
+            for field in ("error_type", "provider_status", "retry_after", "retryable"):
+                state.pop(field, None)
             state_raw = json.dumps(state, sort_keys=True)
             if not db.kv_compare_set(key, prior_raw, state_raw):
                 raise _StaleSubredditScan()

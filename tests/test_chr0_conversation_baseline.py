@@ -10,7 +10,6 @@ import json
 import os
 
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
-os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 

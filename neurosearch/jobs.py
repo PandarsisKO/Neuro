@@ -78,6 +78,7 @@ class CatalogScanBlocked(RuntimeError):
         super().__init__(result.get("error") or "subreddit catalog scan blocked")
         self.status = result.get("provider_status")
         self.retry_after = result.get("retry_after")
+        self.retryable = bool(result.get("retryable"))
 
 
 class SimulatedCrash(BaseException):
@@ -329,6 +330,10 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "explore":
         if payload.get("kind") == "subreddit":
             from . import reservoir
+            current = db.get_job(jid) or {}
+            if not job.get("run_id") or current.get("run_id") != job["run_id"] or current.get("status") != "running" or (current.get("lease_until") or 0) <= time.time():
+                return {"status": "stale"}
+            check_cancel()
             if not isinstance(payload.get("catalog_run_id"), str) or not isinstance(payload.get("catalog_generation"), int):
                 raise CatalogScanBlocked(reservoir.reject_legacy_subreddit_job(
                     payload["project_id"], payload["collection_id"], jid))
@@ -446,6 +451,11 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     after_done = False
     try:
         result = run_job(job)
+        if job["kind"] == "explore" and (job.get("payload") or {}).get("kind") == "subreddit" and isinstance(result, dict) and result.get("status") == "stale":
+            current = db.get_job(jid) or {}
+            if current.get("run_id") == run_id and (current.get("lease_until") or 0) > time.time():
+                db.finish_job(jid, run_id, "cancelled", message="catalog scan superseded or detached")
+            return (db.get_job(jid) or {}).get("status", "cancelled")
         _record_execution(jid)
         # 2026-09-15 -- `message` used to be the literal string "done" no matter what happened, so a real
         # no-op (every source already current, or an in-flight batch -- findings.py's `_skipped()`) was
@@ -484,24 +494,28 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         from .media import RateLimited, rate_limit_status
         from .usage import BudgetPaused
         sid = (job.get("payload") or {}).get("source_id")
+        catalog_job = job["kind"] == "explore" and (job.get("payload") or {}).get("kind") == "subreddit"
         if isinstance(e, Yield):
-            db.requeue_job(jid, delay=0, message=e.message)
+            if not db.requeue_job(jid, delay=0, message=e.message, expected_run_id=run_id if catalog_job else None):
+                current = db.get_job(jid) or {}
+                if catalog_job and current.get("run_id") == run_id and current.get("cancel_requested_at"):
+                    db.finish_job(jid, run_id, "cancelled", message="cancelled")
+                    return "cancelled"
+                return current.get("status", "failed")
             db.job_event(jid, "yielded", run_id=job.get("run_id"), message=e.message)
             return "queued"
-        if isinstance(e, CatalogScanBlocked):
-            if e.status == 429:
-                delay = max(1.0, float(e.retry_after or 60.0))
-                db.requeue_job(jid, delay=delay, message=f"rate limited — retrying in {int(delay)}s",
-                               wait_reason="rate_limit")
-                return "queued"
+        if catalog_job:
             attempts = int(job.get("attempts") or 0) + 1
-            if isinstance(e.status, int) and 500 <= e.status < 600 and attempts < MAX_ATTEMPTS:
-                delay = RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)]
-                db.requeue_job(jid, delay=delay, message=f"Reddit API HTTP {e.status}; retry {attempts + 1}/{MAX_ATTEMPTS} in {delay // 60} min",
-                               wait_reason="retry", count_attempt=True)
-                return "queued"
-            db.finish_job(jid, run_id, "failed", message=f"error: {e}")
-            return "failed"
+            if isinstance(e, CatalogScanBlocked) and e.retryable and attempts < MAX_ATTEMPTS:
+                delay = max(RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)], float(e.retry_after or 0))
+                if db.requeue_job(jid, delay=delay, message=f"catalog retry {attempts + 1}/{MAX_ATTEMPTS}: {e}",
+                                  wait_reason="rate_limit" if e.status == 429 else "retry", count_attempt=True,
+                                  expected_run_id=run_id):
+                    return "queued"
+            current = db.get_job(jid) or {}
+            cancelled = bool(current.get("cancel_requested_at"))
+            db.finish_job(jid, run_id, "cancelled" if cancelled else "failed", message="cancelled" if cancelled else f"error: {e}")
+            return (db.get_job(jid) or {}).get("status", "failed")
         if isinstance(e, BudgetPaused):
             db.requeue_job(jid, delay=min(e.wait, 3600), message=f"paused: {e}", wait_reason="budget")
             if sid:

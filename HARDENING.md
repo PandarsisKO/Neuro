@@ -2377,3 +2377,33 @@ two harness failures. Fake Tier 1 and repo-check passed separately. The FAIL art
 `evals/release/release-check-0.63.94-9bc7962-20260919-104849.json`. This is a test-repair checkpoint, not feature
 acceptance or a release. S68's earlier source-inspection failure did not reproduce in frozen runs and is not
 proven to be order-dependent; prior concurrent source changes make its old result unsuitable as a baseline.
+
+## Reconciled subreddit continuation — 2026-09-19
+
+Shared-main baseline `da560a4` omitted the later undelivered `codex/subreddit-r1` branch from its front-door
+handoff. Initial independent repairs produced `279940d` (2,088 tests, normal release PASS) and `9db6b35`
+(2,123 tests, normal release PASS), both in private checkouts. Discovery of `d318297` stopped duplicate feature
+advancement. The combined candidate instead starts at d318297, preserving its metadata, rank cache, capture,
+Research/yield and UI improvements and porting only additional fixes/tests. No branch or user files were reset.
+
+The original d318297 focused baseline passed 61 tests. Additional regressions exposed real remaining
+authority/transaction, conflicting Source pointer, reclaimed-claim, cancellation and retry/termination gaps;
+the first imported test run also included test-contract naming differences, so its 30 failures are NOT 30
+product defects. The integrated S74/S75/S76/S51/K2/K3/K9/L1/Foundation/frontend/write-hold gate passes **200**
+tests in 13.83 s. S75 includes actual search/direct/browser ingestion convergence and a reopened populated
+legacy pointer, not only direct source-row insertion. S76 uses real queue claims/execution, HTTP-shaped adapter
+responses, concurrent admission, checkpoint failure and post-commit crash/recovery. Replaced jobs now cancel;
+cyclic listings block at the prior committed cursor. These strengthen two historical S74 expectations.
+
+Canonical owners retained: existing catalog admission/cancel and explore jobs, Community adapter, candidate
+capture and DB transaction/queue helpers. Optional `requeue_job(expected_run_id=...)` is used only by catalog
+workers; generic behavior remains unchanged. Bounded attachment now commits each 100-ID keyset page rather
+than holding a writer across nominal 250-item batches. Bulk capture uses scoped per-item guards. New scoped
+resume API delegates to existing admission; re-paste still resumes an interrupted catalog.
+
+Commands: original private venv's Python with explicit
+`PYTHONPATH=/private/tmp/neuro-repair-powMDK/integrated-worktree`, `PYTHON_DOTENV_DISABLED=true`, private data,
+provider keys unset, fake AI disabled at entry and enabled only by fixtures. New frozen full release required
+on the combined source. Live supported Health only: 0.63.94, 2 queued/1 running, no stale leases. No live DB
+opened, no jobs cancelled, no runtime reload, no external acquisition or model spend. R8a unmeasured performance,
+R8b approved access/real browser acceptance and R9 delivery remain open; no completion claim is made for them.

@@ -334,6 +334,16 @@ def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[s
     return {"ok": True, "job_id": (job or {}).get("id"), "state": state}
 
 
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/resume", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_resume(project_id: str, collection_id: str) -> dict[str, Any]:
+    from . import reservoir
+    try:
+        result = reservoir.admit_subreddit_scan(project_id, collection_id)
+    except ValueError:
+        raise HTTPException(404)
+    return {"ok": True, "job_id": (result["job"] or {}).get("id"), "state": result["state"]}
+
+
 @app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/cancel", dependencies=[Depends(require_auth)])
 def api_subreddit_catalog_cancel(project_id: str, collection_id: str) -> dict[str, Any]:
     """Cancel only this project's current catalog run through the normal job lifecycle."""

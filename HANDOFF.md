@@ -2,6 +2,35 @@
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
+### Reconciled continuation candidate — current restart point
+
+Use branch `codex/subreddit-integrated`, checkout `/private/tmp/neuro-repair-powMDK/integrated-worktree`,
+based on `d318297` from the previously undelivered `codex/subreddit-r1` branch. Shared `main` remained
+`da560a4` during preparation. The later branch was absent from main's current handoff; initial continuation
+therefore independently prepared R0/R1/R2 repairs before discovering it. Preserve both histories, but continue
+ONLY from the integrated candidate: it keeps d318297's metadata/ranking/bulk-capture/Research/UI improvements
+and ports the additional boundary/claim/retry repairs, without maintaining a second catalog implementation.
+
+Prepared changes: atomic catalog authority and per-action writer checks; keyset attachment batches that really
+commit separately; conflicting candidate/Source identity refusal; atomic scan admission and concurrent clicks;
+actual claim/lease/cancellation checks on success AND error page commits; guarded queue yields/retries; bounded
+429/5xx retries respecting numeric or HTTP-date Retry-After; legacy resume; malformed/empty/cyclic listing stops;
+test bootstrap/CHR import hygiene. The scoped resume endpoint shares existing admission. Existing re-paste
+resume semantics are preserved. Two S74 assertions were strengthened: replaced old retry is cancelled, and a
+cursor cycle blocks at the last good checkpoint instead of claiming successful completion.
+
+Combined focused gate: **200 passed**, including S74's 50 actual worker turns/5,000 posts, S75 identity and
+project races, S76 queue lifecycle, Foundation, browser/direct identity, resource routing and write-hold gates.
+The new integrated source still needs its own frozen full release run. Prior isolated candidates `279940d`
+(2,088 tests) and `9db6b35` (2,123 tests) passed normal release-check, but do not establish this combined tree.
+
+No runtime delivery/live acceptance yet. Authenticated supported Health observed app 0.63.94, two queued and
+one running job with zero stale leases; no reload, job cancellation or live DB opening was performed.
+R8a performance/foreground measurements, R8b approved access plus live/browser/visual acceptance, and R9
+delivery remain open. Prior "offline gate complete" wording below is an implementation checkpoint, not proof
+that those outstanding measurements or user acceptance happened. Reddit architecture/access decisions from
+the other task remain unapproved; no search/scraper substitution or deletion-policy redesign is authorized here.
+
 The feature is **offline-verified but not live-ready**. The previous SUB2–SUB8 completion claim is withdrawn.
 Kyle requested an updated plan for the remaining work; the single canonical record is
 [docs/SUBREDDIT-CATALOG-MISSION.md, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority).

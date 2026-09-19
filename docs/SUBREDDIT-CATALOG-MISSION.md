@@ -4,6 +4,20 @@ Status: ACTIVE — offline implementation and deterministic release candidate ve
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
 Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Original planning/execution baselines and worktrees are historical; resume from then-current `main` in isolation.
 
+**Current continuation (2026-09-19):** `codex/subreddit-integrated` reconciles the undelivered `d318297`
+implementation with independently verified R0/R1/R2 repairs. HANDOFF's reconciled continuation is the restart
+point. The combined focused gate passed 200 tests; its new frozen release gate is pending. Runtime work is
+authorized by Kyle's later continuation instruction, superseding historical plan-only text below. R8a's
+unmeasured foreground/performance portions, R8b and R9 remain open; do not equate deterministic tests with them.
+
+Additional repairs: admission and catalog actions take the actual writer before validating authority;
+attachment keyset batches commit separately; conflicting Source identities are refused, not merged.
+Worker commits check the real job claim/lease, including error commits and cancellation after fetch.
+Yield/retry transitions use an optional queue claim guard. Typed 429/5xx retries are bounded and honor
+HTTP-date as well as numeric Retry-After. A cursor cycle is blocked, retaining the last good cursor, rather
+than completed; legacy checkpoints can be explicitly resumed. Direct/browser/search identity and reopening
+a populated legacy-pointer database are now exercised. The existing ranking/UI/Research work is retained.
+
 ## 1. Hard planning gate and executor
 
 Kyle requested review and revision of the supplied whole-subreddit brief, with execution by Codex instead of Claude/Fable. This document supersedes that brief's provisional ladder and agent/model assignments. Its product intent remains: a reusable subreddit catalog, project-relative recommendations, selected thread acquisition, local Research reuse, manual refresh, and honest coverage.

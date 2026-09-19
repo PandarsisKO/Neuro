@@ -8,7 +8,6 @@ import os
 import time
 
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
-os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

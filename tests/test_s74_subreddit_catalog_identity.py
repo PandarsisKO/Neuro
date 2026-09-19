@@ -249,7 +249,7 @@ def test_refresh_gets_its_own_job_when_an_old_retrying_run_is_still_active():
     assert refreshed["job"]["id"] != first["job_id"]
     assert refreshed["state"]["job_id"] == refreshed["job"]["id"]
     assert refreshed["job"]["payload"]["catalog_run_id"] == refreshed["state"]["run_id"]
-    assert db.get_job(first["job_id"])["status"] == "queued"
+    assert db.get_job(first["job_id"])["status"] == "cancelled"
 
 
 def test_catalog_admission_rolls_back_state_when_job_creation_fails(monkeypatch):
@@ -375,11 +375,11 @@ def test_catalog_stops_a_cursor_cycle_with_an_honest_reason():
     project = _project("cursor cycle")
     catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
     pages = [([_listing("a")], "t3_a"), ([_listing("b")], "t3_b"), ([_listing("c")], "t3_a")]
-    for expected in ("partial", "partial", "complete"):
+    for expected in ("partial", "partial", "blocked"):
         result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _s, _a: pages.pop(0))
         assert result["status"] == expected
     state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
-    assert state["reason"] == "cursor cycle" and state["cursor"] is None
+    assert state["reason"] == "cursor cycle" and state["cursor"] == "t3_b"
     assert state["cursor_history"] == ["t3_a", "t3_b"]
 
 

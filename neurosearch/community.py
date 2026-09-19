@@ -86,10 +86,15 @@ def attach_subreddit_catalog(project_id: str | None, url: str) -> dict[str, Any]
     # resource route already requires a project, but this owner is also used
     # directly by API/tests and must not leave an orphan collection when an
     # unknown id arrives there.
-    if not project_id or not db.get_project(project_id):
-        raise LookupError(project_id)
-    catalog = db.upsert_collection("subreddit", name, subreddit_url(name), f"r/{name}")
-    db.add_project_collections(project_id, [catalog["id"]])
+    with db.batch():
+        conn = db.connect()
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        if not project_id or not db.get_project(project_id):
+            raise LookupError(project_id)
+        catalog = db.upsert_collection("subreddit", name, subreddit_url(name), f"r/{name}")
+        db.add_project_collections(project_id, [catalog["id"]], reconcile_candidates=False)
+    db.reconcile_collection_candidates(project_id, catalog["id"])
     return catalog
 
 
@@ -184,19 +189,27 @@ OAUTH_HOST = "https://oauth.reddit.com"
 class RedditApiError(RuntimeError):
     """Typed official-API outcome preserved through the durable scan job."""
 
-    def __init__(self, status: int, message: str, *, retry_after: float | None = None) -> None:
+    def __init__(self, status: int | None, message: str, *, retry_after: float | None = None,
+                 kind: str | None = None, retryable: bool | None = None) -> None:
         super().__init__(message)
         self.status = status
         self.retry_after = retry_after
+        self.kind = kind or ("access" if status in (401, 403) else "rate_limit" if status == 429 else "http")
+        self.retryable = (status == 429 or isinstance(status, int) and 500 <= status <= 599) if retryable is None else retryable
 
 
 def _retry_after(headers: dict[str, str]) -> float | None:
+    from email.utils import parsedate_to_datetime
+    import math
     raw = next((value for key, value in headers.items() if key.lower() == "retry-after"), None)
     try:
         seconds = float(raw) if raw is not None else None
-    except ValueError:
-        return None
-    return max(1.0, min(seconds, 24 * 3600.0)) if seconds is not None else None
+    except (ValueError, TypeError):
+        try:
+            seconds = parsedate_to_datetime(raw).timestamp() - time.time()
+        except (ValueError, TypeError, OverflowError):
+            return None
+    return max(0.0, seconds) if seconds is not None and math.isfinite(seconds) else None
 
 
 def reddit_api_configured() -> bool:
@@ -228,8 +241,8 @@ def _oauth_token() -> str:
         tok = json.loads(res.body.decode("utf-8", errors="replace"))
     except ValueError as e:
         raise RuntimeError("Reddit API: token response was not JSON") from e
-    if not tok.get("access_token"):
-        raise RuntimeError(f"Reddit API: {tok.get('error') or 'no access token in the response'}")
+    if not isinstance(tok, dict) or not tok.get("access_token"):
+        raise RedditApiError(None, "Reddit API: no access token in the response", kind="credentials")
     _OAUTH["token"], _OAUTH["expires"] = tok["access_token"], time.time() + float(tok.get("expires_in") or 3600)
     return _OAUTH["token"]
 
@@ -264,16 +277,20 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
     catalog must fail honestly when approved API access is unavailable.
     """
     if not reddit_api_configured():
-        raise RuntimeError("Approved Reddit Data API access is required to catalog a subreddit; after approval, configure REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env")
+        raise RedditApiError(None, "Approved Reddit Data API access is required to catalog a subreddit; after approval, configure REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env", kind="credentials")
     if not SUBREDDIT_NAME.fullmatch(subreddit):
         raise ValueError("invalid subreddit name")
     from urllib.parse import quote
     query = f"raw_json=1&limit={max(1, min(limit, 100))}"
     if after:
         query += "&after=" + quote(after, safe="")
-    data = _api_get(f"/r/{quote(subreddit)}/new?{query}")
+    from .safe_fetch import FetchBlocked
+    try:
+        data = _api_get(f"/r/{quote(subreddit)}/new?{query}")
+    except FetchBlocked as e:
+        raise RedditApiError(None, str(e), kind=e.reason, retryable=e.reason in ("dns", "connect", "timeout", "protocol")) from e
     listing = data.get("data") if isinstance(data, dict) else None
-    if not isinstance(listing, dict):
+    if not isinstance(listing, dict) or not isinstance(listing.get("children"), list):
         raise RuntimeError("Reddit API: malformed subreddit listing")
     rows: list[dict[str, Any]] = []
     # Reddit may ignore a client limit.  Keep parsing, metadata writes and the
@@ -320,7 +337,11 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
                      "observed_clear_fields": clear_fields, "metadata_clears": metadata_clears,
                      "metadata": metadata})
     next_cursor = listing.get("after")
-    return rows, str(next_cursor) if next_cursor else None
+    if listing["children"] and not rows:
+        raise RedditApiError(None, "Reddit API: listing contained no usable posts", kind="malformed")
+    if next_cursor is not None and (not isinstance(next_cursor, str) or not next_cursor):
+        raise RedditApiError(None, "Reddit API: malformed listing cursor", kind="malformed")
+    return rows, next_cursor
 
 
 def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit json") -> dict[str, Any]:

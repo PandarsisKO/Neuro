@@ -4026,15 +4026,21 @@ def provider_wait_jobs(operation: str | None = None) -> list[dict[str, Any]]:
     return [row_to_dict(r) for r in connect().execute(q, (operation,) if operation else ()).fetchall()]  # type: ignore[misc]
 
 
-def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_reason: str | None = None, count_attempt: bool = False) -> None:
+def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_reason: str | None = None, count_attempt: bool = False,
+                *, expected_run_id: str | None = None) -> bool:
     """Back to the queue after `delay` seconds. wait_reason: retry | budget | rate_limit (budget/rate-limit waits are not
     failures and never count as attempts)."""
     with tx() as conn:
         r = conn.execute("SELECT run_id FROM jobs WHERE id=?", (job_id,)).fetchone()
-        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
-                     "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?",
-                     (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id))
+        guard = " AND status='running' AND run_id=? AND cancel_requested_at IS NULL" if expected_run_id else ""
+        cur = conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
+                           "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?" + guard,
+                           (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id,
+                            *([expected_run_id] if expected_run_id else [])))
+        if not cur.rowcount:
+            return False
         job_event(job_id, f"{wait_reason}_wait" if wait_reason else "requeued", run_id=r["run_id"] if r else None, conn=conn, delay=delay, message=(message or "")[:200])
+        return True
 
 
 def requeue_stale_running_jobs() -> int:
@@ -4291,7 +4297,43 @@ def remove_project_sources(project_id: str, source_ids: list[str]) -> None:
         conn.executemany("UPDATE project_sources SET excluded=1, priority=0 WHERE project_id=? AND source_id=?", [(project_id, s) for s in source_ids])
 
 
-def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
+def reconcile_collection_candidates(project_id: str, collection_id: str) -> None:
+    """Attach known candidates and repair null legacy pointers in short, keyset-paged writes.
+
+    Non-null identities are never overwritten. Each chunk rechecks attachment
+    under the writer so a concurrent detach cannot create new relationship rows.
+    """
+    after = ""
+    while True:
+        with batch():
+            conn = connect()
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            if not project_has_collection(project_id, collection_id):
+                return
+            ids = [row[0] for row in conn.execute(
+                "SELECT candidate_id FROM collection_candidates WHERE collection_id=? AND candidate_id>? "
+                "ORDER BY candidate_id LIMIT 100", (collection_id, after))]
+            if not ids:
+                return
+            marks = ",".join("?" for _ in ids)
+            conn.execute(
+                "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
+                "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
+                f"WHERE platform='reddit' AND source_id IS NULL AND id IN ({marks}) "
+                "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' AND s.external_id=candidates.external_id)",
+                ids,
+            )
+            t = now()
+            conn.execute(
+                "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
+                f"SELECT candidate_id, ?, 'available', ?, ?, ? FROM collection_candidates WHERE collection_id=? AND candidate_id IN ({marks})",
+                (project_id, json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id, *ids),
+            )
+            after = ids[-1]
+
+
+def add_project_collections(project_id: str, collection_ids: list[str], *, reconcile_candidates: bool = True) -> None:
     collection_ids = list(dict.fromkeys(collection_ids))
     if not collection_ids:
         return
@@ -4309,40 +4351,11 @@ def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
         # columns. INSERT OR IGNORE leaves an existing row's policy untouched on a re-attach.
         conn.executemany("INSERT OR IGNORE INTO project_collections (project_id, collection_id) VALUES (?,?)",
                          [(project_id, c) for c in collection_ids])
-        # Catalog membership is candidate-only. A project attaching to an existing catalog should be able to
-        # review its remembered rows immediately, while never inheriting another project's captured Sources.
-        t = now()
-        for collection_id in collection_ids:
-            if by_id[collection_id] != "subreddit":
-                continue
-            # A thread may have been captured directly before an older catalog candidate was reconciled.
-            # Repair and reconcile an existing catalog in bounded batches. Page scans use
-            # link_collection_candidates(), which only considers the page that just committed.
-            after = ""
-            origin = json.dumps({"kind": "catalog", "collection_id": collection_id})
-            while True:
-                candidate_rows = conn.execute(
-                    "SELECT candidate_id FROM collection_candidates WHERE collection_id=? AND candidate_id>? "
-                    "ORDER BY candidate_id LIMIT 250", (collection_id, after)
-                ).fetchall()
-                candidate_ids = [r["candidate_id"] for r in candidate_rows]
-                if not candidate_ids:
-                    break
-                conn.executemany(
-                    "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
-                    "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
-                    "WHERE id=? AND platform='reddit' AND source_id IS NULL "
-                    "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' "
-                    "AND s.external_id=candidates.external_id)",
-                    [(candidate_id,) for candidate_id in candidate_ids],
-                )
-                conn.executemany(
-                    "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
-                    "VALUES (?,?,?,?,?,?)",
-                    [(candidate_id, project_id, "available", origin, t, t) for candidate_id in candidate_ids],
-                )
-                after = candidate_ids[-1]
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
+    if reconcile_candidates:
+        for collection_id in collection_ids:
+            if by_id[collection_id] == "subreddit":
+                reconcile_collection_candidates(project_id, collection_id)
 
 
 def remove_project_collections(project_id: str, collection_ids: list[str]) -> None:

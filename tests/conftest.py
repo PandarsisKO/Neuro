@@ -6,6 +6,9 @@ import os
 
 import pytest
 
+# Do not let config reload local dotenv values stripped by this test boundary.
+os.environ["PYTHON_DOTENV_DISABLED"] = "true"
+
 # The developer machine's .env selects the local Claude Code profile. Tests
 # that monkeypatch the Anthropic client must stay on the cloud-shaped adapter;
 # otherwise collection order can launch the real CLI. Local-provider tests set
