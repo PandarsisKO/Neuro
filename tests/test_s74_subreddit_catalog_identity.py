@@ -438,6 +438,22 @@ def test_listing_omitted_author_is_not_a_deletion_signal(monkeypatch):
     assert [r["metadata"]["availability"] for r in rows] == ["available", "deleted", "removed"]
 
 
+def test_observed_metadata_can_explicitly_clear_text_and_flair_without_treating_omission_as_clear():
+    project = _project("metadata clear")
+    candidate_id = candidates.remember([_listing("clear") | {"description": "old text", "observed_metadata": True,
+                                         "metadata": {"flair": "Old", "score": 1}}], "reddit", project, {"kind": "fixture"})[0]
+    initial = db.connect().execute("SELECT description FROM candidates WHERE id=?", (candidate_id,)).fetchone()["description"]
+    omitted = {key: value for key, value in _listing("clear").items() if key != "description"}
+    candidates.remember([omitted | {"observed_metadata": True, "metadata": {"score": 1}}], "reddit", project, {"kind": "fixture"})
+    preserved = db.connect().execute("SELECT description, metadata_json FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+    assert preserved["description"] == initial and __import__("json").loads(preserved["metadata_json"])["flair"] == "Old"
+    candidates.remember([_listing("clear") | {"observed_metadata": True, "observed_clear_fields": ["description"],
+                                         "metadata_clears": ["flair"], "metadata": {"flair": None, "score": 1}}],
+                        "reddit", project, {"kind": "fixture"})
+    cleared = db.connect().execute("SELECT description, metadata_json FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+    assert cleared["description"] is None and __import__("json").loads(cleared["metadata_json"])["flair"] is None
+
+
 def test_scan_counts_unique_posts_but_records_duplicate_listing_observations():
     project = _project("duplicate page")
     catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")

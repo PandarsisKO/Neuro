@@ -164,7 +164,9 @@ Owners: the same scan owners and canonical candidate writer. **Implemented:** sa
 
 **Remaining:** define the displayed distinction between global first discovery, fixed-run refresh additions and initial reconciliation more fully. Initial attachment must display all locally known members without labeling reconciliation as newly found Reddit posts. Keep a bounded run ledger, and normalize legacy nested summaries, including failed-refresh paths.
 
-Validate malformed numbers/strings, outbound/permalink URLs, hostnames and post-ID consistency before commit; bound parsed page size and excerpt length. Explicit empty descriptions/flair currently collapse into omission, while missing availability fields can overwrite a prior observation as available. Preserve presence/clear/unknown distinctions through the writer. Store precise UTC observation bounds in current and previous completed summaries, and invalidate semantic revisions only when relevant values change. Observed dates do not imply continuous or exhaustive coverage.
+**Implemented in the second R3 slice:** explicit observed clears for text/flair are distinct from omitted provider fields, preserving old observations only for true omission. Reddit listing parsing now rejects malformed post IDs/permalinks and invalid outbound URLs before candidate creation.
+
+**Remaining:** validate malformed numbers/strings and availability presence; bound parsed page size and excerpt length. Store precise UTC observation bounds in current and previous completed summaries, and invalidate semantic revisions only when relevant values change. Observed dates do not imply continuous or exhaustive coverage.
 
 Exit: 5,000 rows through 50 actual page commits, with overlap, same-page duplicates, concurrent projects, replay, cap, malformed optional metadata and repeated refreshes. Counts remain exact; run storage stays bounded; user decisions and existing Source identity remain unchanged. Malformed metadata cannot turn into a phantom successfully empty catalog.
 
@@ -245,6 +247,10 @@ Official API errors now preserve their HTTP status and Retry-After through the c
 ### R3 atomic-count checkpoint — `d05211b`, 2026-09-19
 
 Catalog membership and first-discovery counting now share one write batch. A two-project interleaving fixture proves one run receives `initial_known=1`, the other `0`, while both retain the candidate. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s55_reservoir_rescan.py -q` — **50 passed**. Metadata presence/clear semantics, URL validation and full run-count definitions remain open.
+
+### R3 metadata checkpoint — pending commit, 2026-09-19
+
+Observed clears now preserve their distinction from omission, and listing identity/permalink/outbound URL validation runs before candidate creation. Focused S74/K9 gate: **42 passed**.
 
 ### Original pass — historical evidence and limits
 

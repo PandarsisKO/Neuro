@@ -274,17 +274,26 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
     rows: list[dict[str, Any]] = []
     for child in listing.get("children") or []:
         post = child.get("data") if isinstance(child, dict) else None
-        if not isinstance(post, dict) or not post.get("id") or not post.get("permalink"):
+        post_id = str(post.get("id") or "") if isinstance(post, dict) else ""
+        permalink = post.get("permalink") if isinstance(post, dict) else None
+        if (not isinstance(post, dict) or not re.fullmatch(r"[a-z0-9]+", post_id, re.I)
+                or not isinstance(permalink, str)
+                or not re.match(rf"^/r/{re.escape(subreddit)}/comments/{re.escape(post_id)}/", permalink, re.I)):
             continue
         outbound = post.get("url_overridden_by_dest") or post.get("url")
         from urllib.parse import urlparse
-        outbound_domain = urlparse(outbound).hostname.lower() if isinstance(outbound, str) and outbound else None
+        parsed_outbound = urlparse(outbound) if isinstance(outbound, str) else None
+        outbound = outbound if parsed_outbound and parsed_outbound.scheme in ("http", "https") and parsed_outbound.hostname else None
+        outbound_domain = parsed_outbound.hostname.lower() if outbound and parsed_outbound and parsed_outbound.hostname else None
         availability = "removed" if post.get("removed_by_category") else ("deleted" if post.get("author") == "[deleted]" else "available")
-        rows.append({"external_id": f"reddit:{post['id']}", "url": "https://www.reddit.com" + post["permalink"],
+        clear_fields = ["description"] if "selftext" in post and not post.get("selftext") else []
+        metadata_clears = ["flair"] if "link_flair_text" in post and not post.get("link_flair_text") else []
+        rows.append({"external_id": f"reddit:{post_id}", "url": "https://www.reddit.com" + permalink,
                      "title": post.get("title"), "description": (post.get("selftext") or "")[:2000] or None,
                      "creator": post.get("author"),
                      "published_at": time.strftime("%Y-%m-%d", time.gmtime(post.get("created_utc") or 0)) if post.get("created_utc") else None,
                      "view_count": post.get("score"), "content_type": "post", "observed_metadata": True,
+                     "observed_clear_fields": clear_fields, "metadata_clears": metadata_clears,
                      "metadata": {"version": 1, "subreddit": subreddit.lower(), "score": post.get("score"),
                                   "comment_count": post.get("num_comments"), "flair": post.get("link_flair_text"),
                                   "created_utc": post.get("created_utc"), "outbound_url": outbound,

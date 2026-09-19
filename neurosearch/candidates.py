@@ -78,6 +78,8 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
             r = conn.execute("SELECT * FROM candidates WHERE platform=? AND external_id=?", (platform, ext)).fetchone()
             observed = bool(e.get("observed_metadata"))
             metadata = e.get("metadata") if isinstance(e.get("metadata"), dict) else None
+            clear_fields = set(e.get("observed_clear_fields") or ()) if observed else set()
+            metadata_clears = set(e.get("metadata_clears") or ()) if observed else set()
             if r:
                 cid = r["id"]
                 patch: dict[str, Any] = {"last_seen_at": t}
@@ -85,7 +87,10 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
                 for k in ("title", "description", "creator", "published_at", "duration", "view_count", "canonical_url"):
                     # Ordinary discovery remains fill-only. An explicitly observed listing refresh may update
                     # mutable provider metadata, but absence never erases a previously observed value.
-                    if e.get(k) is not None and (not r[k] or (observed and e[k] != r[k])):
+                    if k in clear_fields and r[k] is not None:
+                        patch[k] = None
+                        semantic_changed = True
+                    elif e.get(k) is not None and (not r[k] or (observed and e[k] != r[k])):
                         patch[k] = e[k] if k != "description" else str(e[k])[:2000]
                         semantic_changed = semantic_changed or patch[k] != r[k]
                 if source_id and not r["source_id"]:
@@ -97,7 +102,7 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
                         previous = {}
                     # A provider can omit optional fields in one response. Keep their last observation rather
                     # than treating omission as deletion; explicit availability/deletion markers remain values.
-                    merged = {**previous, **{k: v for k, v in metadata.items() if v is not None}}
+                    merged = {**previous, **{k: v for k, v in metadata.items() if v is not None or k in metadata_clears}}
                     encoded = json.dumps(merged, sort_keys=True, separators=(",", ":"))
                     if encoded != (r["metadata_json"] or ""):
                         patch["metadata_json"] = encoded
