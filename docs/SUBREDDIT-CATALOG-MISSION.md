@@ -160,7 +160,9 @@ Exit: actual `enqueue → claim → execute → yield/retry/cancel → restart/r
 
 Owners: the same scan owners and canonical candidate writer. **Implemented:** same-page ID dedupe, raw observation counts, completed reads using `known_posts`, basic date bounds, bounded completed-summary fields and missing-author handling.
 
-**Remaining:** the known-ID snapshot/new-count calculation is outside the writer and can race between project scans. Define new-member attribution precisely against the fixed run baseline, and calculate distinct committed additions atomically; prevent two runs claiming the same first discovery. Replayed pages count nothing twice. Initial attachment must display all locally known members without labeling reconciliation as newly found Reddit posts. Keep a bounded run ledger, and normalize legacy nested summaries, including failed-refresh paths.
+**Implemented in the first R3 slice:** known-member lookup and new-member attribution now occur in the same short write batch as candidate membership. Concurrent project scans have one first-discovery winner while both projects receive the candidate; replayed membership remains idempotent.
+
+**Remaining:** define the displayed distinction between global first discovery, fixed-run refresh additions and initial reconciliation more fully. Initial attachment must display all locally known members without labeling reconciliation as newly found Reddit posts. Keep a bounded run ledger, and normalize legacy nested summaries, including failed-refresh paths.
 
 Validate malformed numbers/strings, outbound/permalink URLs, hostnames and post-ID consistency before commit; bound parsed page size and excerpt length. Explicit empty descriptions/flair currently collapse into omission, while missing availability fields can overwrite a prior observation as available. Preserve presence/clear/unknown distinctions through the writer. Store precise UTC observation bounds in current and previous completed summaries, and invalidate semantic revisions only when relevant values change. Observed dates do not imply continuous or exhaustive coverage.
 
@@ -239,6 +241,10 @@ The second R2 slice fences commits to the claimed job run, preserves run-pinned 
 ### R2 provider/cursor checkpoint — pending commit, 2026-09-19
 
 Official API errors now preserve their HTTP status and Retry-After through the catalog job. Cursor loops and advancing empty pages terminate honestly; generic rescan cannot enumerate a subreddit catalog. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_k9_community.py tests/test_s55_reservoir_rescan.py tests/test_s57_monitor_policy.py tests/test_s43_foundation.py -q` — **128 passed**. R2 implementation is substantially complete; legacy queued payload behavior and restart proof remain acceptance gaps.
+
+### R3 atomic-count checkpoint — pending commit, 2026-09-19
+
+Catalog membership and first-discovery counting now share one write batch. A two-project interleaving fixture proves one run receives `initial_known=1`, the other `0`, while both retain the candidate. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s55_reservoir_rescan.py -q` — **50 passed**. Metadata presence/clear semantics, URL validation and full run-count definitions remain open.
 
 ### Original pass — historical evidence and limits
 

@@ -372,16 +372,10 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     if next_cursor:
         cursor_history = [*cursor_history, str(next_cursor)][-50:]
 
-    # Compute before remember() mutates either global rows or this project's relationship rows.
-    known = {r["external_id"] for r in db.connect().execute(
-        "SELECT c.external_id FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id WHERE cc.collection_id=?",
-        (collection_id,),
-    ).fetchall()}
     # A listing can repeat a post within one page.  Observations retain that fact, while membership and
     # unique-post counts use each external id exactly once.
     entries_by_id = {str(r["external_id"]): r for r in rows if r.get("external_id")}
     entries = list(entries_by_id.values())
-    new_count = sum(1 for r in entries if r["external_id"] not in known)
     now = time.time()
     pages = int(prior.get("pages") or 0) + 1
     observed = int(prior.get("observed") or 0) + len(rows)
@@ -393,28 +387,34 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     terminal_reason = "application limit reached" if capped and next_cursor else terminal_reason
     if empty_advanced_page:
         terminal_reason = "listing returned no usable posts with an advancing cursor"
-    known_posts = len(known) + new_count
     mode = prior.get("mode") or "initial"
     dates = [str(r.get("published_at")) for r in entries if r.get("published_at")]
     oldest = min([d for d in [prior.get("observed_oldest"), *dates] if d], default=None)
     newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
-    state = {**prior, "status": status, "cursor": None if status in ("complete", "blocked") else next_cursor,
-             "cursor_history": cursor_history, "pages": pages,
-             "observed": observed, "known_posts": known_posts,
-             "new": int(prior.get("new") or 0) + (new_count if mode == "refresh" else 0),
-             "initial_known": int(prior.get("initial_known") or 0) + (new_count if mode == "initial" else 0),
-             "started_at": prior.get("started_at") or now, "updated_at": now, "finished_at": now if status == "complete" else None,
-             "reason": terminal_reason, "access": "reddit_api", "endpoint": "new",
-             "observed_oldest": oldest, "observed_newest": newest,
-             "page_limit": page_limit, "observation_limit": observation_limit,
-             "error": terminal_reason if empty_advanced_page else None,
-             "wait_reason": None, "retry_at": None}
-    state_raw = json.dumps(state, sort_keys=True)
     try:
         with db.batch():
+            # Count against membership at commit time, rather than a snapshot
+            # taken before network work.  Concurrent project scans then have a
+            # single winner for first discovery and cannot double-count a row.
+            known = {r["external_id"] for r in db.connect().execute(
+                "SELECT c.external_id FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id "
+                "WHERE cc.collection_id=?", (collection_id,),
+            ).fetchall()}
+            new_count = sum(1 for entry in entries if entry["external_id"] not in known)
             ids = candidates.remember(entries, "reddit", project_id,
                                       {"kind": "subreddit_catalog", "collection_id": collection_id, "subreddit": name})
             db.link_collection_candidates(collection_id, ids)
+            state = {**prior, "status": status, "cursor": None if status in ("complete", "blocked") else next_cursor,
+                     "cursor_history": cursor_history, "pages": pages, "observed": observed,
+                     "known_posts": len(known) + new_count,
+                     "new": int(prior.get("new") or 0) + (new_count if mode == "refresh" else 0),
+                     "initial_known": int(prior.get("initial_known") or 0) + (new_count if mode == "initial" else 0),
+                     "started_at": prior.get("started_at") or now, "updated_at": now,
+                     "finished_at": now if status == "complete" else None, "reason": terminal_reason,
+                     "access": "reddit_api", "endpoint": "new", "observed_oldest": oldest,
+                     "observed_newest": newest, "page_limit": page_limit, "observation_limit": observation_limit,
+                     "error": terminal_reason if empty_advanced_page else None, "wait_reason": None, "retry_at": None}
+            state_raw = json.dumps(state, sort_keys=True)
             if not db.kv_compare_set(key, prior_raw, state_raw):
                 raise _StaleSubredditScan()
     except _StaleSubredditScan:

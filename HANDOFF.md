@@ -24,7 +24,8 @@ Focused S74/S51/S43/S55: 64 passed; post-admission S74/K3/S55: 80 passed; lifecy
 102 passed; typed-provider/cursor/rescan S74/K3/K9/S55/S57/S43: 128 passed. R2 now has typed 429 waits,
 worker fencing, cancellation truth, cycle/empty-page stops and manual-only rescan policy. Legacy queued payload
 handling and restart proof remain acceptance gaps. Next is R3's atomic new-count attribution and metadata semantics.
-Counts/metadata, semantic ranking cache, bulk capture/status and Research
+R3's first slice now counts first discovery inside the membership write batch; focused S74/S55: 50 passed.
+Metadata presence/clear semantics, semantic ranking cache, bulk capture/status and Research
 membership proofs remain prerequisites for the full UI. Split R8 into offline operational proof and live
 Reddit/browser/capture acceptance; unavailable live access blocks that gate, not eligible offline work.
 Do not repeat solved baseline diagnosis or treat partial test success as feature acceptance.

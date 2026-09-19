@@ -380,6 +380,23 @@ def test_catalog_fails_an_advancing_empty_listing_instead_of_looping_to_the_cap(
     assert state["status"] == "blocked" and state["cursor"] is None
 
 
+def test_concurrent_project_scans_assign_first_discovery_to_one_commit_only():
+    first, second = _project("count first"), _project("count second")
+    catalog = community.attach_subreddit_catalog(first, "https://www.reddit.com/r/smallbusiness/")
+    community.attach_subreddit_catalog(second, "https://www.reddit.com/r/smallbusiness/")
+
+    def second_commits_before_first(_subreddit, _cursor):
+        winner = reservoir.scan_subreddit_page(second, catalog["id"], fetch_page=lambda _s, _a: ([_listing("shared")], None))
+        assert winner["initial_known"] == 1
+        return [_listing("shared")], None
+
+    loser = reservoir.scan_subreddit_page(first, catalog["id"], fetch_page=second_commits_before_first)
+    assert loser["initial_known"] == 0 and loser["total"] == 1
+    first_state = __import__("json").loads(db.kv_get(f"reservoir:scan:{first}:{catalog['id']}") or "{}")
+    second_state = __import__("json").loads(db.kv_get(f"reservoir:scan:{second}:{catalog['id']}") or "{}")
+    assert first_state["initial_known"] + second_state["initial_known"] == 1
+
+
 def test_catalog_blocked_worker_never_finishes_successfully(monkeypatch):
     project = _project("blocked worker")
     queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
