@@ -5,7 +5,7 @@ live server executed with real providers. `tests/conftest.py` now hard-sets `NEU
 module imports; this file makes sure nothing weakens that and that the resolved data dir is never the repo's own.
 """
 from pathlib import Path
-import os, re, tempfile
+import os, re, subprocess, sys, tempfile
 
 TESTS = Path(__file__).resolve().parent
 REPO_DATA = (TESTS.parent / "data").resolve()
@@ -31,6 +31,20 @@ def test_resolved_data_dir_is_a_private_temp_dir_not_the_repo():
     assert Path(tempfile.gettempdir()).resolve() in d.parents or "ns_" in d.name, f"unexpected data dir: {d}"
     from neurosearch.config import settings
     assert Path(settings.data_dir).resolve() == d, "settings.data_dir disagrees with the environment"
+
+
+def test_dotenv_loading_can_be_explicitly_disabled(tmp_path):
+    """Release tests must not inherit a developer's nearby credentials/flags."""
+    (tmp_path / ".env").write_text("NEUROSEARCH_DOTENV_GUARD=from-dotenv\n", encoding="utf-8")
+    env = dict(os.environ)
+    env.pop("NEUROSEARCH_DOTENV_GUARD", None)
+    env["PYTHON_DOTENV_DISABLED"] = "true"
+    env["PYTHONPATH"] = str(TESTS.parent)
+    result = subprocess.run(
+        [sys.executable, "-c", "from neurosearch.config import _env; print(_env('NEUROSEARCH_DOTENV_GUARD'))"],
+        cwd=tmp_path, env=env, text=True, capture_output=True, check=True,
+    )
+    assert result.stdout.strip() == "None"
 
 
 def test_fresh_database_does_not_inherit_an_open_provider_breaker(tmp_path, monkeypatch):

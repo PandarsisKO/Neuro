@@ -8,7 +8,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Deterministic release checks run in a private environment.  They must be
+# able to opt out of a developer's nearby `.env` without editing that file or
+# inheriting credentials and experimental flags from it.
+if os.environ.get("PYTHON_DOTENV_DISABLED", "").lower() not in ("1", "true", "yes"):
+    load_dotenv()
 
 
 def _env(name: str, default: str | None = None) -> str | None:

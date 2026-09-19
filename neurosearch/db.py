@@ -2045,15 +2045,21 @@ def link_collection_candidates(collection_id: str, candidate_ids: Iterable[str])
             "ON CONFLICT(collection_id, candidate_id) DO UPDATE SET last_seen_at=excluded.last_seen_at",
             [(collection_id, cid, t, t) for cid in ids],
         )
-        # A newly remembered catalog row becomes known to every project that explicitly attached this catalog.
-        # INSERT OR IGNORE preserves each project's state, relevance, reason and first-seen timestamp.
-        conn.execute(
-            "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
-            "SELECT cc.candidate_id, pc.project_id, 'available', ?, ?, ? "
-            "FROM collection_candidates cc JOIN project_collections pc ON pc.collection_id=cc.collection_id "
-            "WHERE cc.collection_id=?",
-            (json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id),
-        )
+        # Reconcile only this page's candidates.  Scanning a later page must
+        # never rewrite every catalog member into every attached project; an
+        # existing catalog is reconciled once, in bounded batches, at attach.
+        projects = [r["project_id"] for r in conn.execute(
+            "SELECT project_id FROM project_collections WHERE collection_id=?", (collection_id,)
+        ).fetchall()]
+        origin = json.dumps({"kind": "catalog", "collection_id": collection_id})
+        for start in range(0, len(ids), 250):
+            page_ids = ids[start:start + 250]
+            conn.executemany(
+                "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
+                "VALUES (?,?,?,?,?,?)",
+                [(candidate_id, project_id, "available", origin, t, t)
+                 for candidate_id in page_ids for project_id in projects],
+            )
     return len(ids)
 
 
@@ -4257,7 +4263,18 @@ def remove_project_sources(project_id: str, source_ids: list[str]) -> None:
 
 
 def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
+    collection_ids = list(dict.fromkeys(collection_ids))
+    if not collection_ids:
+        return
     with tx() as conn:
+        if not conn.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
+            raise KeyError(project_id)
+        marks = ",".join("?" for _ in collection_ids)
+        rows = conn.execute(f"SELECT id, kind FROM collections WHERE id IN ({marks})", collection_ids).fetchall()
+        by_id = {r["id"]: r["kind"] for r in rows}
+        missing = [collection_id for collection_id in collection_ids if collection_id not in by_id]
+        if missing:
+            raise KeyError(missing[0])
         # CR8: named columns, not bare VALUES(?,?) -- project_collections gained source_role/monitor_policy
         # (both DEFAULT-backed), and a positional VALUES(?,?) breaks the moment the table has more than 2
         # columns. INSERT OR IGNORE leaves an existing row's policy untouched on a re-attach.
@@ -4266,24 +4283,36 @@ def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
         # Catalog membership is candidate-only. A project attaching to an existing catalog should be able to
         # review its remembered rows immediately, while never inheriting another project's captured Sources.
         t = now()
-        for collection_id in dict.fromkeys(collection_ids):
+        for collection_id in collection_ids:
+            if by_id[collection_id] != "subreddit":
+                continue
             # A thread may have been captured directly before an older catalog candidate was reconciled.
-            # Repair only this attached catalog's unresolved Reddit bridge, once at attachment time; page
-            # scans keep their bounded metadata write and do not rewrite the whole catalog.
-            conn.execute(
-                "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
-                "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
-                "WHERE platform='reddit' AND source_id IS NULL "
-                "AND id IN (SELECT candidate_id FROM collection_candidates WHERE collection_id=?) "
-                "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' AND s.external_id=candidates.external_id)",
-                (collection_id,),
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
-                "SELECT cc.candidate_id, ?, 'available', ?, ?, ? FROM collection_candidates cc "
-                "WHERE cc.collection_id=?",
-                (project_id, json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id),
-            )
+            # Repair and reconcile an existing catalog in bounded batches. Page scans use
+            # link_collection_candidates(), which only considers the page that just committed.
+            after = ""
+            origin = json.dumps({"kind": "catalog", "collection_id": collection_id})
+            while True:
+                candidate_rows = conn.execute(
+                    "SELECT candidate_id FROM collection_candidates WHERE collection_id=? AND candidate_id>? "
+                    "ORDER BY candidate_id LIMIT 250", (collection_id, after)
+                ).fetchall()
+                candidate_ids = [r["candidate_id"] for r in candidate_rows]
+                if not candidate_ids:
+                    break
+                conn.executemany(
+                    "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
+                    "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
+                    "WHERE id=? AND platform='reddit' AND source_id IS NULL "
+                    "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' "
+                    "AND s.external_id=candidates.external_id)",
+                    [(candidate_id,) for candidate_id in candidate_ids],
+                )
+                conn.executemany(
+                    "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    [(candidate_id, project_id, "available", origin, t, t) for candidate_id in candidate_ids],
+                )
+                after = candidate_ids[-1]
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
 
 

@@ -120,11 +120,11 @@ product gates. This revision updates the plan only.
 | SUB-R8 | Offline operational gate (R8a), then live gate (R8b) | R7 | 5,000-post lifecycle/load proof; separately, supported Reddit access, visual acceptance and bounded real capture |
 | SUB-R9 | Verified release and delivery | R8 | Full tests, Tier 1, release-check, version agreement and running-app verification all pass |
 
-### SUB-R0 — retain the passing baseline; finish fixture hygiene
+### SUB-R0 — baseline retained; fixture hygiene checkpoint implemented
 
 Owners: existing conftest/configuration fixtures, Foundation tests and release tooling. **Implemented:** runtime defaults restored after test collection and worker subprocess tied to the isolated interpreter; full baseline and release harness have passed (Section 2). Do not reopen the unsupported three-failure diagnosis.
 
-**Remaining prerequisite:** the session-scoped default reset is not per-test isolation, and S74/CHR modules still write fake settings at import time. Move the relevant writes into scoped fixtures and add a regression against a synthetic dotenv file restoring unwanted settings. Keep this bounded to demonstrated leakage; no unrelated suite rewrite. Start every deterministic command with private data and dotenv disabled. Use the installed console entry or an import-complete `cli.app()` runner: the module's early `__main__` invocation precedes later command registrations, so `python -m neurosearch.cli release-check` is not a substitute for the console command.
+**Implemented in the R1 preparation slice:** S74 no longer sets fake-AI, app-token or data-directory environment values at import time, and `PYTHON_DOTENV_DISABLED=true` now prevents `config.py` from loading a nearby developer `.env`; an isolated subprocess regression proves that behavior. The session-scoped default reset is still not per-test isolation. Keep any later cleanup bounded to demonstrated leakage; no unrelated suite rewrite. Start every deterministic command with private data and dotenv disabled. Use the installed console entry or an import-complete `cli.app()` runner: the module's early `__main__` invocation precedes later command registrations, so `python -m neurosearch.cli release-check` is not a substitute for the console command.
 
 Gate: relevant isolation and Foundation tests, then the next full deterministic gate on an immutable candidate. Record any new failure with its source and reproduction; retain protected baselines. This cleanup accompanies the next isolated implementation slice; it does not require replaying finished feature work.
 
@@ -132,7 +132,9 @@ Gate: relevant isolation and Foundation tests, then the next full deterministic 
 
 Owners: `db.py`, `identity.py`, `candidates.py`, `community.py`, `resources.py`, catalog routes in `api.py`. **Implemented:** catalog context/candidate guards, scoped capture/dismiss/restore, Reddit-to-Community identity bridge, and repair of null legacy Source pointers.
 
-**Remaining:** validate the project before `attach_subreddit_catalog` upserts a global collection; an unknown project must leave no orphan writes. Keep authorization and mutation consistent under detach races. `link_collection_candidates` currently reconciles the entire catalog into attached projects on every page; limit page work to changed IDs. Make second-project attachment and legacy pointer repair bounded and idempotent. Add old-database/conflicting-pointer and direct/browser/search identity fixtures; inspect conflicting non-null identities rather than merging destructively. Preserve the generic Candidate Index's intentional cross-project add behavior.
+**Implemented in the first R1 slice:** validate the project before `attach_subreddit_catalog` upserts a global collection; an unknown project now leaves no orphan write. Page membership reconciliation now handles only the committed page, while initial attachment repairs unresolved pointers and reconciles existing catalog rows in 250-item batches. Existing project dispositions remain untouched.
+
+**Remaining:** keep authorization and mutation consistent under detach races. Add old-database/conflicting-pointer and direct/browser/search identity fixtures; inspect conflicting non-null identities rather than merging destructively. Preserve the generic Candidate Index's intentional cross-project add behavior.
 
 Exit: canonical variants and direct/browser/search capture converge; cross-post IDs stay distinct; second-project catalog attachment reconciles candidates locally and creates zero Sources/chunks/evidence. Foreign IDs, detached catalogs and non-subreddit collections are rejected before writes/jobs; exclusions and dispositions survive. Upgrade fixtures include existing catalogs/candidates/Sources, not only an empty DB. Reconciliation must not scan and rewrite every catalog member on every page.
 
@@ -215,6 +217,10 @@ Planning validation (2026-09-19): documentation only, limited to this mission an
 ### Corrective checkpoint through `66f4d4d` — 2026-09-19
 
 Retain `63f93a5` (runtime default/worker isolation), `5268aef` (catalog project boundaries), `7231017` (run-bound workers), `a27f47b` (listing observations), `4fa8ae2` (eligible evidence predicates), and `6597062` (score caching). These are bounded corrections, not closure of R1–R6. `66f4d4d` records their validation checkpoint. Section 2 distinguishes the 2,074-test/pre-rebase release pass from the 55-test/post-rebase focused pass. The feature module now has 22 tests. This remaining-work review corrected stale R0-next pointers and converted each rung into retained behavior, concrete residual work and an exit gate; no runtime implementation occurred during the review.
+
+### R0/R1 preparation checkpoint — pending commit, 2026-09-19
+
+The isolated R1 branch adds the deterministic dotenv opt-out and removes S74's import-time environment mutations. It validates the project before catalog upsert, limits page reconciliation to supplied candidate IDs, and reconciles an already-attached catalog in 250-item batches. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s51_test_isolation.py tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **64 passed**. This is an R0/R1 checkpoint, not R1 closure or an integrated release result. Next: atomic catalog-run/job admission and refresh lifecycle in R2.
 
 ### Original pass — historical evidence and limits
 

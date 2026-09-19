@@ -7,11 +7,6 @@ Community Source identity only when that thread has actually been captured.
 from __future__ import annotations
 
 import os
-import tempfile
-
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_subreddit_"))
-os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
-os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 
@@ -64,6 +59,26 @@ def test_subreddit_container_variants_converge_and_threads_do_not():
         "https://reddit.example/r/smallbusiness/",
     ):
         assert resources.classify(url).kind != "subreddit"
+
+
+def test_unknown_project_cannot_create_an_orphan_catalog():
+    before = db.connect().execute("SELECT COUNT(*) FROM collections").fetchone()[0]
+    with pytest.raises(LookupError):
+        community.attach_subreddit_catalog("missing-project", "https://www.reddit.com/r/smallbusiness/")
+    assert db.connect().execute("SELECT COUNT(*) FROM collections").fetchone()[0] == before
+
+
+def test_page_link_reconciles_only_the_candidates_just_received():
+    project = _project("page bounded")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    first, second = candidates.remember([_listing("first"), _listing("second")], "reddit", None, {"kind": "fixture"})
+    db.link_collection_candidates(catalog["id"], [first])
+    # Simulate a legacy missing project relationship.  A later page must not
+    # use a broad catalog query to repair it; attachment owns that repair.
+    db.connect().execute("DELETE FROM candidate_projects WHERE candidate_id=? AND project_id=?", (first, project))
+    db.link_collection_candidates(catalog["id"], [second])
+    rows = db.connect().execute("SELECT candidate_id FROM candidate_projects WHERE project_id=? ORDER BY candidate_id", (project,)).fetchall()
+    assert [row["candidate_id"] for row in rows] == [second]
 
 
 def test_catalog_membership_is_idempotent_project_scoped_and_never_source_membership():

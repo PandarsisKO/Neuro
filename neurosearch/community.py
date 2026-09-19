@@ -82,9 +82,14 @@ def attach_subreddit_catalog(project_id: str | None, url: str) -> dict[str, Any]
     name = subreddit_name(url)
     if not name:
         raise ValueError("not a subreddit container URL")
+    # Validate the owning project before creating the global catalog.  The
+    # resource route already requires a project, but this owner is also used
+    # directly by API/tests and must not leave an orphan collection when an
+    # unknown id arrives there.
+    if not project_id or not db.get_project(project_id):
+        raise LookupError(project_id)
     catalog = db.upsert_collection("subreddit", name, subreddit_url(name), f"r/{name}")
-    if project_id:
-        db.add_project_collections(project_id, [catalog["id"]])
+    db.add_project_collections(project_id, [catalog["id"]])
     return catalog
 
 

@@ -16,9 +16,10 @@ release-check; the artifact is `evals/release/release-check-0.63.94-064d86c-2026
 Post-rebase S74/S43/S55 passed 55 tests; there is no full release artifact for the exact delivered tree.
 The catalog module has 22 tests; its 5,000-row fixture proves paging, not a 50-page worker scan.
 
-Prepare further runtime changes in isolation from then-current `main`. Finish bounded fixture hygiene,
-then R1 attachment/reconciliation boundaries and R2 atomic run/job admission (a fresh run can currently
-dedupe to an old retrying job). Counts/metadata, semantic ranking cache, bulk capture/status and Research
+The isolated `codex/subreddit-r1` branch has completed the bounded R0/R1 preparation slice: dotenv opt-out,
+S74 import hygiene, no-write invalid attachment, page-bounded reconciliation and 250-item attach batches.
+Focused S74/S51/S43/S55: 64 passed. This is not R1 closure. Next is R2 atomic run/job admission (a fresh run can
+currently dedupe to an old retrying job). Counts/metadata, semantic ranking cache, bulk capture/status and Research
 membership proofs remain prerequisites for the full UI. Split R8 into offline operational proof and live
 Reddit/browser/capture acceptance; unavailable live access blocks that gate, not eligible offline work.
 Do not repeat solved baseline diagnosis or treat partial test success as feature acceptance.
