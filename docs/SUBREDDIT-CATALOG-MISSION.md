@@ -1,36 +1,36 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
-Status: ACTIVE — partial implementation landed; corrective ladder SUB-R0–SUB-R9 is open. NOT FEATURE-COMPLETE OR RELEASE-VERIFIED.
+Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1–SUB-R9 acceptance remains open. NOT FEATURE-COMPLETE OR LIVE-RELEASE-VERIFIED.
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
-Planning baseline: `2231049e7fb388e7e000d186bfb1fec304b8e720`. Execution baseline: `09be5579ee85c333182beffea437ef9566187e8b` in isolated worktree `/private/tmp/neuro-subreddit-catalog` on `codex/subreddit-catalog`.
+Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Original planning/execution baselines and worktrees are historical; resume from then-current `main` in isolation.
 
 ## 1. Hard planning gate and executor
 
 Kyle requested review and revision of the supplied whole-subreddit brief, with execution by Codex instead of Claude/Fable. This document supersedes that brief's provisional ladder and agent/model assignments. Its product intent remains: a reusable subreddit catalog, project-relative recommendations, selected thread acquisition, local Research reuse, manual refresh, and honest coverage.
 
-The original Phase A permitted inspection, safe source-only checks, and planning-document edits; it is complete. The original plan-only restriction ended with Kyle's subsequent execution instruction. The current request, “Make the ladder,” is a documentation task: reconcile the remaining work here without starting corrective runtime implementation in this turn.
+The original Phase A permitted inspection, safe source-only checks, and planning-document edits; it is complete. The original plan-only restriction ended with Kyle's subsequent execution instruction. The current request, “I need you to update the plan for the work that remains,” is documentation only: reconcile the remaining work against current code without starting runtime implementation in this turn.
 
-Phase B began when Kyle explicitly instructed Codex to execute on 2026-09-19. Changing a model setting alone remains insufficient authorization. The executor must not switch models, invoke another coding model, create tasks, or delegate on the basis of this document. Recommendations below are advisory; Kyle controls the execution configuration.
+Phase B began when Kyle explicitly instructed Codex to execute on 2026-09-19. Changing a model setting alone remains insufficient authorization. The executor must not switch models, invoke another coding model, create tasks, or delegate on the basis of this document. Kyle controls the execution configuration.
 
 After authorization, Codex executes eligible work through this ladder without seeking routine engineering direction. No Claude handoff, Claude session, or waiting for Claude is part of this mission. This does not alter Neuro's internal model/provider contracts or remove its existing local Claude Code adapter.
 
 This is the single canonical mission, under `docs/` because `neurosearch/repo_check.py::ROOT_FILES` does not allow a new root `SUBREDDIT-CATALOG-MISSION.md`. Changing runtime Python merely to admit a planning document would violate Phase A. HANDOFF points here; do not create a second copy.
 
-## 2. Repository reconciliation and limits of this review
+## 2. Resume Delta and evidence limits — 2026-09-19
 
-**Current correction baseline: `7b43dc884e0da08e961506348b6152d6afe79ae2` on `main`, tracked tree clean before this documentation edit.** The partial implementation was already fast-forwarded into the shared checkout through `7fdcd2a`; that is delivery of code, not acceptance of the feature. HANDOFF's later CHR2 closure supersedes the earlier unfinished-CHR2 note. Preserve unrelated untracked work. The records below describe the original planning baseline, not today's working tree. For correction work, isolate from the then-current `main` and record any newer changes; do not blindly reuse the older worktree snapshot.
+Review base is **`66f4d4d` on `main`**, tracked tree clean before these documentation edits. The original implementation and subsequent bounded corrections are already present. Preserve `.chr2_livetest/`, reference directories and untracked release artifacts; do not stage or clean them. CHR2 is closed at `7b43dc8`; other missions remain at their recorded checkpoints. The newest State snapshot (2026-09-17-1130) predates this code and does not establish today's running version.
 
-Read: AGENTS, HANDOFF's standing mechanics and recent checkpoints, CLAUDE, QUALITY-CONTRACT, latest State (2026-09-17-1130), operating-system priorities, Foundation's historical status, scheduler and execution-ladder orientation, relevant source and tests. No live database or credentials were opened. No live catalog, source acquisition, model invocation, or test server was started.
+Read: repository front door, HANDOFF, CLAUDE, QUALITY-CONTRACT, newest State, this mission, relevant implementation and subsystem tests. This review opened no live database or credentials and ran no app server, provider request, capture or runtime test.
 
-The newest State snapshot is older than current code. HEAD is `2231049`, not the State's `d1b6a67`; the working-tree package marker is `0.63.94`. This does not establish the running app version or a passing release for this dirty tree. Old test counts and old statements that a lane belongs to Claude are not current evidence.
+Evidence carried forward:
 
-Preserve all pre-existing work. At initial inspection, modified tracked paths were HANDOFF, `docs/COURSE-SCANNER-2026-09-15.md`, `extension/{manifest.json,popup.html,scan-lib.js}`, `neurosearch/{__init__.py,courses.py,ingest.py,webpage.py}`, `neurosearch/web/js/{sources.js,state.js,utils.js}`, `pyproject.toml`, and `tests/test_s32_course_scanner.py`. Untracked work includes `tests/test_s55_course_documents.py`, `tests/test_s64_sources_listing_order.py`, `tests/fixtures/courses/courses/cards.html`, `.chr2_livetest/`, reference directories and release artifacts. Do not stage, discard, normalize, or delete these as part of this mission.
+- Frozen original baseline `c10f0b0`: **2,063 passed, two failed** (core tool loop and S12 discovery row). S68 passed the independent frozen runs; the earlier three-failure/order diagnosis was not established on an immutable tree.
+- R0 isolation/worker repair produced **2,065 passing tests**. A session fixture restores runtime defaults after collection, and the Foundation worker uses the isolated interpreter. Remaining fixture hygiene is listed in R0; baseline diagnosis need not be repeated as unfinished work.
+- Pre-rebase candidate **`064d86c`**: **2,074 passed**, normal isolated release-check **PASS**, Foundation 27 and frozen Tier 1 unchanged. Artifact: `evals/release/release-check-0.63.94-064d86c-20260919-105954.json` (and `.txt`).
+- Corrections were rebased onto `078ccf0`, including the independent S55 test repair, and delivered through **`66f4d4d`**. Post-rebase S74/S43/S55 focused gate: **55 passed**. The full-suite/release artifact belongs to the pre-rebase candidate; it is not exact-tree release evidence for current `main`.
+- The catalog module now has **22 tests**. Its 5,000-row fixture tests direct insertion and paging, not 50-page worker enumeration or measured performance. No real Reddit access, completed browser acceptance, bounded real capture, restart verification or new release version is established.
 
-The latest HANDOFF also records unfinished CHR2 acceptance and fixes inside `.chr2_livetest/worktree/`, including `db.py` and `web/js/chats.js`. Preserve that directory and its work. CHR3 remains outside this mission. Execution authorization for this mission should be recorded as its admission in PRODUCT-SCHEDULER, with other work suspended at its actual checkpoint; it must not silently close CHR2 or reopen another ladder.
-
-Before implementation: re-read diffs and recent checkpoints, record a Resume Delta, and construct an isolated source snapshot containing the intended current code and necessary pending changes. A clean HEAD-only worktree would omit relevant course/Sources changes. Do not copy `.env`, live data, cookies, media, or `.chr2_livetest` into the execution workspace. Record baseline, included patches, source hash, and isolation path. Never broadly stage the shared checkout.
-
-Phase A validation: the pure source-only `repo_check.check_repo` runner returned PASS before and after planning edits; `git diff --check` passed, and the planning-gate/rung/test-filename checks passed. Only this mission and the short HANDOFF pointer were edited for this task. Full pytest, Tier 1, and release-check were not run in this planning phase; no runtime correctness or release claim is made. A fresh isolated baseline is the first Phase B requirement.
+On runtime resumption, inspect intervening changes and record a new Resume Delta. Prepare an isolated checkout of then-current `main`, private data directory and usable interpreter/CLI; disable dotenv without editing Kyle's configuration. Do not copy live data, `.env`, cookies or unrelated work. Run the relevant regression baseline, preserve existing fixes and proceed to R1. An absent credential in a sanitized test process does **not** establish the live configuration or account's access status; check those through supported presence/status surfaces at R8b without exposing secrets.
 
 ## 3. Original pre-implementation inventory (historical)
 
@@ -101,18 +101,15 @@ Two dangerous shortcuts are specifically rejected:
 
 The previous declaration that SUB2–SUB8 were implemented is withdrawn. Useful code exists, but several required behaviors are missing and the new tests prove only a subset of the acceptance contract. Original SUB numbers below remain historical provenance; **SUB-R0–SUB-R9** own all remaining work in this same mission. Section 4's architecture and product contract remains binding.
 
-Corrective execution is active. **SUB-R0 is complete**: the isolation repair is source-bound and the deterministic
-release harness runs from an isolated worktree. SUB-R1 through SUB-R6 have bounded implementation and regression
-coverage, but their full exit gates remain open. SUB-R7 and SUB-R8 have not begun; in particular, no browser
-workflow or real-access acceptance has been claimed. SUB-R9 remains open until those product gates are complete.
-
-Verification checkpoint (2026-09-19, `064d86c`): `pytest tests -q` passed 2,074 tests and the isolated
-`release-check` passed, producing `evals/release/release-check-0.63.94-064d86c-20260919-105954.json`. This is a
-deterministic regression checkpoint, not a substitute for the remaining SUB-R7/SUB-R8 acceptance work.
+**R0's baseline gate passed; R1 is the next implementation rung.** R1–R6 contain useful corrections, but
+none has passed its full acceptance gate. R7 has a basic first-pass UI, not the complete workflow. R8 and R9
+remain unaccepted. The remaining work includes backend correctness, not only UI and live testing. Section 2
+records exactly which source revisions were tested; a deterministic release-check pass does not close these
+product gates. This revision updates the plan only.
 
 | Rung | Outcome | Depends on | Exit gate |
 |---|---|---|---|
-| SUB-R0 | Trustworthy baseline and release environment | Current source reconciliation | Isolation defects reproduced and fixed; full baseline failure inventory; runnable local release harness |
+| SUB-R0 | Baseline passed; bounded fixture hygiene follow-up | Current source reconciliation | Retain passing baseline; remove remaining module-level setting leakage before the next full gate |
 | SUB-R1 | Correct identity and project boundaries | R0 | Catalog attachment adds zero evidence; invalid project/catalog actions make zero writes |
 | SUB-R2 | Durable scan, cancellation, resume and refresh | R1 | Real job/worker lifecycle passes interruption, retry, dedupe and stale-generation tests |
 | SUB-R3 | Accurate metadata, counts and coverage | R2 | Duplicate/replay/concurrent pages preserve exact counts, decisions and bounded summaries |
@@ -120,88 +117,108 @@ deterministic regression checkpoint, not a substitute for the remaining SUB-R7/S
 | SUB-R5 | Selected capture and truthful acquisition state | R4 | Select 10 of 4,000; replay adds no duplicate work; failures and exclusions remain honest |
 | SUB-R6 | Local Research reuse and correct yield | R5 | A new question finds an old post offline; only eligible captured evidence contributes |
 | SUB-R7 | Complete user workflow | R6 | Browser journey passes search, selection, capture, refresh, recovery and project switching |
-| SUB-R8 | Operational and real-access acceptance | R7 | 5,000-post lifecycle/load proof, supported Reddit access, visual acceptance and bounded real capture |
+| SUB-R8 | Offline operational gate (R8a), then live gate (R8b) | R7 | 5,000-post lifecycle/load proof; separately, supported Reddit access, visual acceptance and bounded real capture |
 | SUB-R9 | Verified release and delivery | R8 | Full tests, Tier 1, release-check, version agreement and running-app verification all pass |
 
-### SUB-R0 — establish a trustworthy baseline
+### SUB-R0 — retain the passing baseline; finish fixture hygiene
 
-Owners: existing test fixtures/conftest, configuration isolation, Foundation worker tests and release tooling. Create or refresh an isolated checkout from current `main`, without `.env`, live data or browser credentials. Provide its own usable interpreter/CLI environment; verify imports and worker subprocesses resolve to that checkout. Disable dotenv loading for deterministic checks without editing Kyle's `.env`. Keep test-specific fake settings scoped to their fixtures, including the new S74 module's import-time environment writes.
+Owners: existing conftest/configuration fixtures, Foundation tests and release tooling. **Implemented:** runtime defaults restored after test collection and worker subprocess tied to the isolated interpreter; full baseline and release harness have passed (Section 2). Do not reopen the unsupported three-failure diagnosis.
 
-Reproduce the full-suite failures, including HANDOFF's three reported order-dependent failures (core tool loop, S12 discovery row, S68 proposed-source inspection). Reduce each to its contaminating predecessor/fixture before changing code. A failing test that passes alone is an investigation target, not a waiver. Establish the complete failure set with a full run, not only `-x`. Correct the release invocation: production flags off at entry, with release-check's own fake fixtures used internally; fake Tier 1 remains a separate command.
+**Remaining prerequisite:** the session-scoped default reset is not per-test isolation, and S74/CHR modules still write fake settings at import time. Move the relevant writes into scoped fixtures and add a regression against a synthetic dotenv file restoring unwanted settings. Keep this bounded to demonstrated leakage; no unrelated suite rewrite. Start every deterministic command with private data and dotenv disabled. Use the installed console entry or an import-complete `cli.app()` runner: the module's early `__main__` invocation precedes later command registrations, so `python -m neurosearch.cli release-check` is not a substitute for the console command.
 
-Exit: isolation regressions pass alone and after their triggering predecessor; the full deterministic baseline and Foundation gates pass, with a source-bound report. Record any genuinely external blocker and continue only independent work; it cannot become a release pass. Also determine Reddit access prerequisites through configuration-presence/status checks without exposing secrets; actual external acceptance belongs to R8.
+Gate: relevant isolation and Foundation tests, then the next full deterministic gate on an immutable candidate. Record any new failure with its source and reproduction; retain protected baselines. This cleanup accompanies the next isolated implementation slice; it does not require replaying finished feature work.
 
 ### SUB-R1 — identity and project boundary repair
 
-Owners: `db.py`, `identity.py`, `candidates.py`, `resources.py`, catalog routes in `api.py`. Verify identity collisions and old unresolved Reddit candidate pointers, with bounded, idempotent reconciliation through the existing mapping. Validate catalog kind and explicit project attachment for catalog read/refresh/yield/selection actions. Retain the generic Candidate Index's deliberate cross-project library-add behavior; enforce catalog selection scope at its own action boundary.
+Owners: `db.py`, `identity.py`, `candidates.py`, `community.py`, `resources.py`, catalog routes in `api.py`. **Implemented:** catalog context/candidate guards, scoped capture/dismiss/restore, Reddit-to-Community identity bridge, and repair of null legacy Source pointers.
+
+**Remaining:** validate the project before `attach_subreddit_catalog` upserts a global collection; an unknown project must leave no orphan writes. Keep authorization and mutation consistent under detach races. `link_collection_candidates` currently reconciles the entire catalog into attached projects on every page; limit page work to changed IDs. Make second-project attachment and legacy pointer repair bounded and idempotent. Add old-database/conflicting-pointer and direct/browser/search identity fixtures; inspect conflicting non-null identities rather than merging destructively. Preserve the generic Candidate Index's intentional cross-project add behavior.
 
 Exit: canonical variants and direct/browser/search capture converge; cross-post IDs stay distinct; second-project catalog attachment reconciles candidates locally and creates zero Sources/chunks/evidence. Foreign IDs, detached catalogs and non-subreddit collections are rejected before writes/jobs; exclusions and dispositions survive. Upgrade fixtures include existing catalogs/candidates/Sources, not only an empty DB. Reconciliation must not scan and rewrite every catalog member on every page.
 
 ### SUB-R2 — durable scan lifecycle
 
-Owners: `community.py`, `reservoir.py`, `jobs.py`, existing queue/dedupe and API routes. Define and implement distinct initial scan, resume-from-cursor and refresh-from-head transitions. Repeated clicks share one active run; refreshing cannot silently resume an old blocked scan. Bind queued work to its intended run/generation, and create admission state and job consistently so a crash cannot leave one without the other. Preserve prior committed pages and the last completed summary.
+Owners: `community.py`, `reservoir.py`, `jobs.py`, existing queue/dedupe and API routes. **Implemented:** payload run/generation binding, page/checkpoint compare-and-set, blocked-worker failure and retryable explore jobs.
 
-Carry credential/access refusal, 429 retry timing, transient errors, cancellation, provider end, application cap and cursor nonprogress through the existing durable job status/retry mechanisms. A blocked scan must not appear as a successfully completed job. Stop repeated/cyclic cursors and empty nonprogressing listings. Keep one bounded page per worker turn, official API access only, and no network while holding the writer.
+**Remaining, highest correctness priority:** refresh state is created separately from enqueue. A blocked run's old retrying job can win URL dedupe after a new run is created, leaving the new run stranded. Atomically admit or reuse the run and its intended job through the existing transaction/queue owner; record their association and test failure between the current two operations. Define initial, repeated attach, resume, cancel and refresh transitions explicitly: active clicks reuse the run; resume retains cursor/limits; explicit refresh starts at the head; attaching an already-complete catalog does not silently refresh; cancelled/failed jobs cannot leave an apparently active run forever.
+
+Fence commits by the actual worker claim as well as catalog generation; a reclaimed worker in the same generation must not commit. Handle legacy payloads lacking run fields explicitly. Derive scan state and retry/cancel controls from the associated job, clearing obsolete error details after recovery. Honor limits pinned to the run, not subsequently changed defaults.
+
+Preserve typed credential/access refusal, HTTP status and Retry-After through the existing API adapter and durable retries; generic exception-string matching is insufficient. Narrow retry changes to the subreddit branch or prove unchanged generic explore behavior. Stop multi-step cursor cycles and advancing-but-empty/malformed listings without falsely reporting success. Audit generic project rescan dispatch so a subreddit cannot fall into YouTube enumeration or acquire unintended scheduled monitoring. Keep one bounded page per turn, official access only, and no network while holding the writer.
 
 Exit: actual `enqueue → claim → execute → yield/retry/cancel → restart/resume` fixtures, including crash before/after commit, delayed/stale workers, double-clicks and 401/403/429/5xx. Assert cursor/rows commit together, bounded attempts/turns, respected retry deadlines, and zero acquisition/model/comment-tree calls. A monkeypatched adapter returning `partial` alone does not close this rung.
 
 ### SUB-R3 — metadata, counting and coverage
 
-Owners: the same scan owners and canonical candidate writer. Deduplicate within and across pages; serialize membership/count calculation with commit so simultaneous project scans cannot inflate or lose counts. Separate observations, unique known posts, initial reconciliation and distinct new members of a fixed refresh run. Fix completed-scan reads still looking for obsolete `total`. Preserve a single bounded previous-completed summary rather than nesting prior runs indefinitely.
+Owners: the same scan owners and canonical candidate writer. **Implemented:** same-page ID dedupe, raw observation counts, completed reads using `known_posts`, basic date bounds, bounded completed-summary fields and missing-author handling.
 
-Validate small metadata observations and URLs, retaining zero/negative engagement. Distinguish omitted fields, explicit cleared flair/text, deleted author and removed post; an absent author alone is not proof a post was deleted. Identical observations must not invalidate semantic rank revisions. Persist observed oldest/newest dates and honest stop reason; never claim exhaustive or continuous history.
+**Remaining:** the known-ID snapshot/new-count calculation is outside the writer and can race between project scans. Define new-member attribution precisely against the fixed run baseline, and calculate distinct committed additions atomically; prevent two runs claiming the same first discovery. Replayed pages count nothing twice. Initial attachment must display all locally known members without labeling reconciliation as newly found Reddit posts. Keep a bounded run ledger, and normalize legacy nested summaries, including failed-refresh paths.
+
+Validate malformed numbers/strings, outbound/permalink URLs, hostnames and post-ID consistency before commit; bound parsed page size and excerpt length. Explicit empty descriptions/flair currently collapse into omission, while missing availability fields can overwrite a prior observation as available. Preserve presence/clear/unknown distinctions through the writer. Store precise UTC observation bounds in current and previous completed summaries, and invalidate semantic revisions only when relevant values change. Observed dates do not imply continuous or exhaustive coverage.
 
 Exit: 5,000 rows through 50 actual page commits, with overlap, same-page duplicates, concurrent projects, replay, cap, malformed optional metadata and repeated refreshes. Counts remain exact; run storage stays bounded; user decisions and existing Source identity remain unchanged. Malformed metadata cannot turn into a phantom successfully empty catalog.
 
 ### SUB-R4 — ranking, cache and query contract
 
-Owners: `candidates.py`, existing community signals/gap-term index/cache, DB revision helpers and API. The current catalog function rescans/rescores every request; reuse the existing cache with a catalog-scoped semantic revision. Include project framing/questions/targets, membership, observed metadata and dispositions; do not churn on timestamps, unrelated jobs or identical observations. Separate reusable ranking from live acquisition status.
+Owners: `candidates.py`, existing community signals/gap-term index/cache, DB revision helpers and API. **Implemented:** per-candidate score caching and joined Source state; the warm regression proves `_potential` reuse. It does not prove cheap queries/sorts or semantic invalidation.
 
-Implement the six Section 4 modes with project fit dominant in recommendations, grounded reasons, secondary firsthand/specificity/substance signals, and engagement confined to explicit sorts/context. Search the full stored title/excerpt set; default recommendations ≤25, browsing 50/max 100; stable tie-breaks, correct state filters and honest revision conflicts. Avoid per-row Source/job queries across the full catalog.
+**Remaining:** the key uses broad `project_pool_revision`, including observation/disposition timestamps and unrelated Source changes; full rows still load and sort on each read, and thousands of individual cache entries compete for capacity. Cache catalog-scoped ranked results in the existing cache, keyed by database identity, rank version and all semantic inputs (framing/questions/targets/tensions, membership/metadata, dispositions and creator-yield signals actually used). Keep fresh acquisition status separate. Obtain a consistent revision/data snapshot or retry a changed revision. No new cache service or parallel revision infrastructure.
 
-Exit: contrasting project briefs/questions produce different rankings; irrelevant popular/firsthand material does not outrank strong topical matches. Same-revision warm reads invoke zero scoring passes, while changed semantic inputs invalidate the correct project view. Paging/search find rows beyond the first page without duplicates/omissions; stale revisions force restart from a consistent page.
+Finish the six modes: current Firsthand ordering can put irrelevant matches ahead of fit, and Fits an Open Question must require a question match, not merely an area match. Return stored excerpts and grounded reasons. Search all stored titles/excerpts; recommendations default ≤25 (currently 50), browsing 50/max 100; stable ties, valid dates, correct filters and honest revision conflicts. Avoid per-row Source/job queries across the catalog.
+
+Exit: realistic contrasting briefs/questions produce different rankings; irrelevant popular/firsthand material does not outrank strong topical matches. Warm reads do no rescoring/full resort; identical observations and unrelated jobs do not invalidate ranking, while a new question invalidates the right project. Measure query counts and work, not only scorer calls. Search/paging find later rows without duplicates/omissions; stale revisions restart consistently.
 
 ### SUB-R5 — selected capture and acquisition state
 
-Owners: catalog API actions, `candidates.capture`, existing identity/ingestion/jobs. Add bounded explicit-ID bulk selection through the shared capture path, validating every selected ID against project/catalog membership before work begins. Reuse ready Sources before network work; handle pending/failed work with existing dedupe/retry rules. Derive Not captured, Queued/Capturing, Failed, Cancelled and Captured from actual job/Source/project membership, not `candidate_projects.state='acquired'` alone. Removed project evidence must not appear permanently Capturing.
+Owners: catalog API actions, `candidates.capture`, existing identity/ingestion/jobs. **Implemented:** scoped single-candidate capture through the shared path. **Remaining:** explicit-ID bulk action, 1–100 unique IDs, validating the whole selection before writes and reporting per-item execution failures. Reuse ready Sources first; explicit re-add must clear an existing project exclusion through the supported membership owner. A globally deduped pending ingest job must still attach the Source to each selecting project; test the second project's completion, not just shared job IDs.
+
+Derive Not captured, Queued/Capturing, Waiting for browser, Failed, Cancelled, Removed and Captured from actual job/Source/project membership. Current `acquired` rows can show Capturing forever after failure or exclusion. Preserve existing retry/dedupe and budget controls; no alternate ingest path.
 
 Exit: selecting 10 of 4,000 schedules or attaches only those 10 and leaves 3,990 uncaptured; retries/concurrent selection do not duplicate acquisition. Test mixed ready/pending/failed/cancelled cases, source reuse, second projects, explicit re-add after exclusion, partial bulk failure reporting, and unchanged paid budget/transport controls. The UI must disclose capture/downstream processing consequences before selection is submitted.
 
 ### SUB-R6 — local Research proof and yield correctness
 
-Owners: `knowledge.pursue(external=False)`, candidate links, `sources_value.compute` and existing project membership. Prove a newly created question finds an older catalog entry with external discovery disabled; discovery must not itself acquire it or promote Claims/close targets. Use one consistent eligible captured-member set for all yield metrics. The present distinct-Claim query lacks the ready-Source/rejected-Claim predicates used by the other counts; fix that discrepancy. Use actual project membership, including its supported paths and exclusions, without adding `source_collections` catalog membership.
+Owners: `knowledge.pursue(external=False)`, candidate links, `sources_value.compute` and existing project membership. **Implemented:** distinct-Claim counts now require ready Sources and non-rejected Claims. **Remaining:** catalog yield still relies on direct project membership rather than all supported membership paths. Derive one eligible captured-member set through the existing membership semantics, including tags/collections and exclusions, for every metric; never add subreddit `source_collections` membership.
+
+Exercise actual local pursuit for a newly created question against an older catalog entry, with external/provider calls poisoned. Ranking/discovery must not capture, promote Claims or close targets. Verify candidate-link/source readiness through explicit capture using the existing lifecycle, and label only evidence relationships the metrics actually substantiate.
 
 Exit: zero-source catalog yields zero evidence; multiple candidates/evidence joins do not inflate counts; rejected Claims, excluded/non-ready Sources and other projects contribute nothing. The new-question fixture finds the previously remembered post without a provider call and preserves the normal evidence lifecycle after explicit capture.
 
 ### SUB-R7 — complete the user workflow
 
-Owners: existing Sources UI modules, API helpers, shared controls/tokens; consult `DESIGN.md` and `AUDIT.md`. Provide an obvious paste-to-catalog review path, full-catalog search, explanations, dismiss/restore, selection count and bounded bulk capture, previous/next controls, distinct captured/failed filters, observed coverage, and clear refresh/resume/cancel actions. Reuse ordinary row controls; avoid an independent component or polling framework.
+Owners: existing Sources UI modules, API helpers, shared controls/tokens; consult `DESIGN.md` and `AUDIT.md`. **Implemented:** basic catalog card, per-row capture, refresh, mode/state selector and forward paging. **Remaining:** full-catalog search, excerpts/reasons, dismiss/restore, explicit selection count and bounded bulk capture, previous/next controls, truthful capture filters, observed coverage and distinct refresh/resume/cancel actions. Use normal row controls and action helpers; no independent component or polling framework.
 
 Fix late responses painting the wrong project/catalog, shared selection state crossing projects, stale revision recovery retaining an invalid page offset, and list refreshes destroying the open review. Preserve focus/selection appropriately, disable in-flight actions, show progress/error recovery and follow existing hidden-tab/poll limits.
 
 Exit: browser journey from pasted URL to scan → review/search → selection → capture/failure/retry → refresh → local reuse/yield. Exercise empty/blocked/partial/complete, rapid project switches and repeat clicks; assert escaped untrusted text and safe links. Automated interaction gates plus real light/dark/narrow/keyboard inspection are required; existing YouTube/course review and community search remain usable. Record the required human visual acceptance separately.
 
-### SUB-R8 — operational and real-access acceptance
+### SUB-R8 — separate offline operational acceptance from live acceptance
 
-Owners: existing fixtures, perf/write-hold instrumentation, supported API and isolated browser. Measure cold and warm review with 5,000 posts and realistic question vocabulary, foreground interactions during scan, query counts, bounded DOM/payload, and write holds. Record baseline/candidate timings and existing threshold compliance; do not invent a passing performance threshold after measuring. Run end-to-end restart, refresh, exclusion and two-project lifecycle cases, with zero model calls during metadata work.
+**R8a, offline gate:** use existing fixtures and perf/write-hold instrumentation. Enumerate 5,000 posts through 50 actual worker page commits, not direct candidate insertion. Measure cold/warm review with realistic question vocabulary, foreground interactions during scan, query counts, bounded DOM/payload and write holds against existing thresholds. Run interruption/reclaim/restart, refresh, exclusion and two-project lifecycles, poisoning model/acquisition calls during metadata work. Record baseline/candidate timings; do not invent a passing threshold after measuring.
 
-Verify permitted working Reddit API access with a bounded official listing request, then run the same catalog/review/refresh flow on real metadata. Exercise a minimal selected real thread through existing capture and verify readiness/provenance; obtain any required explicit metered-cost decision on the concrete bounded operation first. No scraping fallback or new credential service. Fixtures allow other work to proceed if access is unavailable, but the real-access gate remains BLOCKED with the exact reason. Missing access must not be called a release success.
+**R8b, live gate:** check access/configuration through supported status surfaces, then verify approved working Reddit API access with a bounded official listing request. Run the same catalog/review/refresh flow on real metadata and minimal selected real capture; verify readiness/provenance. Honor existing cost authorization and obtain any still-required metered-cost decision only on a concrete prepared operation. No secrets in chat, live `.env` edits, scraping fallback or new credential service. If access is unavailable, finish eligible offline work and mark R8b BLOCKED with the exact reason; the feature is not release-ready. Record real browser and required human visual acceptance separately.
 
 Exit: recorded lifecycle/performance evidence, real API behavior and coverage limits, correct captured content/provenance, and resolved browser findings/visual acceptance. Do not touch the live SQLite DB directly.
 
 ### SUB-R9 — release, delivery and truth reconciliation
 
-Owners: existing release tooling, version markers, HANDOFF/HARDENING/current State and this mission. Choose the new release version using the current repository ritual and update every checked marker, including `web/js/state.js` and the HTML version meta tag. Run full pytest, fake Tier 1, repo-check and the normal release-check on the same isolated candidate with production flags at safe defaults. No skips, frozen-baseline relaxation, or blanket inherited-failure waiver.
+Owners: existing release tooling, version markers, HANDOFF/HARDENING/current State and this mission. Choose the release version under the current ritual and update every checked marker, including `web/js/state.js` and the HTML version meta tag. Freeze the final integrated candidate and run full pytest, fake Tier 1, repo-check and normal release-check on that exact tree with safe entry flags. Record start/end source hashes; reports stamped only with a finishing SHA cannot prove unchanged source during execution. Reconcile intervening changes before this gate, or rerun affected gates after them. No skips, protected-baseline relaxation or inherited-failure waiver.
 
 Exit: all required gates pass with source/base hashes, environment and artifacts recorded; merge/reconcile only that tested candidate into current `main`, perform the authorized restart/delivery mechanics, and verify served version, schema/startup health and the catalog workflow through supported app surfaces. Record prepared, committed, delivered and live-verified separately. Preserve unrelated files and reconcile intervening commits before landing. Update State/HANDOFF/HARDENING and archive the mission only after complete acceptance. The existing early merge does not waive any gate.
 
-Execution discipline: R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9. Tests land with each owning rung; capture and research semantics must pass before adding controls that depend on them. Use the existing two-commit implementation/checkpoint ritual and record actual evidence and the next safe step. Retain Kyle's model/effort setting; no automatic switches, Claude handoff or delegation. A later instruction to execute this ladder should proceed through eligible work without per-rung permission requests.
+Execution discipline: retain R0, close its bounded fixture follow-up with the next slice, then R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8a → R8b → R9. Tests land with their owning rung; capture/research semantics pass before dependent controls. Do not jump to UI because a partial regression checkpoint is green. Prepare gated changes in isolation; do not repeat the early shared-main landing as a substitute for acceptance. Use the existing two-commit implementation/checkpoint ritual, recording evidence and next action. Preserve Kyle's model/effort; no automatic switches, Claude handoff, delegation or routine per-rung permission requests.
 
-Ladder-writing validation (2026-09-19): documentation only, limited to this mission and its HANDOFF/scheduler pointers. The source-only `repo_check.check_repo(Path.cwd())` runner returned PASS before and after the edit; `git diff --check` passed. No runtime tests, application edits, provider calls, live DB access or restart were performed for this planning revision. These checks validate document/repository hygiene, not feature readiness.
+Planning validation (2026-09-19): documentation only, limited to this mission and its HANDOFF/scheduler pointers. `.venv/bin/python` calling source-only `repo_check.check_repo()` returned PASS; `git diff --check` and rung/test-path/pointer consistency checks passed. No runtime tests or app/provider operations were performed for this revision. These checks validate hygiene, not feature readiness; runtime validation remains source-bound to the checkpoints in Section 2.
 
 ## Execution log
 
-**Correction, 2026-09-19:** entries below record code and checks from the first pass, not completed acceptance of SUB2–SUB8. The 281-test total includes existing subsystem regressions; the feature module contains 13 tests. Its 5,000-row fixture inserts rows directly and checks paging, so it does not prove 50-page enumeration, performance, restart recovery or real access. The stale-worker test exercises an in-process callback, not concurrent workers. Section 5's corrective exit gates supersede broader completion claims in these historical checkpoints.
+### Corrective checkpoint through `66f4d4d` — 2026-09-19
+
+Retain `63f93a5` (runtime default/worker isolation), `5268aef` (catalog project boundaries), `7231017` (run-bound workers), `a27f47b` (listing observations), `4fa8ae2` (eligible evidence predicates), and `6597062` (score caching). These are bounded corrections, not closure of R1–R6. `66f4d4d` records their validation checkpoint. Section 2 distinguishes the 2,074-test/pre-rebase release pass from the 55-test/post-rebase focused pass. The feature module now has 22 tests. This remaining-work review corrected stale R0-next pointers and converted each rung into retained behavior, concrete residual work and an exit gate; no runtime implementation occurred during the review.
+
+### Original pass — historical evidence and limits
+
+**Correction, 2026-09-19:** entries below record code and checks from the first pass, not completed acceptance of SUB2–SUB8. The 281-test total includes existing subsystem regressions; the feature module then contained 13 tests. Its 5,000-row fixture inserts rows directly and checks paging, so it does not prove 50-page enumeration, performance, restart recovery or real access. The stale-worker test exercises an in-process callback, not concurrent workers. Section 5's corrective exit gates supersede broader completion claims in these historical checkpoints.
 
 ### SUB2 — identity and catalog membership — implementation checkpoint, 2026-09-19
 
@@ -225,10 +242,11 @@ Validation reported after the first code pass and rebase: the consolidated gate 
 
 ## 6. Validation contract
 
-At SUB-R0, establish the actual isolated baseline and diagnose failures. Do not import historical failure allowances or assume VM failures reproduce on the Mac. Preserve protected baselines; unexplained release failures are not waived. Use fresh private `NEUROSEARCH_DATA_DIR`, `PYTHON_DOTENV_DISABLED=true`, no live `.env`, and the existing deterministic fake/provider isolation fixtures. New test modules must sort after `test_core.py`.
+Retain the established R0 baseline and run a fresh isolated regression baseline on resumption to detect intervening changes. Do not repeat solved diagnosis or import historical failure allowances. Preserve protected baselines; unexplained release failures are not waived. Use fresh private `NEUROSEARCH_DATA_DIR`, `PYTHON_DOTENV_DISABLED=true`, no live `.env`, and existing deterministic fake/provider isolation fixtures. New test modules must sort after `test_core.py`.
 
 Existing gates to read/run at the relevant intersection:
 
+- Catalog: `tests/test_s74_subreddit_catalog_identity.py`; extend its 22 current tests with actual job admission/retry/reclaim, concurrent page attribution, legacy upgrade, semantic cache invalidation, bulk outcomes and offline Research lifecycle fixtures. Add UI interaction coverage through the existing frontend test conventions.
 - Classification/identity/exploration: `tests/test_k3_resources.py`, `test_k2_identity.py`, `test_k4_explore.py`.
 - Community content/citations/browser paths: `test_k9_community.py`, `test_k9b_reddit_html.py`, `test_l1_browser_capture.py`, `test_l2_completeness.py`.
 - Research/candidate reuse: `test_m3_links.py`, `test_n7_pool.py`, `test_n1_research_view.py`, `test_s55_reservoir_rescan.py`, `test_s57_monitor_policy.py`, `test_s58_selective_acquisition.py`.
@@ -253,15 +271,9 @@ This is the corrected validation recipe, not a claim that this documentation tur
 
 Meaningful UI changes also require DESIGN/AUDIT comparison, task-level browser exercise and the required human visual acceptance. Code tests alone cannot mark those gates complete. A live test must be bounded, on supported access, and separately authorized for any metered capture cost. Never restart or probe the live DB externally to manufacture evidence. Preserve existing two-commit rung mechanics where applicable: implementation then checkpoint evidence; no implementation commits in this planning phase.
 
-## 7. Original model advice and continuing cost boundary
+## 7. Execution configuration and cost boundary
 
-The advice below belongs to the original plan and does not assign models to the corrective ladder. Kyle controls the active setting; preserve it unless he changes it. Model recommendations are not execution or delegation instructions.
-
-Kyle selects the execution model/effort after this planning turn. No model was switched and no subagent was used. Current app capability metadata advertises GPT-6 Astra, GPT-5.6 Sol/Terra/Luna and GPT-5.5 with supported reasoning levels; availability should be checked again when starting. The rung recommendations are engineering judgments, not benchmarked price guarantees.
-
-If Kyle wants one setting for the entire autonomous mission, recommend **GPT-6 Astra / high** because identity, migrations, transaction/restart behavior and project isolation recur throughout. A more economical proposed split is Astra/high for SUB2–4 and SUB6, Sol/high for SUB5 and SUB8, Sol/medium for SUB7, and Astra/high for final hardening. The safe switching seam is a fully gated rung with a durable checkpoint. Do not pause every rung merely to request a model switch; retain Kyle's chosen setting unless he changes it.
-
-No `max`/`ultra` effort is recommended by default. No LOW-only rung is invented for “test cleanup”: migration and lifecycle verification are substantive engineering. Actual Codex allowance/cost was not measured and no exact dollar estimate is claimed. [Official OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model) supports Astra for complex multistep/software-engineering work; the specific per-rung allocation here is a recommendation based on the inspected risks.
+Kyle controls the execution model and effort. Preserve his setting until he changes it; this plan neither switches models nor launches execution or agents. No model change or subagent was used for this review. The old per-rung model recommendations are retired with the original ladder; no model-selection decision is required to make this remaining-work plan concrete.
 
 Neuro application cost is separate: cataloging, baseline ranking, local search, refresh and yield use zero generation/embedding calls. Reddit access eligibility/pricing is unverified. Selected capture may incur embeddings and Findings/Claims costs under existing contracts; expose that before spend and keep paid fallback off unless explicitly authorized. No model-based ranking enhancement is in this mission.
 
@@ -269,15 +281,15 @@ Neuro application cost is separate: cataloging, baseline ranking, local search, 
 
 For corrective execution, follow Section 5 rather than restarting the original SUB2 implementation:
 
-1. Reconcile current Git/working-tree state, CHR2 and course/Sources custody, and this plan's Resume Delta. Record mission admission/suspension in existing coordination docs, without rewriting old history.
-2. Build the isolated snapshot and run the baseline. Fix only prerequisite failures whose cause is established and whose scope is within authorization; otherwise record the blocker and continue independent work.
-3. Start SUB-R0 by preparing the isolated local environment and reproducing the full test-isolation failure set. Preserve the existing catalog work and correct it incrementally; do not recreate the feature in a second path.
+1. Reconcile current Git/working-tree state against `66f4d4d` and record the Resume Delta. Preserve unrelated work and completed CHR2; do not reopen other missions.
+2. Prepare an isolated snapshot and private environment, verify interpreter/CLI provenance, and run the relevant baseline. Finish the bounded R0 fixture follow-up; diagnose only newly demonstrated failures.
+3. **Start SUB-R1:** invalid-project attachment must make zero writes; page reconciliation must be bounded to changed candidates. Close legacy identity and project-boundary fixtures, then address R2's atomic run/job admission and retry-dedupe defect. Preserve existing implementations; no second feature path.
 4. Continue the dependency chain, recording rung status, touched paths, actual checks, unresolved issues and next safe action. Preserve a recoverable checkpoint through context/session changes. No separate agent-specific plan or duplicate TODO system.
 5. Prepare/test concrete changes before any required live-delivery approval. Follow current HANDOFF restart rules and Kyle's existing authorization; never ask him to run terminal commands. Commit/stage only mission changes and verify the delivered candidate separately from the prepared one.
-6. Stop for a true product/architecture choice, unavailable required access, destructive action, collision that cannot be reconciled safely, systemic unexplained release failure, explicit user pause, or completion. Fix ordinary failed tests and continue. Do not use “Claude owns this” as a blocker.
+6. Stop dependent work for a true product/architecture choice, unavailable required access, destructive action, collision that cannot be reconciled safely, systemic unexplained release failure, explicit user pause, or completion. Continue eligible independent work when an operational gate is blocked. Fix ordinary failed tests and continue. Do not use “Claude owns this” as a blocker.
 
-No new product or architecture decision is required to execute the corrective ladder. Kyle's earlier execution authorization remains part of the record; this turn fulfills his narrower request to write the ladder. Account approval/credentials and an explicit decision for any metered real capture may be operational blockers for R8; do not assume access or ask for secrets in chat.
+No new product or architecture decision is required to execute the corrective ladder. Kyle's earlier execution authorization remains part of the record; this turn fulfills his narrower request to update the remaining-work plan. Account approval/credentials and any still-required metered-capture decision may block R8b; do not assume access or ask for secrets in chat. Routine engineering choices and per-rung progress do not require new approval.
 
 Non-goals: unrestricted crawling, bypasses, new archives, automatic whole-catalog acquisition, a second parser/evidence/research/provider/queue system, universal quality scores, scheduled monitoring, speculative model ranking, fixing all unrelated pending work, or a claim to exhaustive subreddit history.
 
-Current completion state: **CORRECTIVE LADDER WRITTEN — PARTIAL IMPLEMENTATION ON MAIN — SUB-R0 NEXT; FEATURE NOT READY**.
+Current completion state: **REMAINING-WORK PLAN UPDATED — R0 BASELINE PASSED — R1 NEXT, R1–R9 ACCEPTANCE OPEN; FEATURE NOT READY**.

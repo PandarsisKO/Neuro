@@ -3,19 +3,25 @@
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
 The feature is **partially implemented, not ready**. The previous SUB2–SUB8 completion claim is withdrawn.
-Kyle requested the remaining execution ladder; the single canonical record is
+Kyle requested an updated plan for the remaining work; the single canonical record is
 [docs/SUBREDDIT-CATALOG-MISSION.md, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority).
-Codex executes SUB-R0–SUB-R9: baseline isolation → identity/project boundaries → durable scan → metadata/counts
+Codex owns SUB-R0–SUB-R9: baseline isolation → identity/project boundaries → durable scan → metadata/counts
 → cached ranking → selected capture → Research/yield → complete UI → operational/real-access acceptance → release.
-All corrective rungs remain open; **SUB-R0 is next**. This turn changes documentation only.
+**R0's baseline passed; R1 is next.** R1–R6 have partial corrections but open acceptance gates; R7 is a basic
+UI, and R8/R9 remain unaccepted. This plan-update turn changes documentation only; Kyle controls model/effort.
 
-The first code pass (`2f1a31e`, `6778890`, `5fc590f`, `93444df`, `516f444`) already landed on shared `main`
-through `7fdcd2a`. Correction-planning baseline is `7b43dc8`, tracked tree clean before these docs. Build the
-next runtime changes in an isolated checkout of then-current `main`; preserve unrelated untracked work.
-Earlier checks reported 281 subsystem tests, 114 core tests separately, fake Tier 1, repo-check and syntax
-checks passing. They do not close the missing lifecycle, cache, capture-state, UI or real-access gates. The
-5,000-row test proves paging only. Full-suite state/order failures and the release harness need diagnosis in
-R0; no production fake flag or missing worktree CLI path is an acceptable release workaround.
+Review baseline is `66f4d4d`, tracked tree clean before these docs. Preserve the landed identity, worker,
+observation, yield and cache corrections. Pre-rebase `064d86c` passed 2,074 tests and normal isolated
+release-check; the artifact is `evals/release/release-check-0.63.94-064d86c-20260919-105954.json`.
+Post-rebase S74/S43/S55 passed 55 tests; there is no full release artifact for the exact delivered tree.
+The catalog module has 22 tests; its 5,000-row fixture proves paging, not a 50-page worker scan.
+
+Prepare further runtime changes in isolation from then-current `main`. Finish bounded fixture hygiene,
+then R1 attachment/reconciliation boundaries and R2 atomic run/job admission (a fresh run can currently
+dedupe to an old retrying job). Counts/metadata, semantic ranking cache, bulk capture/status and Research
+membership proofs remain prerequisites for the full UI. Split R8 into offline operational proof and live
+Reddit/browser/capture acceptance; unavailable live access blocks that gate, not eligible offline work.
+Do not repeat solved baseline diagnosis or treat partial test success as feature acceptance.
 
 CHR2 is closed by the later verified visual-gate record (`7b43dc8`); do not reopen it. No subreddit live-access,
 visual-acceptance or running-app verification has been established. Landing code is not a release pass.
