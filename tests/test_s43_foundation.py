@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -128,8 +129,10 @@ def test_native_worker_restart_recovers_inflight_fake_provider_job(fresh):
            "NEUROSEARCH_AI_PROFILE": "cloud", "NEUROSEARCH_WORKERS": "1",
            "NEUROSEARCH_FAKE_AI_DELAY": "5"}
 
-    cli = str(ROOT / ".venv" / "bin" / "neurosearch")
-    first = subprocess.Popen([cli, "worker", "--n", "1"],
+    # Run the checked-out code with the interpreter that is executing the
+    # suite.  A clean worktree need not contain its own .venv directory.
+    command = [sys.executable, "-m", "neurosearch.cli", "worker", "--n", "1"]
+    first = subprocess.Popen(command,
                              cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         deadline = time.time() + 8
@@ -147,7 +150,7 @@ def test_native_worker_restart_recovers_inflight_fake_provider_job(fresh):
         first.terminate(); first.wait(timeout=5)
 
     env["NEUROSEARCH_FAKE_AI_DELAY"] = "0"
-    second = subprocess.Popen([cli, "worker", "--n", "1"],
+    second = subprocess.Popen(command,
                               cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         deadline = time.time() + 10

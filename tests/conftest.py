@@ -41,6 +41,23 @@ for _k in [k for k in os.environ if k.startswith("NEUROSEARCH_TASK_")]:
     del os.environ[_k]
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _production_runtime_defaults():
+    """Start every test from the release-safe runtime policy.
+
+    Several historical test modules set ``NEUROSEARCH_FAKE_AI=1`` while they
+    are imported.  Collection imports the application's singleton settings
+    after those assignments, so a full suite could enter its first normal
+    provider test with fake mode enabled.  Tests that need fakes already opt
+    in through their own fixture or test-level monkeypatch.
+    """
+    from neurosearch.config import settings
+
+    settings.fake_ai = False
+    settings.ai_profile = "cloud"
+    yield
+
+
 @pytest.fixture(scope="session")
 def client():
     from fastapi.testclient import TestClient
