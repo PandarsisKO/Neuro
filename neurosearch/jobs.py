@@ -322,7 +322,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
             from . import reservoir
             result = reservoir.scan_subreddit_page(payload["project_id"], payload["collection_id"],
                                                     expected_run_id=payload.get("catalog_run_id"),
-                                                    expected_generation=payload.get("catalog_generation"))
+                                                    expected_generation=payload.get("catalog_generation"),
+                                                    expected_job_id=jid, expected_job_run_id=job.get("run_id"))
             if result["status"] == "partial":
                 raise Yield("catalog page saved; continuing automatically")
             if result["status"] == "blocked":

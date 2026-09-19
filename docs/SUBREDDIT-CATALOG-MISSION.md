@@ -144,7 +144,9 @@ Owners: `community.py`, `reservoir.py`, `jobs.py`, existing queue/dedupe and API
 
 **Implemented in the first R2 slice:** `admit_subreddit_scan` creates or reuses a run and its existing explore job in one short `db.batch`, records `job_id` in scan state, and uses a run-bound catalog dedupe key. An explicit refresh cannot receive an old retrying job; queue creation failure rolls back the new state. Paste/re-attach reuses an active run, resumes a terminal one from its cursor, and leaves a complete catalog alone; explicit refresh begins a new head run. Focused fixtures cover refresh-versus-retry, rollback, repeated paste and completed re-attach.
 
-**Remaining, highest correctness priority:** define cancel actions and keep scan state truthful when the associated job is cancelled, fails or reaches a retry deadline. Fence commits by the actual worker claim as well as catalog generation; a reclaimed worker in the same generation must not commit. Handle legacy payloads lacking run fields explicitly. Derive scan state and retry/cancel controls from the associated job, clearing obsolete error details after recovery. Honor limits pinned to the run, not subsequently changed defaults.
+**Implemented in the second R2 slice:** every worker turn fences scan state with the claimed job's `run_id` before fetching; a reclaimed worker therefore causes an older worker's page batch to roll back. Scan limits are read from the run, not mutable constants, and successful retries clear stale errors. Catalog cards derive retry, cancellation and failure truth from the associated job ledger, and a scoped cancel endpoint uses the normal job lifecycle; re-paste resumes the interrupted cursor.
+
+**Remaining, highest correctness priority:** typed provider outcomes must carry status and Retry-After rather than generic exception strings. Handle legacy payloads lacking run fields explicitly. Stop cyclic cursors and advancing-but-empty/malformed listings without falsely reporting success. Audit generic rescan dispatch so subreddit catalogs never enter YouTube enumeration or scheduled monitoring.
 
 Fence commits by the actual worker claim as well as catalog generation; a reclaimed worker in the same generation must not commit. Handle legacy payloads lacking run fields explicitly. Derive scan state and retry/cancel controls from the associated job, clearing obsolete error details after recovery. Honor limits pinned to the run, not subsequently changed defaults.
 
@@ -226,7 +228,11 @@ The isolated R1 branch adds the deterministic dotenv opt-out and removes S74's i
 
 ### R2 atomic-admission checkpoint — pending commit, 2026-09-19
 
-The same isolated branch now atomically admits scan state and a run-bound explore job. A head refresh has a new dedupe identity, so it cannot attach to a queued old retry. A repeat paste reuses only its active run, while a completed catalog stays complete until explicit refresh. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_s55_reservoir_rescan.py -q` — **80 passed**. Remaining R2 work is job-claim fencing, retry/cancel state and typed provider outcomes.
+The same isolated branch now atomically admits scan state and a run-bound explore job. A head refresh has a new dedupe identity, so it cannot attach to a queued old retry. A repeat paste reuses only its active run, while a completed catalog stays complete until explicit refresh. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_s55_reservoir_rescan.py -q` — **80 passed**.
+
+### R2 lifecycle checkpoint — pending commit, 2026-09-19
+
+The second R2 slice fences commits to the claimed job run, preserves run-pinned limits, clears stale errors after retry, derives catalog-card job truth and adds scoped cancellation. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_core.py::test_cancel_single_job tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **102 passed**. R2 remains open for typed access/rate outcomes, cyclic cursor handling and rescan-policy audit.
 
 ### Original pass — historical evidence and limits
 

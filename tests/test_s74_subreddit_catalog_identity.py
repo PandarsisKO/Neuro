@@ -272,6 +272,67 @@ def test_repeated_paste_reuses_an_active_run_but_not_a_completed_catalog():
     assert completed["queued"] is False and completed["job_id"] is None
 
 
+def test_reclaimed_worker_cannot_commit_after_a_new_claim_fences_it():
+    project = _project("lease fence")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    first = db.claim_job(("explore",), worker_id="first")
+    assert first and first["id"] == queued["job_id"]
+
+    def reclaims_then_scans(_subreddit, _cursor):
+        db.requeue_job(first["id"], message="fixture reclaim")
+        second = db.claim_job(("explore",), worker_id="second")
+        assert second and second["id"] == first["id"] and second["run_id"] != first["run_id"]
+        newer = reservoir.scan_subreddit_page(
+            project, queued["collection_id"],
+            expected_run_id=second["payload"]["catalog_run_id"],
+            expected_generation=second["payload"]["catalog_generation"],
+            expected_job_id=second["id"], expected_job_run_id=second["run_id"],
+            fetch_page=lambda _s, _a: ([_listing("new")], None),
+        )
+        assert newer["status"] == "complete"
+        return [_listing("old")], None
+
+    stale = reservoir.scan_subreddit_page(
+        project, queued["collection_id"],
+        expected_run_id=first["payload"]["catalog_run_id"],
+        expected_generation=first["payload"]["catalog_generation"],
+        expected_job_id=first["id"], expected_job_run_id=first["run_id"],
+        fetch_page=reclaims_then_scans,
+    )
+    assert stale["status"] == "stale"
+    rows = db.connect().execute("SELECT external_id FROM candidates ORDER BY external_id").fetchall()
+    assert [row["external_id"] for row in rows] == ["reddit:new"]
+
+
+def test_successful_retry_clears_a_blocked_scan_error_and_keeps_its_pinned_limits():
+    project = _project("retry state")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    state = reservoir.begin_subreddit_refresh(project, catalog["id"])
+    state.update({"page_limit": 1, "observation_limit": 3})
+    db.kv_set(f"reservoir:scan:{project}:{catalog['id']}", __import__("json").dumps(state, sort_keys=True))
+    blocked = reservoir.scan_subreddit_page(
+        project, catalog["id"], fetch_page=lambda _s, _a: (_ for _ in ()).throw(RuntimeError("temporary 503")),
+    )
+    assert blocked["status"] == "blocked"
+    retried = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _s, _a: ([_listing("one")], "t3_next"))
+    current = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
+    assert retried["status"] == "complete" and current["reason"] == "application limit reached"
+    assert current["error"] is None and current["page_limit"] == 1 and current["observation_limit"] == 3
+
+
+def test_catalog_cancel_uses_the_job_ledger_and_catalog_card_is_truthful():
+    project = _project("catalog cancel")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    cancelled = reservoir.cancel_subreddit_scan(project, queued["collection_id"])
+    assert cancelled["status"] == "cancelled" and db.get_job(queued["job_id"])["status"] == "cancelled"
+    card = reservoir.subreddit_catalogs(project)[0]
+    assert card["scan"]["status"] == "cancelled"
+    # Re-pasting resumes the same interrupted run from its durable cursor.
+    resumed = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    assert resumed["job_id"] != queued["job_id"]
+    assert resumed["scan"]["run_id"] == queued["scan"]["run_id"]
+
+
 def test_catalog_blocked_worker_never_finishes_successfully(monkeypatch):
     project = _project("blocked worker")
     queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)

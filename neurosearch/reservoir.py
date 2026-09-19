@@ -263,13 +263,45 @@ def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
             scan = json.loads(db.kv_get(_scan_key(project_id, catalog["id"])) or "{}")
         except ValueError:
             scan = {}
+        # Scan state owns cursor/coverage; the existing job ledger owns live
+        # retry, cancellation and failure truth.  Surface a small derived view
+        # so a retrying or cancelled job is never presented as a live scan.
+        job = db.get_job(scan.get("job_id")) if scan.get("job_id") else None
+        if job:
+            job_status = db.derived_status(job)
+            scan["job"] = {key: job.get(key) for key in ("id", "message", "not_before", "wait_reason")}
+            scan["job"]["status"] = job_status
+            if scan.get("status") != "complete":
+                scan["status"] = {
+                    "running": "scanning", "queued": "queued", "retry_wait": "retry_wait",
+                    "rate_limit_wait": "rate_limited", "provider_wait": "blocked",
+                    "budget_wait": "blocked", "cancelling": "cancelling",
+                    "cancelled": "cancelled", "failed": "failed",
+                }.get(job_status, scan.get("status"))
+                if job.get("not_before"):
+                    scan["retry_at"] = job["not_before"]
         catalog["scan"] = scan
         out.append(catalog)
     return out
 
 
+def cancel_subreddit_scan(project_id: str, collection_id: str) -> dict[str, Any]:
+    """Cancel the current run through the normal job ledger, never by editing scan state directly."""
+    _subreddit_catalog(project_id, collection_id)
+    state = _scan_state(db.kv_get(_scan_key(project_id, collection_id)))
+    job_id = state.get("job_id")
+    job = db.get_job(job_id) if job_id else None
+    if not job or job.get("payload", {}).get("catalog_run_id") != state.get("run_id"):
+        raise LookupError(collection_id)
+    if job.get("status") in db.JOB_TERMINAL:
+        return {"state": state, "job": job, "status": job["status"]}
+    status = db.request_cancel(job_id)
+    return {"state": state, "job": db.get_job(job_id), "status": status}
+
+
 def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id: str | None = None,
-                         expected_generation: int | None = None,
+                         expected_generation: int | None = None, expected_job_id: str | None = None,
+                         expected_job_run_id: str | None = None,
                          fetch_page: Callable[[str, str | None], tuple[list[dict[str, Any]], str | None]] | None = None) -> dict[str, Any]:
     """Fetch and atomically commit one subreddit listing page.
 
@@ -285,16 +317,26 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
         raise ValueError("subreddit catalog is missing its identity")
     key = _scan_key(project_id, collection_id)
     prior_raw = db.kv_get(key)
-    try:
-        prior = json.loads(prior_raw or "{}")
-    except ValueError:
-        prior = {}
+    prior = _scan_state(prior_raw)
     if expected_run_id and (prior.get("run_id") != expected_run_id or
                             (expected_generation is not None and prior.get("generation") != expected_generation)):
         return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
     if prior.get("status") == "complete":
         return {"collection_id": collection_id, "status": "complete", "new": 0, "total": int(prior.get("known_posts") or 0),
                 "reason": prior.get("reason"), "candidate_ids": []}
+    if expected_job_id and prior.get("job_id") != expected_job_id:
+        return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
+    if expected_job_run_id:
+        # A lease recovery claims the same durable job with a new run id.  Set
+        # that id before network work; an older worker's later CAS then loses
+        # and rolls its whole page back instead of committing after reclaim.
+        fenced = {**prior, "status": "scanning", "worker_run_id": expected_job_run_id,
+                  "updated_at": time.time()}
+        fenced_raw = json.dumps(fenced, sort_keys=True)
+        if prior.get("worker_run_id") != expected_job_run_id:
+            if not db.kv_compare_set(key, prior_raw, fenced_raw):
+                return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
+            prior, prior_raw = fenced, fenced_raw
     if not prior:
         t = time.time()
         prior = {"run_id": db.new_id(), "generation": 1, "mode": "initial", "status": "queued", "cursor": None,
@@ -334,7 +376,9 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     now = time.time()
     pages = int(prior.get("pages") or 0) + 1
     observed = int(prior.get("observed") or 0) + len(rows)
-    capped = pages >= SUBREDDIT_MAX_PAGES or observed >= SUBREDDIT_MAX_OBSERVATIONS
+    page_limit = int(prior.get("page_limit") or SUBREDDIT_MAX_PAGES)
+    observation_limit = int(prior.get("observation_limit") or SUBREDDIT_MAX_OBSERVATIONS)
+    capped = pages >= page_limit or observed >= observation_limit
     status = "complete" if not next_cursor or capped else "partial"
     terminal_reason = "application limit reached" if capped and next_cursor else terminal_reason
     known_posts = len(known) + new_count
@@ -349,7 +393,8 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
              "started_at": prior.get("started_at") or now, "updated_at": now, "finished_at": now if status == "complete" else None,
              "reason": terminal_reason, "access": "reddit_api", "endpoint": "new",
              "observed_oldest": oldest, "observed_newest": newest,
-             "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
+             "page_limit": page_limit, "observation_limit": observation_limit,
+             "error": None, "wait_reason": None, "retry_at": None}
     state_raw = json.dumps(state, sort_keys=True)
     try:
         with db.batch():
