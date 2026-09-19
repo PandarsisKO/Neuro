@@ -1,0 +1,70 @@
+{
+ "kind": "release-check",
+ "app_version": "0.63.94",
+ "git_sha": "9bc7962",
+ "timestamp": "2026-09-19T10:48:49",
+ "seconds": 254.9,
+ "checks": [
+  {
+   "check": "experimental flags off by default",
+   "result": "PASS",
+   "detail": "all off"
+  },
+  {
+   "check": "repository hygiene and architecture boundaries",
+   "result": "PASS",
+   "detail": "repo-check PASS"
+  },
+  {
+   "check": "Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity",
+   "result": "PASS",
+   "detail": "27 passed, 1 warning in 3.97s"
+  },
+  {
+   "check": "pytest: whole suite",
+   "result": "FAIL",
+   "detail": "                              {\"name\": \"Live one\", \"kind\": \"website\", \"url\": \"https://good.example/ok\", \"fit\": 4}])\n    \n        class R:\n            def __init__(self, status, url):\n                self.status, self.url, self.body, self.content_type, self.headers = status, url, b\"\", \"text/html\", {}\n        monkeypatch.setattr(safe_fetch, \"safe_fetch\",\n                            lambda url, **kw: R(404 if \"37signals.com/blog\" in url else 200, url))\n        out = discover.check_links(rows)\n>       assert out[\"checked\"] == 2 and out[\"dead\"] == 1 and out[\"by_status\"][\"not_found\"] == 1\nE       assert (0 == 2)\n\ntests/test_s12_recall_precision.py:243: AssertionError\n=============================== warnings summary ===============================\n.venv/lib/python3.14/site-packages/starlette/testclient.py:53\n  /private/tmp/neuro-repair-powMDK/worktree/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_core.py::test_ask_tool_loop - AssertionError: assert set() ...\nFAILED tests/test_s12_recall_precision.py::test_the_results_land_on_the_discovery_rows\n2 failed, 2064 passed, 1 warning in 248.33s (0:04:08)\n"
+  }
+ ],
+ "verdict": "FAIL",
+ "warnings": 0,
+ "baselines": {},
+ "flags": {
+  "NEUROSEARCH_PLANNER_V3": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "not promoted"
+  },
+  "NEUROSEARCH_FINDINGS_PREFILTER": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "deferred (economics)"
+  },
+  "NEUROSEARCH_RETRIEVAL_RERANK": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "killed (measured live)"
+  },
+  "NEUROSEARCH_CHAT_TAIL_BREAKPOINT": {
+   "current": "0",
+   "safe_default": "0",
+   "ok": true,
+   "status": "off by decision"
+  },
+  "NEUROSEARCH_SCHEMA_COMPAT_FALLBACK": {
+   "current": "",
+   "safe_default": "",
+   "ok": true,
+   "status": "rollback hatch"
+  },
+  "NEUROSEARCH_FAKE_AI": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "test mode (never in production)"
+  }
+ }
+}

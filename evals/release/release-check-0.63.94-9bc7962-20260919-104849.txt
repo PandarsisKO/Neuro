@@ -1,0 +1,28 @@
+Release check · app 0.63.94 @ 9bc7962 · 2026-09-19T10:48:49 · 254.9s
+  PASS  experimental flags off by default
+  PASS  repository hygiene and architecture boundaries
+  PASS  Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity
+  FAIL  pytest: whole suite  —                               {"name": "Live one", "kind": "website", "url": "https://good.example/ok", "fit": 4}])
+    
+        class R:
+            def __init__(self, status, url):
+                self.status, self.url, self.body, self.content_type, self.headers = status, url, b"", "text/html", {}
+        monkeypatch.setattr(safe_fetch, "safe_fetch",
+                            lambda url, **kw: R(404 if "37signals.com/blog" in url else 200, url))
+        out = discover.check_links(rows)
+>       assert out["checked"] == 2 and out["dead"] == 1 and out["by_status"]["not_found"] == 1
+E       assert (0 == 2)
+
+tests/test_s12_recall_precision.py:243: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/starlette/testclient.py:53
+  /private/tmp/neuro-repair-powMDK/worktree/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_core.py::test_ask_tool_loop - AssertionError: assert set() ...
+FAILED tests/test_s12_recall_precision.py::test_the_results_land_on_the_discovery_rows
+2 failed, 2064 passed, 1 warning in 248.33s (0:04:08)
+
+RELEASE CHECK FAIL

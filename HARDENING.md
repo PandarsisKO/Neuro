@@ -2358,3 +2358,22 @@ kind of manufactured-significance call the mission's quality rules warn against.
 (sequential filter-then-extract batches) is not actually how findings.extract runs in production, that
 background variant may not matter — that's Kyle's call to make by reading this entry, not mine to assume.
 `.env` unchanged; `findings.extract` stays unfiltered.
+
+## Project-scoped provenance assertions and frozen validation — 2026-09-19
+
+At base `c10f0b0`, the full frozen suite passed 2,063 tests and failed only the core tool loop and S12 discovery
+row test. A reduced file-collection reproducer traced both to CHR0's import-time fake-AI setting; selecting
+individual pytest node IDs can change import order and mask it. SUB-R0 owns the shared-harness correction.
+
+Independently, collecting/running `tests/test_s4_source_capability.py` before
+`tests/test_s55_reservoir_rescan.py`, selecting `where_to_look_recommends_a_proven_creator or origin_carries`,
+failed S55's origin assertion. The test queried by global candidate ID alone and read another project's origin.
+Production provenance was correct: `candidate_projects` is keyed by candidate **and project**, and retains each
+project's original discovery context. `9bc7962` adds the missing predicate and a cross-project distinct-origin
+regression. S55 passes 15/15; S4+S55 passes 43/43. No runtime or protected-baseline change was needed.
+
+Normal release-check on that frozen candidate passed Foundation 27/27, then failed with 2,064 passed and the same
+two harness failures. Fake Tier 1 and repo-check passed separately. The FAIL artifact is retained at
+`evals/release/release-check-0.63.94-9bc7962-20260919-104849.json`. This is a test-repair checkpoint, not feature
+acceptance or a release. S68's earlier source-inspection failure did not reproduce in frozen runs and is not
+proven to be order-dependent; prior concurrent source changes make its old result unsuitable as a baseline.

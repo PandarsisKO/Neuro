@@ -6838,3 +6838,38 @@ not a speculative production change.
 The narrow light/dark visual check described above passed, so CHR2 is now closed for the tested release scope.
 The only unclaimed coverage is a broader physical-device/mobile matrix beyond the verified 500×657 viewport;
 that is not a blocker for the shipped CHR2 behavior.
+
+## Independent repair audit — 2026-09-19, source-bound baseline
+
+Kyle requested inspection and autonomous repairs. This pass used a fresh checkout of `c10f0b0` at
+`/private/tmp/neuro-repair-powMDK/worktree`, branch `codex/release-isolation-repair`, with its own editable
+install/CLI and the shared environment's dependency versions. No `.env`, live DB, cookies or media were copied.
+Every validation command disabled dotenv, used private data, and removed provider keys from its environment.
+
+- Untouched full baseline: **2,063 passed, 2 failed** in 277.59s. Only `test_ask_tool_loop` and S12's
+  `test_the_results_land_on_the_discovery_rows` failed. Collecting CHR0 before those modules reproduces both:
+  CHR0 enables fake AI at import, and its fixture restores the already-contaminated singleton afterward.
+  Selecting individual `::test_name` nodes can change import order and conceal this defect.
+- S68's proposed-source inspection passed in both the frozen full run and reduced runs. The earlier claim that
+  it was proven to be an order failure is withdrawn. Earlier shared-checkout validation overlapped changing
+  commits; release reporting also reads Git SHA at completion. Those runs cannot establish a frozen baseline.
+- A separate S4 → S55 reproducer exposed a test query missing `project_id`: it could read another project's
+  `exploration` origin for the same global candidate. Fixed in isolated `9bc7962`, delivered test-only as
+  `149b9c4`. Added a two-project regression preserving distinct origins. S55 alone **15 passed**; full S4+S55
+  **43 passed** (the reduced predecessor case was 1 failed/1 passed before repair). Production code unchanged.
+- Fake Tier 1 and repo-check passed. Normal release-check on frozen `9bc7962` passed Foundation **27/27** and
+  reached **2,064 passed, the same 2 failed** in its full suite. Verdict remains **FAIL**, not a released app.
+  Source-bound artifact: `evals/release/release-check-0.63.94-9bc7962-20260919-104849.json` (matching text saved).
+
+The active `Update subreddit catalog plan` task independently owns SUB-R0 harness fixes and subsequent rungs;
+the reproducers and test-only commit were sent there to reconcile, not overwrite, overlapping work. No mission
+rung is closed by this audit. CHR2 is not reopened. No live restart, provider call or direct live-DB access occurred.
+The 401/403 popup/background/form/pending-poll helpers also passed eight mocked executable checks; this is not
+new live-Chrome acceptance. Course Scanner's recorded reopening was **after cancellation**, not proof of reopening
+during an active scan. Both Reddit credential-presence checks were false; real-access acceptance remains unproven.
+
+Reproduction environment: `PYTHON_DOTENV_DISABLED=true`, `NEUROSEARCH_FAKE_AI=0` (1 only for separate Tier 1),
+private `NEUROSEARCH_DATA_DIR` beneath `/private/tmp/neuro-repair-powMDK`, and unset `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY`. Commands from that checkout: `.venv/bin/python -m pytest tests -q`, focused S55 and combined
+S4/S55 pytest, `.venv/bin/neurosearch eval`, `repo-check`, and normal `release-check` (no skips). Logs are in the
+parent scratch directory. The next gate is the active task's repaired, frozen full suite and normal release-check.
