@@ -1,14 +1,21 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
-Status: ACTIVE — offline implementation and deterministic release candidate verified; real Reddit/browser acceptance and live delivery remain open. NOT LIVE-RELEASE-VERIFIED.
+**Current implementation pointer (2026-09-19):** shared main is intentionally not runtime-delivered.
+Continue from `codex/subreddit-integrated` (`d2d6d1e`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
+and its version of this same canonical mission. It reconciles the previously undelivered d318297 work and
+additional safety repairs; focused gate 200 passed, frozen full release PASS with 2,152 tests. Follow-on UI
+ownership/escaping repairs are being gated separately. HANDOFF records the delivery boundary.
+
+Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1–SUB-R9 acceptance remains open. NOT FEATURE-COMPLETE OR LIVE-RELEASE-VERIFIED.
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
 Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Original planning/execution baselines and worktrees are historical; resume from then-current `main` in isolation.
 
 **Current continuation (2026-09-19):** `codex/subreddit-integrated` reconciles the undelivered `d318297`
 implementation with independently verified R0/R1/R2 repairs. HANDOFF's reconciled continuation is the restart
-point. The combined focused gate passed 200 tests; its new frozen release gate is pending. Runtime work is
-authorized by Kyle's later continuation instruction, superseding historical plan-only text below. R8a's
-unmeasured foreground/performance portions, R8b and R9 remain open; do not equate deterministic tests with them.
+point. The combined source passed its frozen release check (2,152 tests, Tier 1, Foundation and recovery).
+Runtime work is authorized by Kyle's later continuation instruction, superseding historical plan-only text
+below. Synthetic paired performance evidence is recorded in HARDENING; R7 interaction/visual work, R8a's
+remaining operational proof, R8b and R9 remain open. Deterministic tests are not live acceptance.
 
 Additional repairs: admission and catalog actions take the actual writer before validating authority;
 attachment keyset batches commit separately; conflicting Source identities are refused, not merged.
