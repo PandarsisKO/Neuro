@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from neurosearch import db, findings, ingest, jobs, staleness
+from neurosearch import __version__, db, findings, ingest, jobs, staleness
 
 
 @pytest.fixture
@@ -148,4 +148,4 @@ def test_the_ui_offers_now_tonight_and_overnight_and_hides_scheduler_internals(p
         assert internal not in re.sub(r"/\*.*?\*/|//[^\n]*", "", l40), internal
     # a scheduled job is labelled as such in the console, with its own action
     assert "scheduled: 'scheduled'" in js and "runNowJob(" in js
-    assert 'name="neurosearch-ui-version" content="0.63.92"' in html
+    assert f'name="neurosearch-ui-version" content="{__version__}"' in html
