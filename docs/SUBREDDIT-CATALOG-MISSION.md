@@ -1,10 +1,11 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
 **Current implementation pointer (2026-09-19):** shared main is intentionally not runtime-delivered.
-Continue from `codex/subreddit-integrated` (`d2d6d1e`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
+Continue from `codex/subreddit-integrated` (runtime `411480b`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
 and its version of this same canonical mission. It reconciles the previously undelivered d318297 work and
-additional safety repairs; focused gate 200 passed, frozen full release in progress. HANDOFF records the
-delivery boundary. The remaining main text below is the historical plan baseline, not current implementation.
+additional safety repairs; focused gate **210 passed**, frozen normal release **PASS (2,162 tests)**, separate
+fake Tier 1 PASS. HANDOFF records exact evidence and remaining R7/R8a/R8b/R9 work. Real Reddit and human visual
+acceptance are not established. The remaining main text below is historical, not current implementation.
 
 Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1–SUB-R9 acceptance remains open. NOT FEATURE-COMPLETE OR LIVE-RELEASE-VERIFIED.
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.

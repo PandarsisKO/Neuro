@@ -3,17 +3,26 @@
 ## Current continuation pointer — 2026-09-19
 
 Runtime remains on shared `main`; **do not restart from its stale R1-next checklist below**. The prepared,
-reconciled candidate is `d2d6d1e` on `codex/subreddit-integrated`, at
+reconciled runtime candidate is `411480b` on `codex/subreddit-integrated`, at
 `/private/tmp/neuro-repair-powMDK/integrated-worktree`. Read that checkout's HANDOFF and canonical mission.
 It preserves the later, undelivered `codex/subreddit-r1` (`d318297`) work plus independently tested safety
 repairs. The earlier `codex/subreddit-continuation` / `codex/subreddit-scan-lifecycle` branches are historical
 checkpoints, not competing versions to land. Keep their evidence; continue only from the integrated candidate.
 
-Combined focused gate: 200 passed. A new frozen normal release-check is running on `d2d6d1e`; prior passes
-on `279940d` (2,088 tests) and `9db6b35` (2,123) are not evidence for the combined tree. No runtime delivery,
-version bump, real Reddit access or live/browser acceptance is claimed. Supported Health found two queued and
-one running Claims-maintenance job, with no stale leases. No live jobs were cancelled or DB opened. This
-pointer-only main update does not reload Python. R8a remaining performance proof, R8b and R9 stay open.
+**Frozen normal release-check PASS on `411480b`**: 2,162 tests, Foundation, Tier 1, repo-check, migrations,
+recovery and backup/restore. Start/end SHA `411480b895da698e8e3fa8f008f8c474856fd3e5`; 210 focused tests and
+separate fake Tier 1 also pass. Artifact in that branch:
+`evals/release/release-check-0.63.94-411480b-20260919-141633.json`. Only documentation/evidence follows it.
+The candidate includes server-side ownership/claim/retry repairs plus escaped scan text, fenced async UI
+responses and stale-action refusal. HARDENING records paired 5,000-post timings and real-browser fixture checks.
+
+**Next:** finish R7's arbitrary selection and draft/focus preservation; clear the retained library panel on
+project switches; correct filtered-count wording and narrow-toolbar layout; complete remaining R8a operational
+proof. Search and light/dark rendering were checked in an isolated browser, NOT with real Reddit data. R8b
+still needs approved access, real capture and required human visual acceptance; R9 version/delivery is open.
+Do not call the feature complete or switch Reddit retrieval architecture without approval. The live 0.63.94
+app is unchanged: fake AI off, integrity/verified backup healthy, two queued/one running Claims jobs, no stale
+leases. No live DB opening, job cancellation, reload, capture or provider spend. This main update is docs only.
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
