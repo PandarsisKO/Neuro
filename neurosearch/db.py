@@ -408,6 +408,14 @@ CREATE TABLE IF NOT EXISTS candidates (
     UNIQUE (platform, external_id)
 );
 CREATE INDEX IF NOT EXISTS ix_candidates_source ON candidates(source_id);
+CREATE TABLE IF NOT EXISTS collection_candidates (
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    candidate_id  TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    first_seen_at REAL NOT NULL,
+    last_seen_at  REAL NOT NULL,
+    PRIMARY KEY (collection_id, candidate_id)
+);
+CREATE INDEX IF NOT EXISTS ix_collection_candidates_candidate ON collection_candidates(candidate_id, collection_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS candidates_fts USING fts5(title, description, creator, content='candidates', content_rowid='rowid');
 CREATE TRIGGER IF NOT EXISTS candidates_ai AFTER INSERT ON candidates BEGIN
     INSERT INTO candidates_fts(rowid, title, description, creator) VALUES (new.rowid, new.title, new.description, new.creator);
@@ -2013,6 +2021,45 @@ def upsert_collection(kind: str, external_id: str | None, url: str | None, title
 def link_source_collection(source_id: str, collection_id: str) -> None:
     with tx() as conn:
         conn.execute("INSERT OR IGNORE INTO source_collections VALUES (?,?)", (source_id, collection_id))
+
+
+def link_collection_candidates(collection_id: str, candidate_ids: Iterable[str]) -> int:
+    """Record durable catalog membership without turning candidates into Sources.
+
+    `source_collections` has deliberately different semantics: every attached project receives those Sources.
+    A catalog is only a set of possible captures, so its membership lives here and is reconciled into each
+    project's Candidate Index without affecting project_sources.
+    """
+    ids = list(dict.fromkeys(candidate_ids))
+    if not ids:
+        return 0
+    t = now()
+    with tx() as conn:
+        if not conn.execute("SELECT 1 FROM collections WHERE id=?", (collection_id,)).fetchone():
+            raise KeyError(collection_id)
+        conn.executemany(
+            "INSERT INTO collection_candidates (collection_id, candidate_id, first_seen_at, last_seen_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(collection_id, candidate_id) DO UPDATE SET last_seen_at=excluded.last_seen_at",
+            [(collection_id, cid, t, t) for cid in ids],
+        )
+        # A newly remembered catalog row becomes known to every project that explicitly attached this catalog.
+        # INSERT OR IGNORE preserves each project's state, relevance, reason and first-seen timestamp.
+        conn.execute(
+            "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
+            "SELECT cc.candidate_id, pc.project_id, 'available', ?, ?, ? "
+            "FROM collection_candidates cc JOIN project_collections pc ON pc.collection_id=cc.collection_id "
+            "WHERE cc.collection_id=?",
+            (json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id),
+        )
+    return len(ids)
+
+
+def collection_candidate_ids(collection_id: str) -> list[str]:
+    """Candidate membership for a durable catalog. This never implies Source ownership."""
+    return [r["candidate_id"] for r in connect().execute(
+        "SELECT candidate_id FROM collection_candidates WHERE collection_id=? ORDER BY first_seen_at, candidate_id",
+        (collection_id,),
+    ).fetchall()]
 
 
 def list_collections() -> list[dict[str, Any]]:
@@ -4181,6 +4228,16 @@ def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
         # columns. INSERT OR IGNORE leaves an existing row's policy untouched on a re-attach.
         conn.executemany("INSERT OR IGNORE INTO project_collections (project_id, collection_id) VALUES (?,?)",
                          [(project_id, c) for c in collection_ids])
+        # Catalog membership is candidate-only. A project attaching to an existing catalog should be able to
+        # review its remembered rows immediately, while never inheriting another project's captured Sources.
+        t = now()
+        for collection_id in dict.fromkeys(collection_ids):
+            conn.execute(
+                "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
+                "SELECT cc.candidate_id, ?, 'available', ?, ?, ? FROM collection_candidates cc "
+                "WHERE cc.collection_id=?",
+                (project_id, json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id),
+            )
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
 
 

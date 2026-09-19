@@ -37,6 +37,27 @@ LOW_RELEVANCE = 50            # a ranked score below this is a "skipped for low 
 CONTENT_TYPE = {"youtube": "video", "instagram": "post", "podcast": "podcast", "web": "page", "media": "video", "document": "document", "book": "book"}
 
 
+def _source_for_candidate_identity(platform: str, external_id: str) -> dict[str, Any] | None:
+    """Find the Source identity that represents this candidate, if it already exists.
+
+    Reddit listings were introduced before Community Sources and use the global candidate key
+    ``reddit:<post-id>`` under platform ``reddit``. A captured Reddit thread is deliberately a
+    ``community`` Source with the same external id. This is the one explicit bridge between
+    those two canonical owners. Other platforms already use the same candidate and Source identity, and
+    retain their existing explicit resolution behavior.
+    """
+    if platform == "reddit" and external_id.startswith("reddit:"):
+        return db.find_source("community", external_id)
+    return None
+
+
+def _candidate_identity_for_source(platform: str, external_id: str) -> tuple[str, str]:
+    """Map the Community Source representation back to the existing Reddit candidate key."""
+    if platform == "community" and external_id.startswith("reddit:"):
+        return "reddit", external_id
+    return platform, external_id
+
+
 def remember(entries: list[dict[str, Any]], platform: str, project_id: str | None, origin: dict[str, Any]) -> list[str]:
     """Record enumerated entries as global candidates (+ a project relationship when a project is in scope).
     entries: [{external_id, url, title?, description?, creator?, published_at?, duration?, view_count?, canonical_url?, source_id?}].
@@ -48,13 +69,19 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
             ext = e.get("external_id")
             if not ext:
                 continue
+            # Discovery can happen after an individual thread was captured through the browser or a direct URL.
+            # Store that existing global Source now rather than forcing the next Capture click to rediscover it.
+            source = _source_for_candidate_identity(platform, ext)
+            source_id = e.get("source_id") or (source or {}).get("id")
             r = conn.execute("SELECT * FROM candidates WHERE platform=? AND external_id=?", (platform, ext)).fetchone()
             if r:
                 cid = r["id"]
                 patch: dict[str, Any] = {"last_seen_at": t}
-                for k in ("title", "description", "creator", "published_at", "duration", "view_count", "canonical_url", "source_id"):
+                for k in ("title", "description", "creator", "published_at", "duration", "view_count", "canonical_url"):
                     if e.get(k) is not None and not r[k]:              # fill what is empty; never overwrite what we knew
                         patch[k] = e[k] if k != "description" else str(e[k])[:2000]
+                if source_id and not r["source_id"]:
+                    patch["source_id"] = source_id
                 conn.execute("UPDATE candidates SET " + ", ".join(f"{k}=?" for k in patch) + " WHERE id=?", (*patch.values(), cid))
             else:
                 cid = db.new_id()
@@ -62,7 +89,7 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
                              "content_type, language, first_seen_at, last_seen_at, source_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (cid, platform, ext, e.get("canonical_url"), e.get("url") or "", e.get("title"), (e.get("description") or "")[:2000] or None, e.get("creator"),
                               e.get("published_at"), e.get("duration"), e.get("view_count"), e.get("content_type") or CONTENT_TYPE.get(platform, "page"),
-                              e.get("language"), t, t, e.get("source_id")))
+                              e.get("language"), t, t, source_id))
             if project_id:
                 conn.execute("INSERT INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) VALUES (?,?,?,?,?,?) "
                              "ON CONFLICT(candidate_id, project_id) DO UPDATE SET updated_at=excluded.updated_at, origin=COALESCE(candidate_projects.origin, excluded.origin)",
@@ -104,10 +131,11 @@ def mark_by_source(project_id: str, source_ids: list[str], state: str, reason: s
 
 def resolve_acquired(platform: str, external_id: str, source_id: str) -> None:
     """A source was created by ANY path: the matching candidate (if any) now points at it."""
+    candidate_platform, candidate_external_id = _candidate_identity_for_source(platform, external_id)
     with db.tx() as conn:
-        conn.execute("UPDATE candidates SET source_id=?, last_verified_at=? WHERE platform=? AND external_id=? AND source_id IS NULL", (source_id, time.time(), platform, external_id))
+        conn.execute("UPDATE candidates SET source_id=?, last_verified_at=? WHERE platform=? AND external_id=? AND source_id IS NULL", (source_id, time.time(), candidate_platform, candidate_external_id))
         conn.execute("UPDATE candidate_links SET state='satisfied', updated_at=? WHERE state='open' AND candidate_id IN (SELECT id FROM candidates WHERE platform=? AND external_id=?)",
-                     (time.time(), platform, external_id))          # B3: the need this source served is met
+                     (time.time(), candidate_platform, candidate_external_id))          # B3: the need this source served is met
 
 
 def dismiss(project_id: str, candidate_id: str, reason: str | None) -> int:
@@ -128,11 +156,14 @@ def capture(candidate_id: str, project_id: str, *, reason: str | None = None) ->
     c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone())
     if not c:
         raise LookupError(candidate_id)
-    if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
+    source = db.get_source(c["source_id"]) if c.get("source_id") else _source_for_candidate_identity(c["platform"], c["external_id"])
+    if source and source.get("status") == "ready":
         from . import identity
-        r = identity.attach_existing(project_id, c["source_id"])          # already owned: attach, no acquisition
+        if not c.get("source_id"):
+            resolve_acquired(source["platform"], source["external_id"], source["id"])
+        r = identity.attach_existing(project_id, source["id"])          # already owned: attach, no acquisition
         mark(project_id, [candidate_id], "acquired", "attached from the library")
-        return {"ok": True, "job_id": None, "source_id": c["source_id"], "identity": r.state, "url": c["url"]}
+        return {"ok": True, "job_id": None, "source_id": source["id"], "identity": r.state, "url": c["url"]}
     from . import jobs
     job = jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False,
                                       "candidate_id": candidate_id, "reason": reason})

@@ -44,7 +44,7 @@ CASES = {
     "https://example.com/sitemap.xml": ("sitemap", "explore"),
     "https://github.com/anthropics/claude-code": ("repository", "page"),
     "https://github.com/anthropics/claude-code/blob/main/README.md": ("page", "page"),
-    "https://www.reddit.com/r/smallbusiness/": ("community", None),
+    "https://www.reddit.com/r/smallbusiness/": ("subreddit", "explore"),
     "https://www.reddit.com/r/smallbusiness/comments/abc/how_i_bought/": ("page", "page"),
     "https://www.instagram.com/benkellyone/": ("instagram_profile", None),
     "https://www.instagram.com/reel/Cxyz123/": ("instagram_post", "ingest"),
@@ -87,7 +87,10 @@ def test_containers_are_never_fetched_as_pages_unless_chosen():
     assert r2["queued"] and r2["url"].rstrip("/") == "https://irs.gov"
     assert db.get_job(r2["job_id"])["payload"]["review"] is False
     comm = resources.classify("https://www.reddit.com/r/smallbusiness/")
-    assert resources.route(comm, pid)["queued"] is False                                                    # no default → nothing happens
+    catalog = resources.route(comm, pid)
+    assert catalog["queued"] is False and catalog["catalog"] is True
+    assert db.get_collection(catalog["collection_id"])["kind"] == "subreddit"
+    assert not db.connect().execute("SELECT 1 FROM sources WHERE platform='community'").fetchone()
     with pytest.raises(ValueError):
         resources.route(comm, pid, "ingest")                                                                 # not an action for a community
     ch = resources.route(resources.classify("https://www.youtube.com/@BenKelly"), pid, since_years=1, max_videos=5)
@@ -108,7 +111,7 @@ def test_api_classify_and_add(client):
     r = client.post(f"/api/projects/{pid}/add", json={"input": "irs.gov"}, headers=H)                    # default = explore (G3)
     assert r.json()["items"][0]["result"]["action"] == "explore" and db.get_job(r.json()["jobs"][0])["kind"] == "explore"
     r = client.post(f"/api/projects/{pid}/add", json={"input": "https://www.reddit.com/r/smallbusiness/"}, headers=H)
-    assert r.json()["items"][0]["result"]["queued"] is False and not r.json()["jobs"]
+    assert r.json()["items"][0]["result"]["catalog"] is True and not r.json()["jobs"]
     r = client.post(f"/api/projects/{pid}/add", json={"input": "https://github.com/anthropics/claude-code", "action": "explore"}, headers=H)
     assert r.json()["items"][0]["result"]["unavailable"] is True
 
@@ -118,7 +121,7 @@ def test_chat_pasted_container_is_detected_not_ingested():
     before = len(db.list_jobs(200))
     res = qa.ask("https://www.reddit.com/r/smallbusiness/", project_id=pid, conversation_id=db.new_id())
     assert len(db.list_jobs(200)) == before                                                                 # nothing queued
-    assert res["ingest_jobs"][0]["detected"]["kind"] == "community" and "Community detected" in res["answer"]
+    assert res["ingest_jobs"][0]["detected"]["kind"] == "subreddit" and "Subreddit detected" in res["answer"]
     res2 = qa.ask("https://youtu.be/dQw4w9WgXcQ", project_id=pid, conversation_id=db.new_id())
     assert res2["ingest_jobs"][0]["job_id"] and "Queued 1 link" in res2["answer"]
     res3 = qa.ask("https://www.youtube.com/@BenKelly", project_id=pid, conversation_id=db.new_id())

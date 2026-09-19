@@ -28,6 +28,8 @@ from . import db
 log = logging.getLogger("neurosearch.community")
 
 PLATFORM = "community"
+SUBREDDIT_HOSTS = ("reddit.com", "www.reddit.com", "old.reddit.com")
+SUBREDDIT_NAME = re.compile(r"^[a-z0-9_]{3,21}$", re.I)
 # Reddit's edge refuses clients that announce a bot token in the UA (the app's normal UA ends with "NeuroSearch/1.0") — the
 # listing endpoint is public, but it is served to browsers; we identify as the browser the user would use.
 BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -49,6 +51,41 @@ NUMBERS = re.compile(r"(\$\s?[\d,]+(\.\d+)?k?|\b\d+(\.\d+)?\s?(%|percent|hours?|
 URL = re.compile(r"https?://[^\s)\]>]+?(?=[.,;:!?]*(?:\s|$|[)\]>]))")
 INJECTION = re.compile(r"(ignore (all |the )?(previous|prior|above) instructions|you are (now )?(an?|the) (assistant|ai|model)|system prompt|call the tool|record_fact\(|"
                        r"disregard (your|the) (rules|instructions)|as an ai language model)", re.I)
+
+
+# ---------------------------------------------------------------- durable subreddit catalog identity
+
+def subreddit_name(url: str) -> str | None:
+    """Return the canonical subreddit identity only for a subreddit container URL.
+
+    A thread, multi-subreddit, profile, lookalike host, or malformed path is not a catalog. Thread URLs keep
+    their existing Community Source route; this helper deliberately does no network work.
+    """
+    u = urlparse(url)
+    host = (u.hostname or "").lower().rstrip(".")
+    segs = [s for s in u.path.split("/") if s]
+    if host not in SUBREDDIT_HOSTS or len(segs) != 2 or segs[0].lower() != "r":
+        return None
+    name = segs[1].lower()
+    return name if SUBREDDIT_NAME.fullmatch(name) else None
+
+
+def subreddit_url(name: str) -> str:
+    """The one persisted URL form for a subreddit catalog."""
+    if not SUBREDDIT_NAME.fullmatch(name):
+        raise ValueError("invalid subreddit name")
+    return f"https://www.reddit.com/r/{name.lower()}/"
+
+
+def attach_subreddit_catalog(project_id: str | None, url: str) -> dict[str, Any]:
+    """Create or attach a durable catalog without reading Reddit or creating a Source."""
+    name = subreddit_name(url)
+    if not name:
+        raise ValueError("not a subreddit container URL")
+    catalog = db.upsert_collection("subreddit", name, subreddit_url(name), f"r/{name}")
+    if project_id:
+        db.add_project_collections(project_id, [catalog["id"]])
+    return catalog
 
 
 # ---------------------------------------------------------------- adapters (metadata-cheap, all through safe_fetch)

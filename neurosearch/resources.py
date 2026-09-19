@@ -24,12 +24,12 @@ from urllib.parse import parse_qs, urlparse
 from . import media
 
 ITEM_KINDS = ("page", "document", "spreadsheet", "image", "video", "media", "instagram_post")
-COLLECTION_KINDS = ("channel", "playlist", "feed", "sitemap", "folder")
+COLLECTION_KINDS = ("channel", "playlist", "feed", "sitemap", "folder", "subreddit")
 CONTAINER_KINDS = ("website", "website_section", "repository", "community", "instagram_profile")
 REQUEST_KINDS = ("search_query", "work_identity")
 KINDS = ITEM_KINDS + COLLECTION_KINDS + CONTAINER_KINDS + REQUEST_KINDS
 
-EXPLORABLE_NOW: tuple[str, ...] = ("channel", "playlist", "instagram_profile", "website", "website_section", "sitemap", "feed")   # enumerators exist (G3)
+EXPLORABLE_NOW: tuple[str, ...] = ("channel", "playlist", "instagram_profile", "website", "website_section", "sitemap", "feed", "subreddit")
 EXPLORE_LATER: tuple[str, ...] = ("repository", "community", "folder")   # repository: G3 follow-up · community: G7
 
 DOC_EXT = (".pdf", ".docx", ".doc", ".pptx", ".txt", ".md", ".rtf", ".epub")
@@ -138,6 +138,17 @@ def classify(text: str) -> Classification:
                                   actions=[_act("explore", "Explore relevant files", False, "Repository exploration ships in Rung G3"), _act("page", "Add the repository page only")], default_action="page", host=host)
         return Classification("page", raw, url=url, label="Repository file/page detected", detail="One page from a repository.", actions=[_act("page", "Add page")], default_action="page", host=host)
     # --- communities
+    # A subreddit is a reusable catalog, distinct from both an individual Reddit thread and the broad
+    # cross-platform "community" container. Canonicalizing here makes pasted URL variants converge before
+    # any database write or future scan.
+    if host in ("reddit.com", "www.reddit.com", "old.reddit.com"):
+        from . import community
+        subreddit = community.subreddit_name(url)
+        if subreddit:
+            canonical = community.subreddit_url(subreddit)
+            return Classification("subreddit", raw, url=canonical, identifier=subreddit, label="Subreddit detected",
+                                  detail="A subreddit is a reusable catalog. Posts are remembered for review; no discussion is read until you capture it.",
+                                  actions=[_act("explore", "Set up catalog")], default_action="explore", host=host)
     if any(host == h or host.endswith("." + h) for h in COMMUNITY_HOSTS):
         is_thread = "/comments/" in low or "item?id=" in (u.query or "") or "/questions/" in low or "/t/" in low
         if not is_thread:
@@ -206,6 +217,14 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
         return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url}
     if action == "explore":
         assert c.url and (c.kind in EXPLORABLE_NOW or c.kind == "search_query")
+        if c.kind == "subreddit":
+            # SUB2: the durable container can be attached now, but enumeration belongs to SUB3. This is
+            # deliberately metadata-only and creates neither a Source nor a job.
+            from . import community
+            catalog = community.attach_subreddit_catalog(project_id, c.url)
+            return {"kind": c.kind, "action": action, "queued": False, "catalog": True,
+                    "collection_id": catalog["id"], "url": catalog["url"],
+                    "note": "Subreddit catalog is ready. Catalog scanning will be available after the resumable scan gate ships."}
         if c.kind in ("website", "website_section", "sitemap", "feed"):
             job = jobs.enqueue("explore", {"url": c.url, "kind": c.kind, "tags": tags or [], "project_id": project_id, "max_items": max_videos or None})
             return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url, "review": True}
