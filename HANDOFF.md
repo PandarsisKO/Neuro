@@ -1,5 +1,26 @@
 # HANDOFF — shared Codex / Claude delivery mechanics
 
+## Active continuous-execution mission — 2026-09-19
+
+Kyle requested a mission and ladder for the recommended continuation. The canonical sequence is now
+[docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md): CE0 baseline → screenshot/auth/course
+acceptance and scoped release → CHR3 whole-chat refresh → existing-feature acceptance; subreddit R8b/R9 resumes
+conditionally when approved access is available. **CE0 is next.** This is a planning checkpoint, not a runtime
+execution or a feature-completion claim. CHR3 is included in the requested continuation; routine rung progression
+does not need another approval, while uncovered spend and genuine human judgments retain their boundaries.
+
+The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
+independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current
+main and reconcile only needed existing harness repairs. Do not silently land the blocked catalog to get a green
+baseline. CHR2 remains closed. The new mission owns sequencing; existing feature docs own their acceptance rules.
+
+Planning evidence: source-only `.venv/bin/python` calling `repo_check.check_repo()` passed with no findings
+before and after edits. Local mission links and named test paths resolve; CE0–CE11 table entries each have one
+matching detailed section; `git diff --check` passed. Touched scope is the new mission plus the scheduler,
+execution-ladder, state, chat-plan and handoff pointers. No runtime files, existing release evidence, untracked
+user material, live configuration or jobs changed. Full runtime tests were not rerun for this documentation-only
+checkpoint, and no new runtime release is claimed.
+
 ## Current continuation pointer — 2026-09-19
 
 Runtime remains on shared `main`; **do not restart from its stale R1-next checklist below**. The prepared,

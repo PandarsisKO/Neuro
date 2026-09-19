@@ -1,6 +1,9 @@
 # Conversation Delta / Chat Refresh — plan
 
-**Status (2026-09-18): CHR0 shipped. CHR1 shipped and closed at `308f9d3`. CHR2 in progress.** This is no longer a planning-only document.
+**Status (2026-09-19): CHR0 and CHR1 shipped; CHR2 closed at its verified visual checkpoint (`7b43dc8`).
+CHR3 is QUEUED in [the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE5–CE8.** Kyle's request
+for that continuation supersedes the earlier stop-after-CHR2 boundary for this next feature. Its design remains
+here; implementation has not started. No new provider budget is authorized by the plan.
 
 Kyle: *"I might not want to retype out a chat, just see if the intelligence surfaces new information I should be
 aware of based on new findings."* And, sharpening it: *"A refresh is valuable when it saves me from repeating an
