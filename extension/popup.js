@@ -3,6 +3,11 @@ let cfg = {}, result = null;
 
 let WANTED = null;   // the app's waiting capture request for the current tab, if any
 
+function authMessage(status) {
+  if (status !== 401 && status !== 403) return null;
+  return `Neuro Search rejected the saved app password (HTTP ${status}). Open Settings → Change app address / password and save it again.`;
+}
+
 function canon(u) {
   try { const x = new URL(u); x.hash = ''; x.search = ''; return (x.origin + x.pathname).replace(/^https?:\/\/(www\.|old\.|new\.)?/, 'https://').replace(/\/$/, ''); } catch (e) { return u; }
 }
@@ -11,9 +16,12 @@ async function load() {
   cfg = await chrome.storage.local.get(['appUrl', 'token', 'lastProject']);
   if (cfg.appUrl && cfg.token) {
     $('#setup').style.display = 'none'; $('#main').style.display = ''; $('#cfg').textContent = cfg.appUrl;
+    const savedAuthError = (await chrome.storage.local.get(['authError'])).authError;
+    if (savedAuthError) $('#pageMsg').innerHTML = `<span class="bad">${esc(savedAuthError)}</span>`;
     try {
       const ps = await api('/api/projects');
       $('#pageProject').innerHTML = ps.map(p => `<option value="${p.id}" ${p.id === cfg.lastProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('') || '<option value="">(create a project in the app first)</option>';
+      await chrome.storage.local.remove(['authError', 'authErrorAt']);
     } catch (e) { $('#pageMsg').textContent = 'Could not load projects: ' + e.message; }
     try {
       // B1: does the app want THIS page? (one click, the project and reason already known)
@@ -33,7 +41,11 @@ async function load() {
         $('#queue').innerHTML = `${others.length} more page${others.length === 1 ? '' : 's'} waiting for your browser — next: <a href="${esc(others[0].canonical_url || others[0].url)}" target="_blank">${esc(others[0].title || others[0].canonical_url || others[0].url)}</a>`;
       }
       chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
-    } catch (e) { /* no capture context: the ordinary buttons still work */ }
+    } catch (e) {
+      // Offline/background polling is normally quiet, but an explicit auth refusal is actionable:
+      // otherwise an expired token looks exactly like an app with no pending captures.
+      if (e.authMessage) $('#pageMsg').textContent = e.authMessage;
+    }
     refreshScan();
     refreshCapture();
   }
@@ -316,7 +328,12 @@ $('#cancelSetup').onclick = () => { $('#setupMsg').textContent = ''; $('#setup')
 
 async function api(path, opts = {}) {
   const r = await fetch(cfg.appUrl + path, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.token, ...(opts.headers || {}) } });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  if (!r.ok) {
+    const e = new Error(authMessage(r.status) || (await r.json().catch(() => ({}))).error || r.statusText);
+    e.status = r.status;
+    e.authMessage = authMessage(r.status);
+    throw e;
+  }
   return r.json();
 }
 
@@ -339,8 +356,10 @@ async function refreshScan() {
 
 const ACTIVE = new Set(['finding', 'scanning']);
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-const OUTCOME_WORDS = { video_found: 'video ready', multiple_videos: 'several videos', no_video: 'no video on this lesson', needs_user_play: 'video appears only after you press play',
+const OUTCOME_WORDS = { video_found: 'video ready', multiple_videos: 'several videos', document_found: 'document ready', no_video: 'no video or document on this lesson', needs_user_play: 'video appears only after you press play',
                         blocked: 'not readable with your access', scan_failed: 'could not be read', not_scanned: 'not reached' };
+const DOC_WORDS = { gdrive: 'Google Drive file', gdocs: 'Google Doc', gsheets: 'Google Sheet', gslides: 'Google Slides', dropbox: 'Dropbox file', pdf: 'PDF', docx: 'Word document', doc: 'Word document', xlsx: 'spreadsheet', xls: 'spreadsheet', csv: 'spreadsheet', pptx: 'slides', epub: 'e-book', txt: 'text file', md: 'text file', rtf: 'document' };
+const docWords = atts => { const n = {}; (atts || []).forEach(a => { const w = DOC_WORDS[a.kind] || 'document'; n[w] = (n[w] || 0) + 1; }); return Object.entries(n).map(([w, k]) => k > 1 ? `${k} ${w}s` : w).join(', '); };
 const REASON_WORDS = { tab_closed: 'the tab was closed', origin_changed: 'the tab left the course site', navigated: 'the page was reloaded or navigated away', runner_silent: 'the page stopped responding',
                        browser_restarted: 'Chrome was restarted', cancelled: 'you stopped it', inject_failed: 'the page could not be read', runner_error: 'the scan hit an error' };
 
@@ -356,7 +375,7 @@ function renderScan() {
     const last = s.lessons[s.lessons.length - 1];
     const line1 = s.expected ? `${lessonWord(s.expected)} found` : 'Lessons found';
     const line2 = last ? `Reading ${Math.min(s.lessons.length + 1, s.expected || s.lessons.length + 1)} of ${s.expected || '?'}${last.title ? `: ${last.title}` : ''}` : 'Reading the first lesson…';
-    $('#scanMsg').innerHTML = `${esc(line1)}<br>${esc(line2)}<br>${esc(plural(sum.ready, 'video'))} found so far`;
+    $('#scanMsg').innerHTML = `${esc(line1)}<br>${esc(line2)}<br>${esc(plural(sum.video_found + sum.multiple_videos, 'video'))}${sum.document_found ? esc(` and ${plural(sum.document_found, 'document')}`) : ''} found so far`;
     $('#result').style.display = 'none'; return;
   }
   // finished, in one of: done · partial · cancelled · interrupted · failed
@@ -382,12 +401,15 @@ function renderScan() {
   $('#courseTitle').value = (s.course && s.course.title) || s.title || '';
   const dupOf = {}; Object.entries(s.duplicates || {}).forEach(([k, idxs]) => idxs.forEach(i => { dupOf[i] = idxs.length; }));
   $('#lessons').innerHTML = s.lessons.map((l, i) => {
-    const ok = l.outcome === 'video_found' || l.outcome === 'multiple_videos';
-    const what = ok ? (l.media || []).map(m => m.provider === 'direct' ? 'video file' : m.provider).join(', ') : OUTCOME_WORDS[l.outcome] || l.outcome;
+    const ok = l.outcome === 'video_found' || l.outcome === 'multiple_videos' || l.outcome === 'document_found';
+    const docs = docWords(l.attachments);
+    let what = ok ? (l.media || []).map(m => m.provider === 'direct' ? 'video file' : m.provider).join(', ') : OUTCOME_WORDS[l.outcome] || l.outcome;
+    if (docs) what = what && l.outcome !== 'document_found' ? `${what} + ${docs}` : docs;
     return `<div class="les ${ok ? '' : 'nov'}"><input type="checkbox" data-i="${i}" ${ok ? 'checked' : 'disabled'}><div class="t">${esc(l.title)}${l.module && l.module !== l.title ? ` <span class="m">· ${esc(l.module)}</span>` : ''}<div class="m">${esc(what)}${dupOf[i] ? ` · same video as ${dupOf[i] - 1} other lesson${dupOf[i] > 2 ? 's' : ''}` : ''}${l.detail && !ok ? ` — ${esc(l.detail)}` : ''}</div></div></div>`;
   }).join('');
   const dupCount = Object.keys(s.duplicates || {}).length;
-  $('#summary').textContent = `${sum.ready} of ${s.lessons.length} lessons have a video${dupCount ? ` (${plural(dupCount, 'video')} shared between lessons — downloaded once)` : ''}. Your session for this site and the video hosts is sent only when you press Send.`;
+  const nDocs = s.lessons.reduce((n, l) => n + (l.attachments || []).length, 0);
+  $('#summary').textContent = `${sum.video_found + sum.multiple_videos} of ${s.lessons.length} lessons have a video${nDocs ? `, ${plural(nDocs, 'linked document')} (PDFs, worksheets)` : ''}${dupCount ? ` (${plural(dupCount, 'video')} shared between lessons — downloaded once)` : ''}. Your session for this site and the video hosts is sent only when you press Send; documents are fetched by the app without it.`;
   $('#result').style.display = '';
   loadProjectsInto('#project');
 }
@@ -430,11 +452,11 @@ $('#send').onclick = async () => {
   try {
     const r = await api(`/api/projects/${$('#project').value}/course-import`, { method: 'POST', body: JSON.stringify({
       course: { title: $('#courseTitle').value, url: SCAN.url },
-      lessons: picked.map(l => ({ title: l.title, module: l.module, page_url: l.page_url, video_urls: l.video_urls, outcome: l.outcome, ordinal: l.ordinal })),
+      lessons: picked.map(l => ({ title: l.title, module: l.module, page_url: l.page_url, video_urls: l.video_urls, outcome: l.outcome, ordinal: l.ordinal, attachments: l.attachments || [] })),
       cookies: cookies.map(c => ({ domain: c.domain, name: c.name, value: c.value, path: c.path, secure: c.secure, expirationDate: c.expirationDate })) }) });
     await chrome.storage.local.set({ lastProject: $('#project').value });
-    const bits = [`<span class="ok">Queued ${plural(r.queued, 'video')}.</span>`];
-    if (r.already_present && r.already_present.length) bits.push(`${plural(r.already_present.length, 'video')} already in your library — not downloaded again.`);
+    const bits = [`<span class="ok">Queued ${plural(r.queued, 'video')}${r.documents ? ` and ${plural(r.documents, 'document')}` : ''}.</span>`];
+    if (r.already_present && r.already_present.length) bits.push(`${plural(r.already_present.length, 'item')} already in your library — not downloaded again.`);
     if (r.shared && r.shared.length) bits.push(`${plural(r.shared.length, 'video')} shared by more than one lesson — downloaded once.`);
     bits.push('Watch progress in the app\'s Sources tab.');
     $('#sendMsg').innerHTML = bits.join(' ');

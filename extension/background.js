@@ -18,7 +18,14 @@ async function api(path, opts = {}) {
   const c = await cfg();
   if (!c.appUrl || !c.token) return null;
   const r = await fetch(c.appUrl + path, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token, ...(opts.headers || {}) } });
-  if (!r.ok) throw new Error('app answered ' + r.status);
+  if (!r.ok) {
+    const e = new Error((r.status === 401 || r.status === 403)
+      ? `Neuro Search rejected the saved app password (HTTP ${r.status}). Open the extension popup's Settings and save the password again.`
+      : 'app answered ' + r.status);
+    e.status = r.status;
+    e.auth = r.status === 401 || r.status === 403;
+    throw e;
+  }
   return r.json();
 }
 
@@ -30,7 +37,14 @@ async function apiForm(path, formData) {
   const c = await cfg();
   if (!c.appUrl || !c.token) throw new Error('Neuro Search is not set up yet (open the popup and add your app URL + token).');
   const r = await fetch(c.appUrl + path, { method: 'POST', headers: { Authorization: 'Bearer ' + c.token }, body: formData });
-  if (!r.ok) throw new Error('app answered ' + r.status);
+  if (!r.ok) {
+    const e = new Error((r.status === 401 || r.status === 403)
+      ? `Neuro Search rejected the saved app password (HTTP ${r.status}). Open the extension popup's Settings and save the password again.`
+      : 'app answered ' + r.status);
+    e.status = r.status;
+    e.auth = r.status === 401 || r.status === 403;
+    throw e;
+  }
   return r.json();
 }
 
@@ -45,7 +59,11 @@ async function refreshPending() {
     const items = (p && p.items) || [];
     await chrome.storage.local.set({ pending: items, pendingAt: Date.now() });
     await paintAll(items);
-  } catch (e) { /* the app is unreachable: keep the last list, say nothing */ }
+  } catch (e) {
+    // Keep ordinary offline polling quiet. The popup can ask for this state and surface auth failures;
+    // do not turn a transient network failure into a persistent notification.
+    if (e.auth) await chrome.storage.local.set({ authError: e.message, authErrorAt: Date.now() });
+  }
 }
 
 async function paintAll(items) {
@@ -100,9 +118,9 @@ function withScan(tabId, fn) {
 }
 
 function summarize(rec) {
-  const c = { video_found: 0, multiple_videos: 0, no_video: 0, needs_user_play: 0, blocked: 0, scan_failed: 0, not_scanned: 0 };
+  const c = { video_found: 0, multiple_videos: 0, document_found: 0, no_video: 0, needs_user_play: 0, blocked: 0, scan_failed: 0, not_scanned: 0 };
   for (const l of rec.lessons || []) c[l.outcome] = (c[l.outcome] || 0) + 1;
-  const ready = c.video_found + c.multiple_videos;
+  const ready = c.video_found + c.multiple_videos + c.document_found;   // a lesson that IS a document is ready too (CS7)
   const attention = c.no_video + c.needs_user_play + c.blocked;
   const unread = c.scan_failed + c.not_scanned;
   return { ...c, ready, attention, unread, completed: (rec.lessons || []).length, expected: rec.expected || 0 };
