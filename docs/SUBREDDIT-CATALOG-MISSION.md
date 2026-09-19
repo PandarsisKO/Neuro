@@ -168,7 +168,7 @@ Owners: the same scan owners and canonical candidate writer. **Implemented:** sa
 
 **Implemented in the third R3 slice:** parser work is capped at 100 listing children per page, and malformed score/comment/timestamp values are omitted rather than stored as misleading metadata.
 
-**Remaining:** availability presence, precise UTC observation bounds in current/previous completed summaries, and full semantic-revision proof. Observed dates do not imply continuous or exhaustive coverage.
+**Implemented in the fourth R3 slice:** omitted availability no longer overwrites a prior deletion/removal observation; valid UTC creation values produce precise coverage bounds; and prior-completed summaries are flat and bounded. Observed dates still do not imply continuous or exhaustive coverage.
 
 Exit: 5,000 rows through 50 actual page commits, with overlap, same-page duplicates, concurrent projects, replay, cap, malformed optional metadata and repeated refreshes. Counts remain exact; run storage stays bounded; user decisions and existing Source identity remain unchanged. Malformed metadata cannot turn into a phantom successfully empty catalog.
 
@@ -176,7 +176,7 @@ Exit: 5,000 rows through 50 actual page commits, with overlap, same-page duplica
 
 Owners: `candidates.py`, existing community signals/gap-term index/cache, DB revision helpers and API. **Implemented:** per-candidate score caching and joined Source state; the warm regression proves `_potential` reuse. It does not prove cheap queries/sorts or semantic invalidation.
 
-**Remaining:** the key uses broad `project_pool_revision`, including observation/disposition timestamps and unrelated Source changes; full rows still load and sort on each read, and thousands of individual cache entries compete for capacity. Cache catalog-scoped ranked results in the existing cache, keyed by database identity, rank version and all semantic inputs (framing/questions/targets/tensions, membership/metadata, dispositions and creator-yield signals actually used). Keep fresh acquisition status separate. Obtain a consistent revision/data snapshot or retry a changed revision. No new cache service or parallel revision infrastructure.
+**Implemented:** catalog-scoped revisions now isolate membership/metadata, this project's dispositions and the research/source inputs read by deterministic scoring. The existing cache retains scored rows and filtered/sorted views; only the returned page receives a fresh acquisition-state overlay. New questions invalidate the right catalog while unrelated Candidate Index activity does not. No new cache service or revision system was introduced.
 
 Finish the six modes: current Firsthand ordering can put irrelevant matches ahead of fit, and Fits an Open Question must require a question match, not merely an area match. Return stored excerpts and grounded reasons. Search all stored titles/excerpts; recommendations default ≤25 (currently 50), browsing 50/max 100; stable ties, valid dates, correct filters and honest revision conflicts. Avoid per-row Source/job queries across the catalog.
 
@@ -184,7 +184,7 @@ Exit: realistic contrasting briefs/questions produce different rankings; irrelev
 
 ### SUB-R5 — selected capture and acquisition state
 
-Owners: catalog API actions, `candidates.capture`, existing identity/ingestion/jobs. **Implemented:** scoped single-candidate capture through the shared path. **Remaining:** explicit-ID bulk action, 1–100 unique IDs, validating the whole selection before writes and reporting per-item execution failures. Reuse ready Sources first; explicit re-add must clear an existing project exclusion through the supported membership owner. A globally deduped pending ingest job must still attach the Source to each selecting project; test the second project's completion, not just shared job IDs.
+Owners: catalog API actions, `candidates.capture`, existing identity/ingestion/jobs. **Implemented:** scoped single-candidate capture and the bounded explicit-ID bulk action through the shared path. Bulk validates every ID before its first write and reports per-item failures. Ready Sources remain first; an explicit catalog recapture clears the project's durable exclusion through the existing identity/project-membership owner. A globally deduped pending ingest job still needs its two-project completion proof.
 
 Derive Not captured, Queued/Capturing, Waiting for browser, Failed, Cancelled, Removed and Captured from actual job/Source/project membership. Current `acquired` rows can show Capturing forever after failure or exclusion. Preserve existing retry/dedupe and budget controls; no alternate ingest path.
 
@@ -192,7 +192,7 @@ Exit: selecting 10 of 4,000 schedules or attaches only those 10 and leaves 3,990
 
 ### SUB-R6 — local Research proof and yield correctness
 
-Owners: `knowledge.pursue(external=False)`, candidate links, `sources_value.compute` and existing project membership. **Implemented:** distinct-Claim counts now require ready Sources and non-rejected Claims. **Remaining:** catalog yield still relies on direct project membership rather than all supported membership paths. Derive one eligible captured-member set through the existing membership semantics, including tags/collections and exclusions, for every metric; never add subreddit `source_collections` membership.
+Owners: `knowledge.pursue(external=False)`, candidate links, `sources_value.compute` and existing project membership. **Implemented:** distinct-Claim counts require ready Sources and non-rejected Claims; catalog yield now intersects candidate-resolved Sources with every existing normal project-membership path, including ordinary collections/tags and exclusions. A local `knowledge.pursue(..., external=False)` fixture finds an older catalog entry without capture, Sources, or jobs.
 
 Exercise actual local pursuit for a newly created question against an older catalog entry, with external/provider calls poisoned. Ranking/discovery must not capture, promote Claims or close targets. Verify candidate-link/source readiness through explicit capture using the existing lifecycle, and label only evidence relationships the metrics actually substantiate.
 
@@ -200,7 +200,7 @@ Exit: zero-source catalog yields zero evidence; multiple candidates/evidence joi
 
 ### SUB-R7 — complete the user workflow
 
-Owners: existing Sources UI modules, API helpers, shared controls/tokens; consult `DESIGN.md` and `AUDIT.md`. **Implemented:** basic catalog card, per-row capture, refresh, mode/state selector and forward paging. **Remaining:** full-catalog search, excerpts/reasons, dismiss/restore, explicit selection count and bounded bulk capture, previous/next controls, truthful capture filters, observed coverage and distinct refresh/resume/cancel actions. Use normal row controls and action helpers; no independent component or polling framework.
+Owners: existing Sources UI modules, API helpers, shared controls/tokens; consult `DESIGN.md` and `AUDIT.md`. **Implemented:** basic catalog card, per-row capture, refresh, mode/state selector, forward paging, dismiss/restore, explicit bounded capture of displayed rows, scan cancellation and observed coverage/previous-run labels. **Remaining:** full-catalog search, excerpts/reasons, previous-page controls, and browser interaction/visual acceptance. Use normal row controls and action helpers; no independent component or polling framework.
 
 Fix late responses painting the wrong project/catalog, shared selection state crossing projects, stale revision recovery retaining an invalid page offset, and list refreshes destroying the open review. Preserve focus/selection appropriately, disable in-flight actions, show progress/error recovery and follow existing hidden-tab/poll limits.
 
@@ -208,7 +208,7 @@ Exit: browser journey from pasted URL to scan → review/search → selection �
 
 ### SUB-R8 — separate offline operational acceptance from live acceptance
 
-**R8a, offline gate:** use existing fixtures and perf/write-hold instrumentation. Enumerate 5,000 posts through 50 actual worker page commits, not direct candidate insertion. Measure cold/warm review with realistic question vocabulary, foreground interactions during scan, query counts, bounded DOM/payload and write holds against existing thresholds. Run interruption/reclaim/restart, refresh, exclusion and two-project lifecycles, poisoning model/acquisition calls during metadata work. Record baseline/candidate timings; do not invent a passing threshold after measuring.
+**R8a, offline gate:** the 5,000-row fixture now enumerates through 50 actual claimed worker turns, not direct candidate insertion. Complete the remaining perf/write-hold measurements with realistic question vocabulary, foreground interactions during scan, query counts and bounded DOM/payload. Run restart, refresh/exclusion/two-project completion and poisoned model/acquisition checks; record baseline/candidate timings without inventing a threshold.
 
 **R8b, live gate:** check access/configuration through supported status surfaces, then verify approved working Reddit API access with a bounded official listing request. Run the same catalog/review/refresh flow on real metadata and minimal selected real capture; verify readiness/provenance. Honor existing cost authorization and obtain any still-required metered-cost decision only on a concrete prepared operation. No secrets in chat, live `.env` edits, scraping fallback or new credential service. If access is unavailable, finish eligible offline work and mark R8b BLOCKED with the exact reason; the feature is not release-ready. Record real browser and required human visual acceptance separately.
 
@@ -257,6 +257,10 @@ Observed clears now preserve their distinction from omission, and listing identi
 ### R3 metadata-boundary checkpoint — `9efbcfe`, 2026-09-19
 
 Listing parsing is capped at 100 entries and rejects malformed numeric metadata. Omitted author data no longer overwrites a prior deleted/removed observation; valid Reddit UTC creation times now carry through to precise scan coverage bounds, and refresh history retains one flat completed-run summary. Focused S74/K9 gate: **46 passed**.
+
+### R4–R7 catalog workflow checkpoint — `980c2a7`, `1e0d9d7`, `bcaee42`, 2026-09-19
+
+Catalog ranking now has a catalog-specific semantic revision and cached ranked/filter views, with fresh page-level capture status. Recommended review defaults to 25; query, Open Question, firsthand and metadata sort behavior use stable bounded pages. Scoped bulk capture validates all selected IDs before it writes, reports partial execution outcomes and re-adds excluded ready Sources through normal membership. The Sources panel exposes scan coverage/cancellation, review state, bounded displayed capture and dismiss/restore controls. Local Research finds prior catalog metadata without capture, and yield uses standard membership semantics. Legacy run-less jobs and detached scans fail before writes. The 5,000-row lifecycle runs through 50 actual claimed worker turns. Focused lifecycle/research/front-end gates passed **117 tests**; the 5,000-worker fixture passed independently.
 
 ### Original pass — historical evidence and limits
 
