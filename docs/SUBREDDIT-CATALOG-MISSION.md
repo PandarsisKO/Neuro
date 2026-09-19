@@ -101,7 +101,14 @@ Two dangerous shortcuts are specifically rejected:
 
 The previous declaration that SUB2–SUB8 were implemented is withdrawn. Useful code exists, but several required behaviors are missing and the new tests prove only a subset of the acceptance contract. Original SUB numbers below remain historical provenance; **SUB-R0–SUB-R9** own all remaining work in this same mission. Section 4's architecture and product contract remains binding.
 
-All corrective rungs are **OPEN**. SUB-R0 is the next execution unit. This planning revision does not mark any corrective code or live gate complete.
+Corrective execution is active. **SUB-R0 is complete**: the isolation repair is source-bound and the deterministic
+release harness runs from an isolated worktree. SUB-R1 through SUB-R6 have bounded implementation and regression
+coverage, but their full exit gates remain open. SUB-R7 and SUB-R8 have not begun; in particular, no browser
+workflow or real-access acceptance has been claimed. SUB-R9 remains open until those product gates are complete.
+
+Verification checkpoint (2026-09-19, `064d86c`): `pytest tests -q` passed 2,074 tests and the isolated
+`release-check` passed, producing `evals/release/release-check-0.63.94-064d86c-20260919-105954.json`. This is a
+deterministic regression checkpoint, not a substitute for the remaining SUB-R7/SUB-R8 acceptance work.
 
 | Rung | Outcome | Depends on | Exit gate |
 |---|---|---|---|
