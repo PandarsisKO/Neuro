@@ -262,3 +262,15 @@ def test_catalog_api_exposes_review_refresh_and_yield(client):
     assert refreshed.status_code == 200 and refreshed.json()["job_id"]
     outcome = client.get(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}/yield", headers=h)
     assert outcome.status_code == 200 and outcome.json()["captured_threads"] == 0
+
+
+def test_catalog_query_pages_a_5000_post_fixture():
+    project = _project("catalog scale")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    entries = [_listing(f"p{i:04d}") | {"title": f"Owner report {i:04d}"} for i in range(5_000)]
+    ids = candidates.remember(entries, "reddit", project, {"kind": "fixture"})
+    db.link_collection_candidates(catalog["id"], ids)
+    first = candidates.catalog(project, catalog["id"], limit=100)
+    last = candidates.catalog(project, catalog["id"], page=49, limit=100)
+    assert first["total"] == 5_000 and len(first["items"]) == 100 and first["next_page"] == 1
+    assert len(last["items"]) == 100 and last["next_page"] is None

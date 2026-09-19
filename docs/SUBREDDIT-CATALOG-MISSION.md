@@ -1,6 +1,6 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
-Status: ACTIVE — SUB2 implementation checkpoint committed; release validation in progress.
+Status: ACTIVE — SUB2–SUB8 implementation checkpoints committed; release closeout blocked by an inherited suite-order failure and unverified live Reddit access.
 Revised: 2026-09-19. Planner and future executor: Codex. Claude is no longer executing this mission.
 Planning baseline: `2231049e7fb388e7e000d186bfb1fec304b8e720`. Execution baseline: `09be5579ee85c333182beffea437ef9566187e8b` in isolated worktree `/private/tmp/neuro-subreddit-catalog` on `codex/subreddit-catalog`.
 
@@ -10,7 +10,7 @@ Kyle requested review and revision of the supplied whole-subreddit brief, with e
 
 Phase A permits inspection, safe source-only checks, and planning-document edits. It does not permit application edits, migrations, new production branches, version bumps, implementation commits, provider calls, feature jobs, server restarts, or feature delivery. No implementation rung has started.
 
-Phase B begins only after Kyle has chosen the Codex model and reasoning effort and explicitly authorized execution. Changing a model setting alone is not authorization. A plan approval without a start instruction is not authorization. The executor must not switch models, invoke another coding model, create tasks, or delegate on the basis of this document. Recommendations below are advisory; Kyle controls the execution configuration.
+Phase B began when Kyle explicitly instructed Codex to execute on 2026-09-19. Changing a model setting alone remains insufficient authorization. The executor must not switch models, invoke another coding model, create tasks, or delegate on the basis of this document. Recommendations below are advisory; Kyle controls the execution configuration.
 
 After authorization, Codex executes eligible work through this ladder without seeking routine engineering direction. No Claude handoff, Claude session, or waiting for Claude is part of this mission. This does not alter Neuro's internal model/provider contracts or remove its existing local Claude Code adapter.
 
@@ -95,7 +95,7 @@ Two dangerous shortcuts are specifically rejected:
 
 ## 5. Corrected execution ladder
 
-All implementation statuses below are NOT STARTED. SUB1 is this completed planning review, not an implementation milestone. Refresh persistence moves ahead of ranking/UI, and capture correctness is proven before exposing capture controls.
+SUB1 is the completed planning review, not an implementation milestone. SUB2–SUB8 are implemented at the checkpoints below; their release and live-access closeout remains open. Refresh persistence moved ahead of ranking/UI, and capture correctness was proven before exposing capture controls.
 
 | Rung | Bounded implementation and likely files | Required exit evidence | Difficulty / advisory model |
 |---|---|---|---|
@@ -118,7 +118,19 @@ Implemented in `587d5ee` (`subreddit: add durable catalog identity and membershi
 
 The canonical Candidate Index bridge maps listing identity `reddit:reddit:<post-id>` to captured Community Source identity `community:reddit:<post-id>`, including capture-before-discovery and discovery-before-capture. Existing generic collection behavior remains unchanged: its proposed rows do not resolve early simply because a non-ready Source exists.
 
-Focused regression gate: 82 passed, covering SUB2 plus K2/K3/K4/K9/S55. Research/candidate/isolation/policy/repo gates: 56 passed. Core migration subset: 2 passed. `repo-check` and `git diff --check` passed. The isolated complete-suite prefix reaches the existing order-dependent `tests/test_core.py::test_ask_tool_loop` failure after 70 tests; the same `tests -x` command against untouched `main` at `09be557` fails at exactly that test, while `test_core.py` by itself passes 114/114. It is a baseline suite-order failure outside SUB2, not waived as a pass; record it for the current QA owner. A console-script Tier 1 pass was traced to the shared editable installation (`319d4ec`), not this worktree, and is not counted; the worktree-bound command is queued. No live database, provider call, server restart, or Reddit request occurred.
+Focused regression gate: 82 passed, covering SUB2 plus K2/K3/K4/K9/S55. Research/candidate/isolation/policy/repo gates: 56 passed. Core migration subset: 2 passed. `repo-check` and `git diff --check` passed. The isolated complete-suite prefix reaches the existing order-dependent `tests/test_core.py::test_ask_tool_loop` failure after 70 tests; the same `tests -x` command against untouched `main` at `09be557` fails at exactly that test, while `test_core.py` by itself passes 114/114. It is a baseline suite-order failure outside SUB2, not waived as a pass. No live database, provider call, server restart, or Reddit request occurred.
+
+### SUB3–SUB8 — catalog lifecycle implementation checkpoints, 2026-09-19
+
+`1ad5420` adds authenticated `/r/<name>/new` metadata pagination through the existing Reddit API owner. Each page is fetched outside the write transaction, committed atomically with its catalog membership and cursor checkpoint, then yields through the existing low-lane `explore` job. The catalog branch cannot use public JSON, HTML, browser, archive, search, Source, embedding, or generation fallbacks.
+
+`090bee2` adds bounded observed metadata, semantic `metadata_revision`, distinct known-post accounting, initial-versus-refresh labels, page/observation limits, and a generation compare-and-set. A stale page worker rolls back rather than replacing a newer refresh cursor; absent listing fields retain prior observations.
+
+`5b1eaf8` adds the project-scoped catalog review and refresh API. It provides deterministic modes, states, bounded pages, revision-aware pagination, and capture status while reusing the existing Candidate Index and acquisition route.
+
+`c05ea16` adds the Sources catalog card and thread-level capture/refresh controls, plus captured-member yield. Yield counts only distinct ready Sources actually included in the project; metadata membership never counts as evidence.
+
+Validation after the final code checkpoint: the consolidated catalog/routing/job/rescan/pool/UI/value gate passed **281 tests**, including a 5,000-row paged-catalog fixture; `test_core.py` passed 114/114 in isolation; `node --check` passed for both changed modules; and worktree-bound fake Tier 1 passed at `c05ea16`. `repo-check` passed. A fresh `pytest tests -x -q` still stops at the same inherited `test_ask_tool_loop` failure after 70 passes. `release-check` cannot pass in the fake isolated environment: it correctly rejects fake-AI mode and its worker-lifecycle subprocess assumes a worktree-local `.venv`; it is not release evidence. Live Reddit access, visual acceptance, a supported non-fake release run, and delivery into the shared checkout remain open.
 
 ## 6. Validation contract
 
@@ -175,4 +187,4 @@ No new product decision is required to accept this plan. Before Phase B, Kyle st
 
 Non-goals: unrestricted crawling, bypasses, new archives, automatic whole-catalog acquisition, a second parser/evidence/research/provider/queue system, universal quality scores, scheduled monitoring, speculative model ranking, fixing all unrelated pending work, or a claim to exhaustive subreddit history.
 
-Current completion state: **PLANNING COMPLETE — EXECUTION NOT STARTED**.
+Current completion state: **IMPLEMENTATION CHECKPOINT COMPLETE — RELEASE AND LIVE-ACCESS CLOSEOUT OPEN**.

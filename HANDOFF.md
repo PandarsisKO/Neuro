@@ -1,14 +1,15 @@
 # HANDOFF — shared Codex / Claude delivery mechanics
 
-## Queued subreddit mission — planning only, 2026-09-19
+## Active subreddit mission — implementation checkpoint, 2026-09-19
 
-Kyle requested a repository-grounded revision of the subreddit catalog plan. The canonical plan is
-[docs/SUBREDDIT-CATALOG-MISSION.md](docs/SUBREDDIT-CATALOG-MISSION.md). Phase A is complete; implementation
-has not started. Codex will execute this mission; Claude is no longer its executor. Kyle will choose the
-Codex model and effort after planning and must explicitly authorize Phase B. Do not infer authorization
-from the queued plan or a model-setting change. The first implementation unit is SUB2's identity and
-catalog-membership gates after an isolated baseline. Existing course/Sources edits and the unfinished
-CHR2 handoff remain preserved; this planning entry does not close or execute them.
+Kyle authorized Codex execution after the repository-grounded plan review. The canonical record is
+[docs/SUBREDDIT-CATALOG-MISSION.md](docs/SUBREDDIT-CATALOG-MISSION.md). Codex, not Claude, implemented
+SUB2–SUB8 in isolated worktree `/private/tmp/neuro-subreddit-catalog` on branch `codex/subreddit-catalog`.
+The code checkpoints are `587d5ee`, `1ad5420`, `090bee2`, `5b1eaf8`, and `c05ea16`; do not mix these with
+the shared checkout until its delivery review. Focused subsystem, UI, and value checks pass; worktree-bound
+Tier 1 passes at `c05ea16`. The complete suite still stops at the documented, pre-existing order-dependent
+`tests/test_core.py::test_ask_tool_loop` failure after 70 tests, so release status is **not passed**. Existing
+course/Sources edits and the unfinished CHR2 handoff remain preserved and are not closed by this mission.
 
 ## Start here
 
