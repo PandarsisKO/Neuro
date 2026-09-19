@@ -332,7 +332,8 @@ def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[s
         raise HTTPException(404)
     collection = db.get_collection(collection_id) or {}
     job = jobs.enqueue("explore", {"url": collection.get("url"), "kind": "subreddit", "project_id": project_id,
-                                    "collection_id": collection_id}, lane="low")
+                                    "collection_id": collection_id, "catalog_run_id": state["run_id"],
+                                    "catalog_generation": state["generation"]}, lane="low")
     return {"ok": True, "job_id": job["id"], "state": state}
 
 

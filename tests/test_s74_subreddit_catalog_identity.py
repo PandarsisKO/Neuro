@@ -196,6 +196,36 @@ def test_subreddit_explore_job_yields_after_a_committed_page(monkeypatch):
     assert db.get_job(job["id"])["message"] == "catalog page saved; continuing automatically"
 
 
+def test_catalog_jobs_are_bound_to_their_run_and_refresh_replaces_a_blocked_run(monkeypatch):
+    project = _project("run binding")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    job = db.get_job(queued["job_id"])
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{queued['collection_id']}") or "{}")
+    assert job["payload"]["catalog_run_id"] == state["run_id"]
+    assert job["payload"]["catalog_generation"] == state["generation"]
+
+    blocked = reservoir.scan_subreddit_page(project, queued["collection_id"], expected_run_id=state["run_id"],
+                                             fetch_page=lambda _sub, _after: (_ for _ in ()).throw(RuntimeError("Reddit API: HTTP 403")))
+    assert blocked["status"] == "blocked"
+    refreshed = reservoir.begin_subreddit_refresh(project, queued["collection_id"])
+    assert refreshed["run_id"] != state["run_id"] and refreshed["cursor"] is None and refreshed["mode"] == "refresh"
+
+    called = []
+    stale = reservoir.scan_subreddit_page(project, queued["collection_id"], expected_run_id=state["run_id"],
+                                           fetch_page=lambda *_: called.append(True))
+    assert stale["status"] == "stale" and called == []
+
+
+def test_catalog_blocked_worker_never_finishes_successfully(monkeypatch):
+    project = _project("blocked worker")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    monkeypatch.setattr(reservoir, "scan_subreddit_page", lambda *_a, **_kw: {"status": "blocked", "error": "Reddit API: HTTP 403"})
+    claimed = db.claim_job(("explore",), worker_id="test")
+    assert claimed and claimed["id"] == queued["job_id"]
+    assert jobs.execute(claimed, "test") == "failed"
+    assert db.get_job(queued["job_id"])["status"] == "failed"
+
+
 def test_catalog_enumerator_requires_official_api_and_keeps_listing_metadata_small(monkeypatch):
     monkeypatch.setattr(community, "reddit_api_configured", lambda: False)
     with pytest.raises(RuntimeError, match="credentials are required"):

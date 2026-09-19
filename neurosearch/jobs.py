@@ -41,7 +41,7 @@ _running_lock = threading.Lock()
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
                        r"try again|slow down|login for this|please wait|overloaded|not a bot|sign in to confirm|bot-check", re.I)
-RETRYABLE = ("harvest_claims", "ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions", "bootstrap_scan", "refresh_research", "settle_batches")
+RETRYABLE = ("harvest_claims", "ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions", "bootstrap_scan", "refresh_research", "settle_batches", "explore")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 BILLING_RETRY_SECONDS = 30 * 60   # BILLING (credit balance too low) names no resume date, unlike SPEND_CAP — retry on
@@ -320,9 +320,13 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "explore":
         if payload.get("kind") == "subreddit":
             from . import reservoir
-            result = reservoir.scan_subreddit_page(payload["project_id"], payload["collection_id"])
+            result = reservoir.scan_subreddit_page(payload["project_id"], payload["collection_id"],
+                                                    expected_run_id=payload.get("catalog_run_id"),
+                                                    expected_generation=payload.get("catalog_generation"))
             if result["status"] == "partial":
                 raise Yield("catalog page saved; continuing automatically")
+            if result["status"] == "blocked":
+                raise RuntimeError(result.get("error") or "subreddit catalog scan blocked")
             return result
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),

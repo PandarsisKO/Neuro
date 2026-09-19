@@ -153,7 +153,7 @@ def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, An
         prior = json.loads(raw or "{}")
     except ValueError:
         prior = {}
-    if prior.get("status") in ("queued", "partial", "blocked"):
+    if prior.get("status") in ("queued", "partial"):
         # Repeated refresh clicks must share the existing durable run and cursor. In particular, do not turn a
         # queued initial scan into a refresh before it has made its first page commit.
         return prior
@@ -188,7 +188,8 @@ def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
     return out
 
 
-def scan_subreddit_page(project_id: str, collection_id: str, *,
+def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id: str | None = None,
+                         expected_generation: int | None = None,
                          fetch_page: Callable[[str, str | None], tuple[list[dict[str, Any]], str | None]] | None = None) -> dict[str, Any]:
     """Fetch and atomically commit one subreddit listing page.
 
@@ -208,8 +209,11 @@ def scan_subreddit_page(project_id: str, collection_id: str, *,
         prior = json.loads(prior_raw or "{}")
     except ValueError:
         prior = {}
+    if expected_run_id and (prior.get("run_id") != expected_run_id or
+                            (expected_generation is not None and prior.get("generation") != expected_generation)):
+        return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
     if prior.get("status") == "complete":
-        return {"collection_id": collection_id, "status": "complete", "new": 0, "total": int(prior.get("total") or 0),
+        return {"collection_id": collection_id, "status": "complete", "new": 0, "total": int(prior.get("known_posts") or 0),
                 "reason": prior.get("reason"), "candidate_ids": []}
     if not prior:
         t = time.time()

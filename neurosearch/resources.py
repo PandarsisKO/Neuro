@@ -220,9 +220,14 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
         if c.kind == "subreddit":
             # SUB3: attach the durable container first, then scan one resumable metadata page per job turn.
             from . import community
+            from . import reservoir
+            if not project_id:
+                raise ValueError("a subreddit catalog needs a project")
             catalog = community.attach_subreddit_catalog(project_id, c.url)
+            scan = reservoir.begin_subreddit_refresh(project_id, catalog["id"])
             job = jobs.enqueue("explore", {"url": catalog["url"], "kind": "subreddit", "project_id": project_id,
-                                            "collection_id": catalog["id"]}, lane="low")
+                                            "collection_id": catalog["id"], "catalog_run_id": scan["run_id"],
+                                            "catalog_generation": scan["generation"]}, lane="low")
             return {"kind": c.kind, "action": action, "queued": True, "catalog": True,
                     "collection_id": catalog["id"], "url": catalog["url"], "job_id": job["id"],
                     "note": "Subreddit catalog scan queued. It remembers post metadata only; no threads are read."}
