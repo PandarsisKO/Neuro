@@ -620,6 +620,40 @@ def test_catalog_capture_endpoint_uses_the_catalog_scoped_action(client):
     assert candidates.list_for_project(project)[0]["state"] == "acquired"
 
 
+def test_catalog_capture_many_validates_all_ids_before_queuing_any_work(client):
+    project = _project("catalog bulk capture")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    good = _remember_post(project)
+    foreign = candidates.remember([_listing("foreign")], "reddit", project, {"kind": "fixture"})[0]
+    db.link_collection_candidates(catalog["id"], [good])
+    h = {"Authorization": "Bearer t0k"}
+    endpoint = f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}/capture-many"
+    rejected = client.post(endpoint, headers=h, json={"candidate_ids": [good, foreign]})
+    assert rejected.status_code == 404
+    assert db.connect().execute("SELECT state FROM candidate_projects WHERE project_id=? AND candidate_id=?", (project, good)).fetchone()["state"] == "available"
+    assert db.list_jobs(20) == []
+    accepted = client.post(endpoint, headers=h, json={"candidate_ids": [good]})
+    assert accepted.status_code == 200
+    assert accepted.json() == {"considered": 1, "captured": 1, "attached": 0, "jobs_queued": 1, "failed": []}
+
+
+def test_catalog_recapture_readds_an_explicitly_excluded_ready_source():
+    project = _project("catalog recapture exclusion")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(project)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    source = identity.resolve_or_create_source(
+        identity.Candidate(platform="community", external_id="reddit:abc123",
+                           url="https://www.reddit.com/r/smallbusiness/comments/abc123/owner_lessons/"),
+        project, initial_status="ready",
+    ).source
+    db.remove_project_sources(project, [source["id"]])
+    assert source["id"] not in db.project_source_ids(project, ready_only=False)
+    result = candidates.catalog_capture(project, catalog["id"], candidate_id)
+    assert result["job_id"] is None
+    assert source["id"] in db.project_source_ids(project, ready_only=False)
+
+
 def test_catalog_yield_excludes_rejected_claims_and_nonready_sources():
     from neurosearch import claims
     project = _project("yield eligibility")
@@ -639,6 +673,41 @@ def test_catalog_yield_excludes_rejected_claims_and_nonready_sources():
     assert sources_value.subreddit_catalog_yield(project, catalog["id"])["distinct_claims_supported"] == 1
     db.set_source_status(source["id"], "failed", "fixture")
     assert sources_value.subreddit_catalog_yield(project, catalog["id"])["distinct_claims_supported"] == 0
+
+
+def test_catalog_yield_uses_normal_project_membership_without_catalog_source_membership():
+    project = _project("catalog normal membership")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(project)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    source = identity.resolve_or_create_source(
+        identity.Candidate(platform="community", external_id="reddit:abc123",
+                           url="https://www.reddit.com/r/smallbusiness/comments/abc123/owner_lessons/"),
+        None, initial_status="ready",
+    ).source
+    ordinary = db.upsert_collection("channel", "yield-membership", "https://example.test/channel", "Membership")
+    db.link_source_collection(source["id"], ordinary["id"])
+    db.add_project_collections(project, [ordinary["id"]])
+    assert source["id"] in db.project_source_ids(project)
+    assert sources_value.subreddit_catalog_yield(project, catalog["id"])["captured_threads"] == 1
+    assert db.connect().execute("SELECT COUNT(*) FROM source_collections WHERE collection_id=?", (catalog["id"],)).fetchone()[0] == 0
+
+
+def test_local_research_pursuit_surfaces_old_catalog_metadata_without_capture(monkeypatch):
+    from neurosearch import knowledge
+    project = _project("catalog local research")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = candidates.remember([_listing("research") | {
+        "title": "Owner lessons when buying a small business", "description": "I bought a business and learned due diligence lessons"}],
+        "reddit", project, {"kind": "fixture"})[0]
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    target = knowledge.add_target(project, "What owner lessons matter when buying a small business?")
+    monkeypatch.setattr(candidates, "capture", lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("pursuit must not capture")))
+    result = knowledge.pursue(target["id"], external=False)
+    step = next(item for item in result["escalation"]["steps"] if item["step"] == "candidate_index")
+    assert candidate_id in [item["id"] for item in step["candidates"]]
+    assert db.project_source_ids(project, ready_only=False) == []
+    assert db.list_jobs(20) == []
 
 
 def test_catalog_query_pages_a_5000_post_fixture():

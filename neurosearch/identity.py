@@ -187,6 +187,12 @@ def resolve_or_create_source(cand: Candidate, project_id: str | None, *, initial
         attached = False
         if attach and project_id and state != ALREADY_IN_PROJECT:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", (project_id, src["id"]))
+            # An explicit add/capture reverses the project's own prior removal.
+            # `INSERT OR IGNORE` alone leaves an excluded durable relationship
+            # in place, which made a ready library Source appear captured but
+            # remain absent from the selecting project.
+            conn.execute("UPDATE project_sources SET excluded=0 WHERE project_id=? AND source_id=? AND excluded=1",
+                         (project_id, src["id"]))
             conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (db.now(), project_id))
             attached = True
     res = Resolution(state=state, source=src, created=created, attached=attached, resumed=resumed)

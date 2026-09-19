@@ -207,6 +207,40 @@ def catalog_capture(project_id: str, collection_id: str, candidate_id: str, *, r
     return capture(candidate_id, project_id, reason=reason)
 
 
+def catalog_capture_many(project_id: str, collection_id: str, candidate_ids: list[str], *, reason: str | None = None) -> dict[str, Any]:
+    """Capture a small explicit catalog selection through the normal per-row path.
+
+    Validate the entire selection before its first acquisition is admitted.  A
+    foreign or stale id therefore cannot turn a partly valid request into a
+    partial set of writes.  Provider/ingest failures after admission are
+    reported per item and retain the existing job retry behavior.
+    """
+    ids = list(dict.fromkeys(candidate_ids))
+    if not ids or len(ids) > 100:
+        raise ValueError("select between one and 100 catalog candidates")
+    catalog_context(project_id, collection_id)
+    marks = ",".join("?" for _ in ids)
+    found = {row["candidate_id"] for row in db.connect().execute(
+        f"SELECT candidate_id FROM collection_candidates WHERE collection_id=? AND candidate_id IN ({marks})",
+        (collection_id, *ids),
+    ).fetchall()}
+    if found != set(ids):
+        raise LookupError("catalog candidate selection changed")
+    attached = queued = 0
+    failed: list[dict[str, str]] = []
+    for candidate_id in ids:
+        try:
+            result = capture(candidate_id, project_id, reason=reason)
+            if result.get("job_id") is None:
+                attached += 1
+            else:
+                queued += 1
+        except Exception as exc:  # ordinary per-source failure must not hide the remaining selected work
+            failed.append({"id": candidate_id, "error": str(exc)})
+    return {"considered": len(ids), "captured": len(ids) - len(failed), "attached": attached,
+            "jobs_queued": queued, "failed": failed}
+
+
 def catalog_dismiss(project_id: str, collection_id: str, candidate_id: str, reason: str | None = None) -> int:
     catalog_candidate(project_id, collection_id, candidate_id)
     return dismiss(project_id, candidate_id, reason)

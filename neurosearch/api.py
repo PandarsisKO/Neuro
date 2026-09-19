@@ -349,6 +349,11 @@ class CatalogCandidateActIn(BaseModel):
     reason: str | None = None
 
 
+class CatalogCaptureManyIn(BaseModel):
+    candidate_ids: list[str]
+    reason: str | None = None
+
+
 @app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate_id}/capture", dependencies=[Depends(require_auth)])
 def api_subreddit_catalog_capture(project_id: str, collection_id: str, candidate_id: str,
                                   body: CatalogCandidateActIn) -> dict[str, Any]:
@@ -358,6 +363,19 @@ def api_subreddit_catalog_capture(project_id: str, collection_id: str, candidate
         return candidates.catalog_capture(project_id, collection_id, candidate_id, reason=body.reason)
     except LookupError:
         raise HTTPException(404)
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/capture-many", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_capture_many(project_id: str, collection_id: str,
+                                       body: CatalogCaptureManyIn) -> dict[str, Any]:
+    """Capture an explicit, bounded page selection after validating every catalog member."""
+    from . import candidates
+    try:
+        return candidates.catalog_capture_many(project_id, collection_id, body.candidate_ids, reason=body.reason)
+    except LookupError:
+        raise HTTPException(404)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
 
 
 @app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
