@@ -248,7 +248,7 @@ Official API errors now preserve their HTTP status and Retry-After through the c
 
 Catalog membership and first-discovery counting now share one write batch. A two-project interleaving fixture proves one run receives `initial_known=1`, the other `0`, while both retain the candidate. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s55_reservoir_rescan.py -q` — **50 passed**. Metadata presence/clear semantics, URL validation and full run-count definitions remain open.
 
-### R3 metadata checkpoint — pending commit, 2026-09-19
+### R3 metadata checkpoint — `199610e`, 2026-09-19
 
 Observed clears now preserve their distinction from omission, and listing identity/permalink/outbound URL validation runs before candidate creation. Focused S74/K9 gate: **42 passed**.
 
