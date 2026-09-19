@@ -145,7 +145,7 @@ def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, An
     provider call. Keeping the prior completed summary lets the UI describe a failed refresh honestly.
     """
     collection = db.get_collection(collection_id)
-    if not collection or collection.get("kind") != "subreddit":
+    if not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
         raise ValueError("subreddit refresh needs a subreddit catalog")
     key = _scan_key(project_id, collection_id)
     raw = db.kv_get(key)
@@ -197,7 +197,7 @@ def scan_subreddit_page(project_id: str, collection_id: str, *,
     replays an entire page or none of it. Callers schedule another turn while ``status == 'partial'``.
     """
     collection = db.get_collection(collection_id)
-    if not collection or collection.get("kind") != "subreddit":
+    if not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
         raise ValueError("subreddit scan needs a subreddit catalog")
     name = collection.get("external_id")
     if not name:

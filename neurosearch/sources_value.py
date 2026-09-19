@@ -81,6 +81,9 @@ def subreddit_catalog_yield(project_id: str, collection_id: str) -> dict[str, An
     ready and is an included member of this project; the DISTINCT query prevents cross-post/candidate joins from
     inflating source, finding, or Claim counts.
     """
+    collection = db.get_collection(collection_id)
+    if not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
+        raise LookupError("subreddit catalog is not attached to this project")
     conn = db.connect()
     source_ids = [r["source_id"] for r in conn.execute("""SELECT DISTINCT c.source_id
         FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id

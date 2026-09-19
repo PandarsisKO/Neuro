@@ -336,13 +336,49 @@ def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[s
     return {"ok": True, "job_id": job["id"], "state": state}
 
 
+class CatalogCandidateActIn(BaseModel):
+    reason: str | None = None
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate_id}/capture", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_capture(project_id: str, collection_id: str, candidate_id: str,
+                                  body: CatalogCandidateActIn) -> dict[str, Any]:
+    """Capture one candidate only after proving its catalog/project membership."""
+    from . import candidates
+    try:
+        return candidates.catalog_capture(project_id, collection_id, candidate_id, reason=body.reason)
+    except LookupError:
+        raise HTTPException(404)
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_dismiss(project_id: str, collection_id: str, candidate_id: str,
+                                  body: CatalogCandidateActIn) -> dict[str, Any]:
+    from . import candidates
+    try:
+        return {"ok": True, "updated": candidates.catalog_dismiss(project_id, collection_id, candidate_id, body.reason)}
+    except LookupError:
+        raise HTTPException(404)
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate_id}/restore", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_restore(project_id: str, collection_id: str, candidate_id: str,
+                                  body: CatalogCandidateActIn) -> dict[str, Any]:
+    from . import candidates
+    try:
+        return {"ok": True, "updated": candidates.catalog_restore(project_id, collection_id, candidate_id)}
+    except LookupError:
+        raise HTTPException(404)
+
+
 @app.get("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/yield", dependencies=[Depends(require_auth)])
 def api_subreddit_catalog_yield(project_id: str, collection_id: str) -> dict[str, Any]:
     """Measured outcome for captured catalog threads only; catalog metadata never counts as evidence."""
     from . import sources_value
-    if not db.get_project(project_id) or not db.get_collection(collection_id):
+    try:
+        return sources_value.subreddit_catalog_yield(project_id, collection_id)
+    except LookupError:
         raise HTTPException(404)
-    return sources_value.subreddit_catalog_yield(project_id, collection_id)
 
 
 class ScholarSearchIn(BaseModel):

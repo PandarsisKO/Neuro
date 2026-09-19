@@ -169,6 +169,48 @@ def restore(project_id: str, candidate_id: str) -> int:
     return mark(project_id, [candidate_id], "available", "restored by the user")
 
 
+def catalog_context(project_id: str, collection_id: str) -> dict[str, Any]:
+    """Validate the project-scoped boundary around a subreddit catalog.
+
+    A candidate may intentionally be captured through the general Candidate
+    Index from another project.  Catalog-specific actions have a narrower
+    authority: both the catalog and candidate must already belong to the URL's
+    project.  Checking before a write keeps foreign ids and detached catalogs
+    side-effect free.
+    """
+    if not db.get_project(project_id):
+        raise LookupError(project_id)
+    collection = db.get_collection(collection_id)
+    if not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
+        raise LookupError(collection_id)
+    return collection
+
+
+def catalog_candidate(project_id: str, collection_id: str, candidate_id: str) -> None:
+    catalog_context(project_id, collection_id)
+    row = db.connect().execute(
+        "SELECT 1 FROM collection_candidates WHERE collection_id=? AND candidate_id=?",
+        (collection_id, candidate_id),
+    ).fetchone()
+    if not row:
+        raise LookupError(candidate_id)
+
+
+def catalog_capture(project_id: str, collection_id: str, candidate_id: str, *, reason: str | None = None) -> dict[str, Any]:
+    catalog_candidate(project_id, collection_id, candidate_id)
+    return capture(candidate_id, project_id, reason=reason)
+
+
+def catalog_dismiss(project_id: str, collection_id: str, candidate_id: str, reason: str | None = None) -> int:
+    catalog_candidate(project_id, collection_id, candidate_id)
+    return dismiss(project_id, candidate_id, reason)
+
+
+def catalog_restore(project_id: str, collection_id: str, candidate_id: str) -> int:
+    catalog_candidate(project_id, collection_id, candidate_id)
+    return restore(project_id, candidate_id)
+
+
 def capture(candidate_id: str, project_id: str, *, reason: str | None = None) -> dict[str, Any]:
     """AD1: the one CAPTURE path, through the NORMAL lifecycle (ingest_url -> G1 identity) -- never a parallel one.
     Attach-if-already-owned, else enqueue the real acquisition job; either way `mark(..., "acquired", ...)` records
@@ -912,11 +954,7 @@ def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: 
     separation explicit and performs only local ranking over bounded metadata; it never triggers enumeration,
     acquisition, embeddings, or a model call.
     """
-    if not db.get_project(project_id):
-        raise LookupError(project_id)
-    collection = db.get_collection(collection_id)
-    if not collection or collection.get("kind") != "subreddit":
-        raise LookupError(collection_id)
+    collection = catalog_context(project_id, collection_id)
     current_revision = db.project_pool_revision(project_id) + "|" + collection_id
     if revision is not None and revision != current_revision:
         raise RuntimeError("catalog revision changed; refresh the page")
@@ -954,10 +992,10 @@ def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: 
                       "published_at": c.get("published_at"), "state": c.get("state"), "potential": score,
                       "fits": fits, "why": why, "metadata": metadata, "captured": captured,
                       "capture_status": "captured" if captured else ("capturing" if c.get("state") == "acquired" else "not_captured"),
-                      "firsthand": firsthand, "actions": {"capture": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire",
-                                                      "body": {"project_id": project_id}, "label": "Capture"},
-                                                   "dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss",
-                                                               "body": {"project_id": project_id}, "label": "Not for this project"}}})
+                      "firsthand": firsthand, "actions": {"capture": {"method": "POST", "endpoint": f"/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{c['id']}/capture",
+                                                      "body": {}, "label": "Capture"},
+                                                   "dismiss": {"method": "POST", "endpoint": f"/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{c['id']}/dismiss",
+                                                               "body": {}, "label": "Not for this project"}}})
     if mode == "fits_open_question":
         key = lambda i: (0 if i["fits"] else 1, -i["potential"], i["id"])
     elif mode == "firsthand":

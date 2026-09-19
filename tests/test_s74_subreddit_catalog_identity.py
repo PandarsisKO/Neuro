@@ -115,6 +115,25 @@ def test_reddit_candidate_and_community_source_resolve_without_recapture_or_cros
     assert db.list_jobs(20) == []
 
 
+def test_attaching_catalog_reconciles_an_old_unresolved_reddit_pointer_once():
+    owner, later = _project("legacy owner"), _project("legacy attach")
+    catalog = community.attach_subreddit_catalog(owner, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(owner)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    source = identity.resolve_or_create_source(
+        identity.Candidate(platform="community", external_id="reddit:abc123",
+                           url="https://www.reddit.com/r/smallbusiness/comments/abc123/owner_lessons/"),
+        owner, initial_status="ready",
+    ).source
+    # Simulate a pre-bridge candidate row: its capture was already known globally but the old row lacked source_id.
+    db.connect().execute("UPDATE candidates SET source_id=NULL WHERE id=?", (candidate_id,))
+
+    community.attach_subreddit_catalog(later, "https://www.reddit.com/r/smallbusiness/")
+    row = db.connect().execute("SELECT source_id FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+    assert row["source_id"] == source["id"]
+    assert db.project_source_ids(later, ready_only=False) == []
+
+
 def test_discovery_after_direct_thread_capture_resolves_the_same_candidate_identity():
     project = _project("direct capture")
     source = identity.resolve_or_create_source(
@@ -262,6 +281,48 @@ def test_catalog_api_exposes_review_refresh_and_yield(client):
     assert refreshed.status_code == 200 and refreshed.json()["job_id"]
     outcome = client.get(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}/yield", headers=h)
     assert outcome.status_code == 200 and outcome.json()["captured_threads"] == 0
+
+
+def test_catalog_actions_reject_detached_or_foreign_ids_before_any_write(client):
+    owner, outsider = _project("catalog owner"), _project("catalog outsider")
+    catalog = community.attach_subreddit_catalog(owner, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(owner)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    playlist = db.upsert_collection("playlist", "PL-boundary", "https://example.test/playlist", "Not a subreddit")
+    db.add_project_collections(owner, [playlist["id"]])
+    h = {"Authorization": "Bearer t0k"}
+
+    before = {
+        "jobs": db.connect().execute("SELECT COUNT(*) FROM jobs").fetchone()[0],
+        "sources": db.connect().execute("SELECT COUNT(*) FROM sources").fetchone()[0],
+        "outsider_state": db.connect().execute("SELECT COUNT(*) FROM candidate_projects WHERE project_id=?", (outsider,)).fetchone()[0],
+    }
+    base = f"/api/projects/{outsider}/subreddit-catalogs/{catalog['id']}"
+    assert client.get(base, headers=h).status_code == 404
+    assert client.post(base + "/refresh", headers=h).status_code == 404
+    assert client.get(base + "/yield", headers=h).status_code == 404
+    assert client.post(base + f"/candidates/{candidate_id}/capture", headers=h, json={}).status_code == 404
+    assert client.post(base + f"/candidates/{candidate_id}/dismiss", headers=h, json={}).status_code == 404
+    assert client.get(f"/api/projects/{owner}/subreddit-catalogs/{playlist['id']}", headers=h).status_code == 404
+    assert client.post(f"/api/projects/{owner}/subreddit-catalogs/{playlist['id']}/refresh", headers=h).status_code == 404
+
+    assert db.connect().execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == before["jobs"]
+    assert db.connect().execute("SELECT COUNT(*) FROM sources").fetchone()[0] == before["sources"]
+    assert db.connect().execute("SELECT COUNT(*) FROM candidate_projects WHERE project_id=?", (outsider,)).fetchone()[0] == before["outsider_state"]
+    assert candidates.list_for_project(owner)[0]["state"] == "available"
+
+
+def test_catalog_capture_endpoint_uses_the_catalog_scoped_action(client):
+    project = _project("catalog scoped capture")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(project)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    h = {"Authorization": "Bearer t0k"}
+    view = client.get(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}", headers=h).json()
+    assert view["items"][0]["actions"]["capture"]["endpoint"].endswith(f"/{candidate_id}/capture")
+    response = client.post(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}/candidates/{candidate_id}/capture", headers=h, json={})
+    assert response.status_code == 200 and response.json()["job_id"]
+    assert candidates.list_for_project(project)[0]["state"] == "acquired"
 
 
 def test_catalog_query_pages_a_5000_post_fixture():

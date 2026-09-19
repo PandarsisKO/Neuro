@@ -2085,6 +2085,20 @@ def project_collection_ids(project_id: str) -> list[str]:
         "SELECT collection_id FROM project_collections WHERE project_id=?", (project_id,)).fetchall()]
 
 
+def project_has_collection(project_id: str, collection_id: str) -> bool:
+    """Whether this project explicitly attached this collection.
+
+    Catalog membership is global, while every review, refresh, and capture
+    decision is project-relative.  Callers must establish this relationship
+    before touching catalog state so a guessed collection id cannot create a
+    candidate decision or a queue job in another project's scope.
+    """
+    return bool(connect().execute(
+        "SELECT 1 FROM project_collections WHERE project_id=? AND collection_id=?",
+        (project_id, collection_id),
+    ).fetchone())
+
+
 # ------------------------------------------------------------------ jobs
 
 JOB_ACTIVE = ("queued", "running", "external_pending")
@@ -4253,6 +4267,17 @@ def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
         # review its remembered rows immediately, while never inheriting another project's captured Sources.
         t = now()
         for collection_id in dict.fromkeys(collection_ids):
+            # A thread may have been captured directly before an older catalog candidate was reconciled.
+            # Repair only this attached catalog's unresolved Reddit bridge, once at attachment time; page
+            # scans keep their bounded metadata write and do not rewrite the whole catalog.
+            conn.execute(
+                "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
+                "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
+                "WHERE platform='reddit' AND source_id IS NULL "
+                "AND id IN (SELECT candidate_id FROM collection_candidates WHERE collection_id=?) "
+                "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' AND s.external_id=candidates.external_id)",
+                (collection_id,),
+            )
             conn.execute(
                 "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
                 "SELECT cc.candidate_id, ?, 'available', ?, ?, ? FROM collection_candidates cc "

@@ -835,7 +835,7 @@ globalThis.refreshSubredditCatalog = async function refreshSubredditCatalog(id, 
 };
 globalThis.catalogCapture = async function catalogCapture(candidateId, catalogId, btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Capturing…'; }
-  try { const r = await post(`/api/candidates/${candidateId}/acquire`, { project_id: state.project.id }); toast(r.job_id ? 'Thread capture queued.' : 'Thread attached from the library.'); loadJobs(); CATALOG.revision = null; openSubredditCatalog(catalogId, false); }
+  try { const r = await post(`/api/projects/${state.project.id}/subreddit-catalogs/${catalogId}/candidates/${candidateId}/capture`, {}); toast(r.job_id ? 'Thread capture queued.' : 'Thread attached from the library.'); loadJobs(); CATALOG.revision = null; openSubredditCatalog(catalogId, false); }
   catch (e) { toast('Could not capture: ' + (e.message || e), 'err'); if (btn) { btn.disabled = false; btn.textContent = 'Capture'; } }
 };
 globalThis.candAct = async function candAct(id, act) {
