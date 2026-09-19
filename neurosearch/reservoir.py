@@ -310,6 +310,26 @@ def cancel_subreddit_scan(project_id: str, collection_id: str) -> dict[str, Any]
     return {"state": state, "job": db.get_job(job_id), "status": status}
 
 
+def reject_legacy_subreddit_job(project_id: str, collection_id: str, job_id: str) -> dict[str, Any]:
+    """Make an unmigratable pre-run-bound queued job visible without fetching.
+
+    The old payload lacked the run/generation fence required to commit a page
+    safely.  It cannot be upgraded by guessing which current run it belongs
+    to, so fail that durable job and leave any newer run untouched.
+    """
+    key = _scan_key(project_id, collection_id)
+    raw = db.kv_get(key)
+    state = _scan_state(raw)
+    error = "legacy subreddit scan job lacks run identity; refresh or re-paste the catalog"
+    if state and state.get("job_id") in (None, job_id):
+        blocked = {**state, "job_id": job_id, "status": "blocked", "error": error,
+                   "reason": "legacy job requires refresh", "updated_at": time.time(), "finished_at": time.time()}
+        db.kv_compare_set(key, raw, json.dumps(blocked, sort_keys=True))
+    return {"collection_id": collection_id, "status": "blocked", "new": 0,
+            "total": int(state.get("known_posts") or 0), "error": error,
+            "provider_status": 400, "candidate_ids": []}
+
+
 def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id: str | None = None,
                          expected_generation: int | None = None, expected_job_id: str | None = None,
                          expected_job_run_id: str | None = None,
@@ -411,6 +431,15 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
     try:
         with db.batch():
+            # The user can detach a catalog while this worker is fetching.
+            # Recheck inside the page transaction so that a formerly valid
+            # request cannot create catalog candidates or project state after
+            # its authority has disappeared.
+            current_collection = db.get_collection(collection_id)
+            if (not db.get_project(project_id) or not current_collection
+                    or current_collection.get("kind") != "subreddit"
+                    or not db.project_has_collection(project_id, collection_id)):
+                raise _StaleSubredditScan()
             # Count against membership at commit time, rather than a snapshot
             # taken before network work.  Concurrent project scans then have a
             # single winner for first discovery and cannot double-count a row.

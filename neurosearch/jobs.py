@@ -329,6 +329,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "explore":
         if payload.get("kind") == "subreddit":
             from . import reservoir
+            if not isinstance(payload.get("catalog_run_id"), str) or not isinstance(payload.get("catalog_generation"), int):
+                raise CatalogScanBlocked(reservoir.reject_legacy_subreddit_job(
+                    payload["project_id"], payload["collection_id"], jid))
             result = reservoir.scan_subreddit_page(payload["project_id"], payload["collection_id"],
                                                     expected_run_id=payload.get("catalog_run_id"),
                                                     expected_generation=payload.get("catalog_generation"),

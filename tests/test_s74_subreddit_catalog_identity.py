@@ -262,6 +262,19 @@ def test_catalog_admission_rolls_back_state_when_job_creation_fails(monkeypatch)
     assert db.list_jobs(20) == []
 
 
+def test_legacy_catalog_job_without_run_identity_fails_before_fetching():
+    project = _project("legacy catalog job")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    with db.tx() as conn:
+        conn.execute("UPDATE jobs SET payload=? WHERE id=?", (__import__("json").dumps({
+            "url": queued["url"], "kind": "subreddit", "project_id": project, "collection_id": queued["collection_id"]}), queued["job_id"]))
+    claimed = db.claim_job(("explore",), worker_id="legacy")
+    assert claimed and jobs.execute(claimed, "legacy") == "failed"
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{queued['collection_id']}") or "{}")
+    assert state["status"] == "blocked" and "lacks run identity" in state["error"]
+    assert db.collection_candidate_ids(queued["collection_id"]) == []
+
+
 def test_repeated_paste_reuses_an_active_run_but_not_a_completed_catalog():
     project = _project("route transitions")
     first = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
@@ -541,6 +554,20 @@ def test_stale_scan_cannot_commit_after_a_newer_refresh_starts():
     assert db.collection_candidate_ids(catalog["id"]) == []
 
 
+def test_detached_catalog_cannot_commit_a_page_fetched_before_detach():
+    project = _project("detached during fetch")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+
+    def detached_mid_fetch(_sub, _after):
+        db.remove_project_collections(project, [catalog["id"]])
+        return [_listing("lost")], None
+
+    result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=detached_mid_fetch)
+    assert result["status"] == "stale"
+    assert db.collection_candidate_ids(catalog["id"]) == []
+    assert db.connect().execute("SELECT COUNT(*) FROM candidates").fetchone()[0] == 0
+
+
 def test_catalog_query_is_project_scoped_paged_and_metadata_only():
     first, second = _project("catalog first"), _project("catalog second")
     catalog = community.attach_subreddit_catalog(first, "https://www.reddit.com/r/smallbusiness/")
@@ -720,6 +747,30 @@ def test_catalog_query_pages_a_5000_post_fixture():
     last = candidates.catalog(project, catalog["id"], page=49, limit=100)
     assert first["total"] == 5_000 and len(first["items"]) == 100 and first["next_page"] == 1
     assert len(last["items"]) == 100 and last["next_page"] is None
+
+
+def test_catalog_worker_commits_a_5000_post_listing_in_50_bounded_turns(monkeypatch):
+    project = _project("catalog worker scale")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    calls = []
+
+    def pages(_subreddit, after, *, limit=100):
+        page = 0 if after is None else int(after.removeprefix("t3_page_"))
+        calls.append((page, limit))
+        rows = [_listing(f"p{page * 100 + offset:04d}") for offset in range(100)]
+        return rows, (f"t3_page_{page + 1}" if page < 49 else None)
+
+    monkeypatch.setattr(community, "enumerate_subreddit_page", pages)
+    for page in range(50):
+        claimed = db.claim_job(("explore",), worker_id=f"scale-{page}")
+        assert claimed and claimed["id"] == queued["job_id"]
+        assert jobs.execute(claimed, f"scale-{page}") == ("queued" if page < 49 else "done")
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{queued['collection_id']}") or "{}")
+    assert calls == [(page, 100) for page in range(50)]
+    assert state["status"] == "complete" and state["pages"] == 50 and state["observed"] == 5_000
+    assert state["known_posts"] == state["initial_known"] == 5_000 and state["reason"] == "listing ended"
+    assert len(db.collection_candidate_ids(queued["collection_id"])) == 5_000
+    assert db.connect().execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
 
 
 def test_catalog_warm_reads_reuse_project_scoring(monkeypatch):
