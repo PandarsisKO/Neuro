@@ -254,6 +254,10 @@ Catalog membership and first-discovery counting now share one write batch. A two
 
 Observed clears now preserve their distinction from omission, and listing identity/permalink/outbound URL validation runs before candidate creation. Focused S74/K9 gate: **42 passed**.
 
+### R3 metadata-boundary checkpoint — `9efbcfe`, 2026-09-19
+
+Listing parsing is capped at 100 entries and rejects malformed numeric metadata. Omitted author data no longer overwrites a prior deleted/removed observation; valid Reddit UTC creation times now carry through to precise scan coverage bounds, and refresh history retains one flat completed-run summary. Focused S74/K9 gate: **46 passed**.
+
 ### Original pass — historical evidence and limits
 
 **Correction, 2026-09-19:** entries below record code and checks from the first pass, not completed acceptance of SUB2–SUB8. The 281-test total includes existing subsystem regressions; the feature module then contained 13 tests. Its 5,000-row fixture inserts rows directly and checks paging, so it does not prove 50-page enumeration, performance, restart recovery or real access. The stale-worker test exercises an in-process callback, not concurrent workers. Section 5's corrective exit gates supersede broader completion claims in these historical checkpoints.
