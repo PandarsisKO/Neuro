@@ -99,8 +99,8 @@ Priority is table order among eligible work. CE10 may resume at the next safe bo
 | CE4 — release accepted extension repairs | READY after relevant CE1–CE3 work | Concrete candidate; required visual acceptance | Full release ritual, version agreement, delivery and supported live verification |
 | CE5 — CHR3 evidence-context preparation | ACCEPTED (isolated) | CHR0–CHR2 retained; owning design read | Scoped evidence builder, comparison passages, honest limits and meaningful deterministic tests |
 | CE6 — CHR3 synthesis and persistence | ACCEPTED (isolated) | Existing chat/provider/storage paths | Correct refreshed turn, refusal/failure/retry behavior and fresh successful snapshot |
-| CE7 — CHR3 interaction and visual acceptance | ACTIVE | Working isolated candidate | Real browser task exercise, clear spend consequence, correct state and required human visual review |
-| CE8 — CHR3 release | PREPARED | Exact frozen candidate | Full release ritual, delivered source/version and supported live verification |
+| CE7 — CHR3 interaction and visual acceptance | PREPARED (isolated) | Working isolated candidate | Real browser task exercise, clear spend consequence, correct state and required human visual review |
+| CE8 — CHR3 release | PREPARED (deterministic gate passed) | Exact frozen candidate | Full release ritual, delivered source/version and supported live verification |
 | CE9 — existing-feature acceptance package | READY after CE0; lower priority than eligible CE1–CE8 | Supported reads and existing real evidence | Fresh evidence gathered, eligible live gates run, remaining judgments made concrete |
 | CE10 — subreddit live acceptance and delivery | BLOCKED | Approved official access/configuration; capture cost boundary | SUB-R8b then SUB-R9 pass on reconciled candidate |
 | CE11 — mission closeout | BLOCKED | All in-scope gates resolved | Truthful delivered inventory, no unrecorded blockers; mission archived |
@@ -200,6 +200,12 @@ admission, failure/retry, exact/approximate provenance, citation scope and uncha
 **Checkpoint (2026-09-19):** the isolated candidate has `POST /api/conversations/{id}/refresh`, explicit user/assistant
 refresh provenance, a 409 no-evidence refusal, normal fresh evidence snapshots and no corpus-search tools. Focused
 tests cover success, refusal, refresh-topic exclusion, cross-project exclusion and no direct Claim creation.
+
+**CE7/CE8 checkpoint (2026-09-19):** an isolated fake-AI browser exercised the meaningful-delta control through
+persisted chip and cited answer; the 500px layout had no horizontal overflow in light/dark states. Full pytest was
+2,079 passed (one Starlette warning). The candidate-bound deterministic release-check passed at `fa4cf30` and wrote
+`evals/release/release-check-0.63.94-fa4cf30-20260919-170428.json`. This does not
+authorize or claim the remaining real paid synthesis, human production visual judgment, delivery or live verification.
 
 ### CE7 — CHR3 UI and browser acceptance
 

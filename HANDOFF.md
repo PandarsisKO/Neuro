@@ -13,6 +13,12 @@ those remain bounded by the existing budget and visual-acceptance rules. CHR3 is
 continuation; routine rung progression does not need another approval, while uncovered spend and genuine human
 judgments retain their boundaries.
 
+Latest isolated CHR3 evidence: fake-AI browser wiring exercised a meaningful delta through the persisted refresh
+chip and cited answer (including a 500px no-horizontal-overflow light/dark check); full pytest is **2,079 passed,
+1 warning**. The candidate-bound deterministic release gate passed at `fa4cf30`, artifact
+`evals/release/release-check-0.63.94-fa4cf30-20260919-170428.json`. These prove
+prepared code, not a real paid synthesis, production delivery or live verification.
+
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current
 main and reconcile only needed existing harness repairs. Do not silently land the blocked catalog to get a green
