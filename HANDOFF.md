@@ -31,6 +31,14 @@ three lessons plus shared-video deduplication. **No Review & import button was p
 cookies or document was transmitted. The exact active-state reopen snapshot raced the short scan and remains
 open, as does CS7's one bounded document-import acceptance.
 
+Latest controlled Send Screenshot observation: the installed extension captured the local intentionally tall
+fixture and visibly reported `Captured part of the page — sent to Neuro Search`; the source then appeared ready in
+the selected project as `Neuro Search partial capture fixture`, with its image transcript rendered in-app. This
+confirms the actual partial-capture path and image availability without a paid call. It does **not** close Case 7:
+the aggregate Source Drawer request remained on `reading everything this source gave…`, so the card's timestamp,
+mode wording, partial tag, URL and note still need a direct live view. No note was supplied and no course import,
+credential change or model-spend action was taken.
+
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current
 main and reconcile only needed existing harness repairs. Do not silently land the blocked catalog to get a green
