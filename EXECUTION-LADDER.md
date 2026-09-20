@@ -172,7 +172,7 @@ On the Mac: `.venv/bin/neurosearch eval --prefilter --out evals/prefilter-<date>
 only if net savings > 0 AND relevant-window recall ≥ 0.98. Record the decision in `HARDENING.md` (frozen-number
 rule). Gate: committed artifact + written decision, either way.
 
-### L-05 `[x] aa53a9c` P5.3 kept-rate sample design — lane: claude · tier: sonnet · needs: — · $0
+### L-05 `[x] 829eab1` P5.3 kept-rate sample design — lane: claude · tier: sonnet · needs: — · $0
 Haiku default is SHIPPED-PROVISIONAL (rulings §5). Design the smallest review that can contradict it: from the fixed 8
 E5 sources (4 Sonnet / 4 Haiku, ids in docs/T4-ADMISSION-2026-09-14.md), an exactly-40-finding sample
 (5 per source, importance-stratified), blind to model, exported by a `tools/sample_findings.py` Kyle runs on the

@@ -1,5 +1,18 @@
 # HANDOFF — shared Codex / Claude delivery mechanics
 
+## Kept-rate cohort repair — 2026-09-19
+
+The previously prepared L-05/L-07 quality decision tooling was corrected and delivered at `829eab1`.
+`tools/sample_findings.py` now uses only the eight E5 source/model pairs recorded in
+`docs/T4-ADMISSION-2026-09-14.md`, refuses missing/undersized cohort members, selects exactly five
+importance-stratified findings per source (40 total; 20 per model), and records that cohort in the blind-review
+file. It excludes historical no-model/other-model rows. `tools/decide_kept_rate.py` now limits ledger spend and
+the output denominator to those exact pairs, so unrelated project history cannot alter the cost-per-kept result.
+Focused L-05/L-07/T4/cost tests: **56 passed**. The complete isolated release check passed with **2,104 passed,
+1 warning**, Foundation, Tier 1, migrations, recovery and backup/restore at
+`evals/release/release-check-0.63.94-829eab1-20260919-220946.json`. This prepares a valid review; L-06 remains
+Kyle's independent judgment and L-07 waits for that completed review.
+
 ## Active continuous-execution mission — 2026-09-19
 
 Kyle requested a mission and ladder for the recommended continuation. The canonical sequence is now
