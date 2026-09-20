@@ -1,0 +1,12 @@
+<!doctype html><html><head><title>Route delay</title></head><body>
+<script>window.__clicks=[];document.addEventListener('click',e=>{const b=e.target.closest('button');if(b)window.__clicks.push(b.textContent.trim());},true);</script>
+<main><h2 id="heading">Route course</h2><div id="player"></div><ul id="lessons"></ul></main>
+<script>
+const rows=[['Route one','route1111route1111route1111route1'],['Route two','route2222route2222route2222route2']];
+const heading=document.querySelector('#heading'), player=document.querySelector('#player'), list=document.querySelector('#lessons');
+rows.forEach(([title,id],i)=>{const b=document.createElement('button');b.textContent=`${i+1}. ${title} 4m`;b.onclick=()=>{
+  // A real SPA failure mode: the route commits immediately while the previous lesson is still visible.
+  history.pushState({}, '', `/courses/route-delay/${i+1}`);
+  setTimeout(()=>{heading.textContent=`Lesson ${i+1} · ${title}`;player.innerHTML=`<iframe src="https://www.loom.com/embed/${id}"></iframe>`;},800);
+};const li=document.createElement('li');li.appendChild(b);list.appendChild(li);});
+</script></body></html>

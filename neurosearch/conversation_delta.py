@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import json
+import hashlib
 from typing import Any
 
 from . import db
@@ -961,6 +962,18 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
     new_chunk_ids = ordered_unique(new_ids)
     comparison_chunk_ids = ordered_unique(comparison_ids, exclude=set(new_chunk_ids))
     baseline = db.conversation_baseline(conversation_id)
+    # This identity is deliberately derived from the bounded evidence contract rather than timestamps.  The same
+    # delta must not buy another answer on a second click; a genuinely changed unit/chunk gets a new key.
+    refresh_material = [
+        {k: unit.get(k) for k in ("category", "kind", "question_message_id", "source_id", "finding_id",
+                                   "claim_id", "tension_id", "relation", "chunk_ids", "previous_state",
+                                   "current_state")}
+        for unit in units
+        if not unit.get("source_id") or unit.get("source_id") in allowed_sources
+    ]
+    refresh_key = hashlib.sha256(json.dumps({"units": refresh_material, "new_chunk_ids": new_chunk_ids,
+                                              "comparison_chunk_ids": comparison_chunk_ids}, sort_keys=True,
+                                             default=str, separators=(",", ":")).encode()).hexdigest()
     return {
         "project_id": pid,
         "new_chunk_ids": new_chunk_ids,
@@ -968,4 +981,5 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
         "baseline_message_id": baseline.get("message_id") if baseline else None,
         "since": baseline.get("answered_at") if baseline else result.get("latest_activity_at"),
         "delta_summary": {"material": len(result.get("material_changes") or []), "supporting": len(result.get("supporting_changes") or [])},
+        "refresh_key": refresh_key,
     }

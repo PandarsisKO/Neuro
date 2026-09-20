@@ -951,6 +951,7 @@ def test_refresh_is_explicit_delta_evidence_only_and_establishes_a_fresh_baselin
     refresh_answer = rows[-1]
     assert refresh_answer["role"] == "assistant"
     assert refresh_answer["meta"]["refresh"]["baseline_message_id"] is not None
+    first_refresh_key = refresh_answer["meta"]["refresh"]["refresh_key"]
     assert refresh_answer["meta"]["evidence"]["complete"] is True
     shown_sources = set(refresh_answer["meta"]["evidence"]["shown_source_ids"])
     assert sid in shown_sources
@@ -958,6 +959,26 @@ def test_refresh_is_explicit_delta_evidence_only_and_establishes_a_fresh_baselin
     assert len(cd._questions(conv)) == 1
     after_claims = db.connect().execute("SELECT COUNT(*) n FROM project_claims WHERE project_id=?", (pid,)).fetchone()["n"]
     assert after_claims == before_claims, "a refresh response is not silently made into Claim evidence"
+    # The original question's delta remains visible by design (it is the conversation's durable comparison
+    # baseline), so admission needs an evidence identity rather than a timestamp/base-message heuristic.
+    with pytest.raises(ValueError, match="no concrete new evidence"):
+        qa.refresh_conversation(conv, pid)
+    assert first_refresh_key
+
+
+def test_refresh_key_changes_when_the_bounded_evidence_contract_changes():
+    """The admission identity must be content-addressed: unchanged evidence blocks a repeat spend, while a
+    distinct selected passage is eligible.  Supplying the deterministic delta directly isolates that contract
+    from FTS ranking, which is intentionally allowed to select a bounded subset of many new sources."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    sid_a = _new_source(pid, "Seller financing one", "Seller financing terms include a five year standby note.", tag="refresh-key-a")
+    sid_b = _new_source(pid, "Seller financing two", "Seller financing terms include a seven year standby note.", tag="refresh-key-b")
+    cid_a = db.get_chunks(sid_a)[0]["id"]
+    cid_b = db.get_chunks(sid_b)[0]["id"]
+    first = {"material_changes": [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid_a, "chunk_ids": [cid_a]}], "supporting_changes": []}
+    second = {"material_changes": first["material_changes"] + [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid_b, "chunk_ids": [cid_b]}], "supporting_changes": []}
+    assert cd.refresh_evidence(conv, pid, first)["refresh_key"] != cd.refresh_evidence(conv, pid, second)["refresh_key"]
 
 
 def test_refresh_evidence_drops_cross_project_chunks_even_if_a_bad_unit_names_them():

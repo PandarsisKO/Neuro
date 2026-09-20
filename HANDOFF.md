@@ -6945,3 +6945,25 @@ private `NEUROSEARCH_DATA_DIR` beneath `/private/tmp/neuro-repair-powMDK`, and u
 `OPENAI_API_KEY`. Commands from that checkout: `.venv/bin/python -m pytest tests -q`, focused S55 and combined
 S4/S55 pytest, `.venv/bin/neurosearch eval`, `repo-check`, and normal `release-check` (no skips). Logs are in the
 parent scratch directory. The next gate is the active task's repaired, frozen full suite and normal release-check.
+
+## Autonomous repair round — 2026-09-19
+
+Four reproducible, non-Kyle-gated defects were repaired in an isolated worktree before any shared-checkout update:
+
+- Course Scanner no longer attributes the previous lesson's player merely because an SPA changed its URL first.
+  It now waits, within the existing bounded grace period, for a heading or rendered-player change. The new
+  `route-delay.html` contract fixture commits the route immediately and replaces the old lesson 800 ms later.
+- Chat refreshes are content-addressed by their bounded delta evidence. A completed refresh stores its evidence
+  key and a repeat click with exactly that same evidence is refused before another answer generation is started;
+  a changed bounded evidence set has a different key.
+- A refresh that completes after the user switches chats no longer reloads the old conversation over the newer
+  selection.
+- The extension removes a stale saved 401/403 message from the popup as soon as a real authenticated projects
+  request succeeds.
+
+Focused verification: Conversation Delta **56 passed**, Course Scanner/extension auth **38 passed**, and the
+chat-delta jsdom harness **23 passed**. A fresh `release-check --no-pytest` passed every deterministic proof at
+the candidate source. The complete pytest run exercised **2,088** tests: **2,082 passed** in the isolated copy;
+the six remaining failures were only missing tracked historical SQLite fixtures caused by the verifier's broad
+`*.db` exclusion, and those six migration tests passed immediately after the fixtures were restored. No live DB,
+provider, browser session, cookie, or import action was used.

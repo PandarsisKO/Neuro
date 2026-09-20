@@ -165,6 +165,23 @@ function makeDom() {
   else pass('gate 8: a late response for a previous chat never paints into the newly selected chat');
 }
 
+// gate 19: a refresh completing after a chat switch must not reopen the old chat over the user's selection
+{
+  const { window } = makeDom();
+  let release; let loads = 0, selects = 0;
+  window.state.conv = 'c8';
+  window.post = () => new Promise(resolve => { release = resolve; });
+  window.loadChats = async () => { loads++; };
+  window.selectChat = async () => { selects++; };
+  const btn = window.document.createElement('button');
+  const refreshing = window.refreshChat('c8', btn);
+  window.state.conv = 'c9';
+  release({});
+  await refreshing;
+  if (window.state.conv !== 'c9' || loads || selects) fail('gate 19: a completed refresh reopened or reloaded the old chat after the user switched');
+  else pass('gate 19: a completed refresh leaves a newer chat selection untouched');
+}
+
 // gate 10/11: empty states
 {
   const { window } = makeDom();

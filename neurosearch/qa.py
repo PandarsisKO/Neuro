@@ -712,7 +712,7 @@ def ask(
             user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
         meta = dict(validation or {})
         if refresh:
-            meta["refresh"] = {k: refresh.get(k) for k in ("baseline_message_id", "since", "delta_summary")}
+            meta["refresh"] = {k: refresh.get(k) for k in ("baseline_message_id", "since", "delta_summary", "refresh_key")}
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:
             meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + "answer incomplete: output limit reached twice"
@@ -771,6 +771,10 @@ def refresh_conversation(conversation_id: str, project_id: str | None = None, *,
         evidence = conversation_delta.refresh_evidence(conversation_id, pid, delta)
         if not evidence["new_chunk_ids"]:
             raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
+        for row in reversed(conversation_delta._rows(conversation_id)):
+            prior_key = (row.get("meta") or {}).get("refresh", {}).get("refresh_key") if row["role"] == "assistant" else None
+            if prior_key == evidence["refresh_key"]:
+                raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
         since = evidence.get("since")
         label = datetime.fromtimestamp(float(since)).strftime("%b %-d") if since else "the last answer"
         question = f"Refresh: what's new since {label} in this chat?"

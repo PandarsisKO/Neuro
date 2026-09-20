@@ -46,7 +46,7 @@ const bridge = {
     return { status: 200, text: async () => readFileSync(file, 'utf8') };
   },
 };
-const settle = { min_ms: 30, quiet_ms: 60, cap_ms: 700, sample_ms: 15, grace_ms: 400 };
+const settle = { min_ms: 30, quiet_ms: 60, cap_ms: 700, sample_ms: 15, grace_ms: 400, content_grace_ms: 1500 };
 const timeout = setTimeout(() => { console.error('harness timeout'); process.exit(2); }, 30000);
 try {
   const summary = await window.NSScan.run(window, bridge, { settle });

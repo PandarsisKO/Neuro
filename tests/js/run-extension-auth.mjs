@@ -47,6 +47,29 @@ async function popupApi(status) {
   }
 }
 
+async function popupRecovery() {
+  const loadSrc = slice(popup, 'async function load()', '// ---- B1:', 'popup load');
+  const elements = Object.fromEntries(['setup', 'main', 'cfg', 'pageMsg', 'pageProject', 'wanted', 'wantedWhy', 'queue'].map(id => [id, {
+    style: {}, textContent: '', innerHTML: '', value: '',
+  }]));
+  const store = { appUrl: 'http://app.test', token: 'recovered', lastProject: 'p1', authError: 'saved refusal', authErrorAt: 1 };
+  const chrome = { storage: { local: {
+    get: async keys => Array.isArray(keys) ? Object.fromEntries(keys.map(k => [k, store[k]])) : { ...store },
+    remove: async keys => { for (const key of keys) delete store[key]; },
+  } }, runtime: { getManifest: () => ({ version: 'test' }), sendMessage: (_msg, callback) => callback && callback(), lastError: null },
+  tabs: { query: async () => [{ id: 7, url: 'https://course.test/page' }] } };
+  const sandbox = {
+    cfg: {}, WANTED: null, chrome, Promise, JSON, URL,
+    $: selector => elements[selector.slice(1)], esc: value => String(value),
+    api: async path => path === '/api/projects' ? [{ id: 'p1', name: 'Project one' }] : path === '/api/capture/pending' ? { items: [] } : {},
+    refreshScan: async () => {}, refreshCapture: async () => {},
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(`${loadSrc}\nglobalThis.__load = load;`, sandbox);
+  await sandbox.__load();
+  return { storedAuthError: store.authError || null, pageMessage: elements.pageMsg.textContent };
+}
+
 async function backgroundPath(status, form = false) {
   const cfgSrc = slice(background, 'async function cfg()', 'async function api(path, opts = {})', 'background cfg');
   const apiSrc = slice(background, 'async function api(path, opts = {})', 'function canon(', 'background api');
@@ -92,6 +115,7 @@ switch (command) {
   case 'popup-401': result = await popupApi(401); break;
   case 'popup-403': result = await popupApi(403); break;
   case 'popup-500': result = await popupApi(500); break;
+  case 'popup-recovery': result = await popupRecovery(); break;
   case 'background-401': result = await backgroundPath(401); break;
   case 'form-403': result = await backgroundPath(403, true); break;
   case 'poll-401': result = await backgroundPoll(401); break;

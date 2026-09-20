@@ -526,8 +526,11 @@ globalThis.refreshChat = async function refreshChat(id, btn) {
   btn.disabled = true; btn.textContent = 'Refreshing…';
   try {
     await post('/api/conversations/' + id + '/refresh', { use_web: $('#useWeb').checked });
+    // The request can finish after a user chooses another chat.  Never let an old refresh reload that chat over
+    // the user's current selection.
+    if (state.conv !== id) return;
     await loadChats();
-    await selectChat(id, false);     // reload persisted synthetic turn + answer; never manufacture a local chat row
+    if (state.conv === id) await selectChat(id, false); // reload persisted synthetic turn; never manufacture a local row
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Refresh this chat';
     const el = $('#chatDelta');

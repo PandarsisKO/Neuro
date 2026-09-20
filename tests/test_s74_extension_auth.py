@@ -56,6 +56,12 @@ def test_popup_keeps_non_auth_server_error_distinct():
     assert result == {"threw": True, "status": 500, "authMessage": None, "message": "server 500"}
 
 
+def test_popup_clears_a_recovered_auth_error_after_projects_load():
+    """A saved 401/403 must disappear once a real authenticated request succeeds, rather than falsely telling
+    the user their now-working password is still rejected."""
+    assert _run("popup-recovery") == {"storedAuthError": None, "pageMessage": ""}
+
+
 @pytest.mark.parametrize("command, status", [("background-401", 401), ("form-403", 403)])
 def test_background_api_and_upload_mark_auth_refusals_at_runtime(command, status):
     result = _run(command)
