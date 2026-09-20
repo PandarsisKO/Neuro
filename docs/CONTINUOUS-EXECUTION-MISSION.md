@@ -1,7 +1,7 @@
 # Continuous execution — finish acceptance, then Chat Refresh
 
-Status: ACTIVE — an isolated CHR3 evidence-boundary repair is release-checked after a follow-up audit; continue
-with safe delivery, remaining live acceptance gates, and Kyle decisions.
+Status: ACTIVE — the CHR3 evidence-boundary repair is delivered after a follow-up audit; continue with supported
+live acceptance gates and Kyle decisions.
 Updated: 2026-09-19. Owner: executing agent, currently Codex.
 Planning base: shared `main` at `aea21ef369603308ef48d5b4eee85d608786ea6e`.
 
@@ -41,7 +41,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
-| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 completion `e99ccac` has material-first bounded provenance, durable failure handling, and a production-safe full release-check PASS (**2,095 passed**) | Deliver the release-checked citation-resolution, capped-evidence disclosure and duplicate-admission repair; then paid real-evidence synthesis acceptance |
+| Chat | CHR0/CHR1 shipped; CHR2 closed; the delivered follow-up repair adds conservative citation resolution, capped-evidence disclosure and duplicate-admission boundaries | Supported live verification and paid real-evidence synthesis acceptance |
 | Subreddit | Prepared delivery candidate `7191fdf` on `codex/subreddit-delivery`; offline implementation and release proof are complete | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
 
@@ -239,8 +239,8 @@ keeps an unchanged capped selection from becoming a new paid refresh merely beca
 arrive, limits affected-question prompt wording to selected evidence, and tells both provider and user when the cap
 omitted lower-priority passages. Commit `91bd9e1` passed the ordinary deterministic release ritual — **2,099
 passed, 1 warning**, Foundation, Tier 1, migrations, recovery and backup/restore — at
-`evals/release/release-check-0.63.94-91bd9e1-20260919-192933.json`. It is release-checked but not delivered or
-real-paid/live accepted; retain those separate states.
+`evals/release/release-check-0.63.94-91bd9e1-20260919-192933.json`. It was delivered to shared `main` and GitHub
+at `ab4bde8`; it is still not real-paid/live accepted, so retain those separate states.
 
 ### CE7 — CHR3 UI and browser acceptance
 

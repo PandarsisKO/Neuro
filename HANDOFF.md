@@ -18,8 +18,8 @@ conservative: only a containing numeric/exact timestamp chunk is selected; page-
 validation passed: 65 CHR1 tests, 24 jsdom chat-delta checks, 122 adjacent chat checks, and 18
 frontend/design/source-drawer checks. Commit `91bd9e1` is release-checked at
 `evals/release/release-check-0.63.94-91bd9e1-20260919-192933.json`: **2,099 passed, 1 warning**, Foundation,
-Tier 1, migrations, recovery and backup/restore all pass. It remains a prepared, undelivered candidate and has
-not had real paid acceptance.
+Tier 1, migrations, recovery and backup/restore all pass. It was delivered to shared `main` and GitHub at
+`ab4bde8` on 2026-09-19. It has not had real paid acceptance or supported live verification.
 
 Latest CHR3 completion evidence: `e99ccac` additionally makes the bounded refresh contract material-first,
 records omitted supporting/comparison excerpts in persisted provenance, and turns a post-admission provider failure
@@ -65,8 +65,8 @@ checkpoint, and no new runtime release is claimed.
 
 ## Current continuation pointer — 2026-09-19
 
-Runtime changes are prepared from `main` in isolation. The Chat Refresh completion candidate is `e99ccac` on
-`codex/chat-refresh-completion`; once published, start other runtime work from that new `main` tip. The separately
+Runtime changes are prepared from `main` in isolation. The Chat Refresh evidence-boundary repair is delivered on
+shared `main` at `ab4bde8` (runtime commit `91bd9e1`); start other runtime work from that tip. The separately
 prepared catalog candidate is `7191fdf` on `codex/subreddit-delivery`, at
 `/private/tmp/neuro-subreddit-delivery`. It must remain separate until R8b's approved official-API live gate; do
 not land it merely to make main appear complete. The earlier subreddit branches are historical checkpoints.
