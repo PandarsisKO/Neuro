@@ -993,6 +993,42 @@ def test_refresh_evidence_drops_cross_project_chunks_even_if_a_bad_unit_names_th
     assert evidence["new_chunk_ids"] == []
 
 
+def test_refresh_evidence_prioritizes_material_claim_evidence_and_records_overflow():
+    """A large corroborating excerpt set cannot evict the concrete passage behind a material claim change.
+
+    The selection is the paid-call contract, so its overflow must be visible in provenance rather than silently
+    hidden by a later slice in ``qa._refresh_hits``.
+    """
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    material_sid = _new_source(pid, "Material claim evidence", "A seller note has no payments in year one.",
+                               tag="refresh-material")
+    claim = claims.add_claim(pid, "Seller notes can have no payments in their first year.", claim_type="market")
+    claims.add_evidence(claim["id"], material_sid, locator="0:00", excerpt="no payments in year one")
+
+    supporting_sid = _new_source(pid, "Supporting excerpts", "Supporting excerpt zero.", tag="refresh-supporting")
+    db.replace_chunks(supporting_sid, [
+        {"start": float(i), "end": float(i + 1), "text": f"Supporting excerpt {i}: corroborating detail."}
+        for i in range(qa.MAX_EXCERPTS + 5)
+    ])
+    supporting_ids = [chunk["id"] for chunk in db.get_chunks(supporting_sid)]
+    evidence = cd.refresh_evidence(conv, pid, {
+        "material_changes": [{"kind": "claim", "category": "claim_transition", "claim_id": claim["id"]}],
+        "supporting_changes": [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": supporting_sid,
+                                "chunk_ids": supporting_ids + [supporting_ids[-1]]}],
+    })
+
+    hits = qa._refresh_hits(evidence, pid)
+    assert len(hits) == qa.MAX_EXCERPTS
+    assert hits[0]["source_id"] == material_sid
+    assert evidence["selection"] == {
+        "cap": qa.MAX_EXCERPTS,
+        "selected": qa.MAX_EXCERPTS,
+        "truncated": True,
+        "omitted": {"material": 0, "supporting": 6, "comparison": 0},
+    }
+
+
 def test_refresh_endpoint_refuses_without_concrete_new_evidence():
     pid = _golden()
     conv = db.create_conversation(pid)["id"]
@@ -1072,6 +1108,31 @@ def test_refresh_includes_an_early_affected_question_outside_the_history_tail(mo
     monkeypatch.setattr(providers, "invoke", capture_refresh)
     qa.refresh_conversation(conv, pid)
     assert refresh_prompts and early in refresh_prompts[0]
+
+
+def test_refresh_endpoint_persists_a_failure_after_a_saved_synthetic_turn(monkeypatch):
+    """A provider failure after valid refresh admission must not leave a dangling user chip in the chat."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    _new_source(pid, "New seller financing terms video",
+                "Seller financing terms can include a five year standby note with no payments in year one.")
+    from neurosearch import providers
+
+    def provider_failure(task, **kwargs):
+        if task == "answer.chat":
+            raise RuntimeError("controlled refresh provider failure")
+        return fake_ai.invoke(task, **kwargs)
+
+    monkeypatch.setattr(providers, "invoke", provider_failure)
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.post(f"/api/conversations/{conv}/refresh", headers=H, json={})
+    assert response.status_code == 400
+    rows = cd._rows(conv)
+    assert rows[-2]["role"] == "user" and rows[-2]["meta"].get("kind") == "refresh"
+    assert rows[-1]["role"] == "assistant"
+    assert rows[-1]["meta"].get("incomplete") is True
+    assert "controlled refresh provider failure" in rows[-1]["content"]
 
 
 def test_incomplete_refresh_does_not_consume_its_evidence_identity(monkeypatch):

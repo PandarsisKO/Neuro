@@ -914,35 +914,53 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
     result = delta if delta is not None else get_delta(conversation_id, pid)
     allowed_sources = set(db.project_source_ids(pid, ready_only=False))
     units = list(result.get("material_changes") or []) + list(result.get("supporting_changes") or [])
-    new_ids: list[int] = []
-    finding_ids: set[int] = set()
-    claim_ids: set[str] = set()
-    for unit in units:
+    material_categories = {"contradicts", "plan_impact", "claim_transition", "resolves_gap", "new_finding"}
+    unit_specs = []
+    direct_ids: list[int] = []
+    for index, unit in enumerate(units):
         sid = unit.get("source_id")
         if sid and sid not in allowed_sources:
             continue
-        new_ids.extend(int(cid) for cid in (unit.get("chunk_ids") or []) if cid is not None)
-        if unit.get("finding_id") is not None:
-            finding_ids.add(int(unit["finding_id"]))
-        if unit.get("claim_id"):
-            claim_ids.add(str(unit["claim_id"]))
+        ids = [int(cid) for cid in (unit.get("chunk_ids") or []) if cid is not None]
+        direct_ids.extend(ids)
+        category = str(unit.get("category") or "new_excerpt")
+        unit_specs.append({"unit": unit, "ids": ids, "category": category,
+                           "bucket": "material" if category in material_categories else "supporting",
+                           "index": index})
+
+    # A delta can contain far more excerpts than the chat contract permits.  Validate direct references now and
+    # select deterministically below, rather than letting qa._refresh_hits slice an incidental construction order.
+    direct_rows = db.get_chunks_by_ids(direct_ids)
+    for spec in unit_specs:
+        spec["ids"] = [cid for cid in spec["ids"]
+                       if (row := direct_rows.get(cid)) and row["source_id"] in allowed_sources]
+
+    finding_ids = {int(spec["unit"]["finding_id"]) for spec in unit_specs
+                   if spec["unit"].get("finding_id") is not None}
+    claim_ids = {str(spec["unit"]["claim_id"]) for spec in unit_specs if spec["unit"].get("claim_id")}
 
     conn = db.connect()
+    finding_chunks: dict[int, list[int]] = {}
     if finding_ids:
         marks = ",".join("?" * len(finding_ids))
-        rows = conn.execute(f"SELECT citations FROM project_notes WHERE id IN ({marks})", tuple(sorted(finding_ids))).fetchall()
+        rows = conn.execute(f"SELECT id, citations FROM project_notes WHERE id IN ({marks})", tuple(sorted(finding_ids))).fetchall()
         for row in rows:
             try:
                 citations = json.loads(row["citations"] or "[]")
             except ValueError:
                 citations = []
-            new_ids.extend(_citation_chunk_ids(citations, allowed_sources))
+            finding_chunks[int(row["id"])] = _citation_chunk_ids(citations, allowed_sources)
+    claim_chunks: dict[str, list[int]] = {}
     if claim_ids:
         marks = ",".join("?" * len(claim_ids))
         rows = conn.execute(
-            f"SELECT ce.source_id, ce.start FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id "
+            f"SELECT ce.claim_id, ce.source_id, ce.start FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id "
             f"WHERE c.project_id=? AND ce.claim_id IN ({marks})", (pid, *sorted(claim_ids))).fetchall()
-        new_ids.extend(_citation_chunk_ids([{"source_id": r["source_id"], "start": r["start"]} for r in rows], allowed_sources))
+        for cid in claim_ids:
+            claim_chunks[cid] = _citation_chunk_ids(
+                [{"source_id": r["source_id"], "start": r["start"]} for r in rows if r["claim_id"] == cid],
+                allowed_sources,
+            )
 
     comparison_ids: list[int] = []
     for row in _rows(conversation_id):
@@ -950,17 +968,39 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
             continue
         comparison_ids.extend(_citation_chunk_ids(row.get("citations") or [], allowed_sources))
 
-    def ordered_unique(ids: list[int], *, exclude: set[int] | None = None) -> list[int]:
-        seen = exclude or set()
-        out = []
-        for cid in ids:
-            if cid not in seen:
-                seen.add(cid)
-                out.append(cid)
-        return out
+    from .qa import MAX_EXCERPTS
 
-    new_chunk_ids = ordered_unique(new_ids)
-    comparison_chunk_ids = ordered_unique(comparison_ids, exclude=set(new_chunk_ids))
+    # Material differences must survive before corroborating excerpts and old comparison passages.  The delta has
+    # already ranked units by CATEGORY_ORDER; preserve that order inside each bucket, then record any overflow so a
+    # completed refresh is never mistaken for a complete representation of a larger delta.
+    candidates: list[tuple[str, str, int]] = []
+    for spec in sorted(unit_specs, key=lambda s: (0 if s["bucket"] == "material" else 1,
+                                                   CATEGORY_ORDER.get(s["category"], 99), s["index"])):
+        ids = list(spec["ids"])
+        unit = spec["unit"]
+        if unit.get("finding_id") is not None:
+            ids.extend(finding_chunks.get(int(unit["finding_id"]), []))
+        if unit.get("claim_id"):
+            ids.extend(claim_chunks.get(str(unit["claim_id"]), []))
+        candidates.extend((spec["bucket"], "new", cid) for cid in ids)
+    candidates.extend(("comparison", "comparison", cid) for cid in comparison_ids)
+
+    cap = max(1, int(MAX_EXCERPTS))
+    selected_new: list[int] = []
+    selected_comparison: list[int] = []
+    omitted = {"material": 0, "supporting": 0, "comparison": 0}
+    seen: set[int] = set()
+    for bucket, kind, cid in candidates:
+        if cid in seen:
+            continue
+        seen.add(cid)
+        if len(selected_new) + len(selected_comparison) >= cap:
+            omitted[bucket] += 1
+            continue
+        (selected_new if kind == "new" else selected_comparison).append(cid)
+
+    new_chunk_ids = selected_new
+    comparison_chunk_ids = selected_comparison
     # CHR3 is a whole-conversation refresh, but qa.ask() deliberately keeps its ordinary prompt history to a
     # bounded tail.  Carry the actual earlier questions touched by this delta along with the evidence contract so
     # a new passage that changes Q1 is not synthesized only against the last few, unrelated turns in a long chat.
@@ -997,6 +1037,8 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
         "baseline_message_id": baseline.get("message_id") if baseline else None,
         "since": baseline.get("answered_at") if baseline else result.get("latest_activity_at"),
         "delta_summary": {"material": len(result.get("material_changes") or []), "supporting": len(result.get("supporting_changes") or [])},
+        "selection": {"cap": cap, "selected": len(new_chunk_ids) + len(comparison_chunk_ids),
+                      "truncated": any(omitted.values()), "omitted": omitted},
         "affected_questions": affected_questions,
         "refresh_key": refresh_key,
     }

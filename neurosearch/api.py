@@ -3478,6 +3478,12 @@ async def api_refresh_conversation(conversation_id: str, body: RefreshConversati
             lambda: qa.refresh_conversation(conversation_id, use_web=body.use_web))
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
+    except Exception as e:  # noqa: BLE001 — a saved synthetic refresh turn needs the same durable failure record as /ask
+        log.exception("conversation refresh failed")
+        tail = db.get_messages(conversation_id, limit=1)
+        if tail and tail[-1]["role"] == "user" and (tail[-1].get("meta") or {}).get("kind") == "refresh":
+            qa.save_failure(conversation_id, db.conversation_project(conversation_id), str(e))
+        raise
 
 
 SSE_HEARTBEAT = 10.0     # seconds of silence after which the stream sends a keep-alive comment (nothing is ever "frozen")

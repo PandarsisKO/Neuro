@@ -423,7 +423,8 @@ def _refresh_hits(refresh: dict[str, Any], project_id: str) -> list[dict[str, An
         if not is_new:
             hit["text"] = "[previously cited]\n" + hit["text"]
         hits.append(hit)
-    hits = hits[:MAX_EXCERPTS]
+    if len(hits) > MAX_EXCERPTS:
+        raise ValueError("The refresh evidence contract exceeds the chat excerpt limit.")
     if not any(int(h["chunk_id"]) in new_ids for h in hits):
         raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
     return hits
@@ -523,7 +524,8 @@ def ask(
 
     from . import providers
 
-    providers.require_anthropic()
+    if not refresh:
+        providers.require_anthropic()
     if project and not source_ids:
         source_ids = project["source_ids"] or ["__none__"]
 
@@ -543,6 +545,9 @@ def ask(
                 saved_user = True
             except Exception as e:  # noqa: BLE001 — do not lose a valid refresh because its audit row could not be filed
                 log.warning("could not save the refresh question: %s", e)
+        # Save the valid synthetic turn before checking the provider so an unavailable provider receives the same
+        # durable failure treatment as a normal user question.  Stale evidence still exits above without a row.
+        providers.require_anthropic()
         phase("retrieving", "gathering the evidence that changed in this chat…")
     else:
         phase("retrieving", "searching this project's sources…")
@@ -744,7 +749,7 @@ def ask(
             user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
         meta = dict(validation or {})
         if refresh:
-            meta["refresh"] = {k: refresh.get(k) for k in ("baseline_message_id", "since", "delta_summary", "refresh_key")}
+            meta["refresh"] = {k: refresh.get(k) for k in ("baseline_message_id", "since", "delta_summary", "selection", "refresh_key")}
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:
             meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + "answer incomplete: output limit reached twice"
