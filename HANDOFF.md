@@ -39,9 +39,12 @@ a real eligible DOI project plus Kyle's A–F usefulness judgment still gate FM1
 Latest live Course Scanner evidence: the installed extension, on the signed-in three-lesson Acquisition Ace
 course, visibly entered `3 lessons found` / `Reading the first lesson`, then completed `3 of 3 lessons ready`;
 closing the popup from a confirmed active state did not prevent completion, and its reopened record showed the
-three lessons plus shared-video deduplication. **No Review & import button was pressed**: no course content,
-cookies or document was transmitted. The exact active-state reopen snapshot raced the short scan and remains
-open, as does CS7's one bounded document-import acceptance.
+three lessons plus shared-video deduplication. A separate installed-Chrome, seven-lesson local fixture then
+closed the exact active-reopen observation: after closing the popup during the scan, reopening it visibly showed
+the disabled Scan control, Stop action, and `Reading 6 of 7: Conclusion`; it subsequently completed `7 of 7
+lessons ready`, including the honest five-video / three-linked-document outcome. **No Review & import button was
+pressed**: no course content, cookies or document was transmitted. CS7's one bounded document-import acceptance
+remains open.
 
 Latest controlled Send Screenshot observation: the installed extension captured the local intentionally tall
 fixture and visibly reported `Captured part of the page — sent to Neuro Search`; the source then appeared ready in

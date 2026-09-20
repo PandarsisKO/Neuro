@@ -40,7 +40,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 |---|---|---|
 | Screenshot | Case 7's partial and bounded full-page provenance/image paths are live-accepted; case 6 cosmetic issue remains deliberately deferred | Broader historical matrix cases only; no unmeasured repair is admitted |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
-| Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
+| Course Scanner | Signed-in three-lesson scan completed; installed Chrome extension also survived close/reopen during an active seven-lesson local fixture scan and completed it | CS7 document ingestion live acceptance remains unproven |
 | Chat | CHR0/CHR1 shipped; CHR2 closed; the delivered follow-up repair adds conservative citation resolution, capped-evidence disclosure and duplicate-admission boundaries | Supported live verification and paid real-evidence synthesis acceptance |
 | Subreddit | Prepared delivery candidate `7191fdf` on `codex/subreddit-delivery`; offline implementation and release proof are complete | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
@@ -95,7 +95,7 @@ Priority is table order among eligible work. CE10 may resume at the next safe bo
 | CE0 — establish the execution baseline | ACCEPTED (focused) | None | Isolated source/harness identified, existing repairs reconciled, relevant baseline passing |
 | CE1 — finish screenshot acceptance | ACCEPTED (2026-09-19) | Actual Chrome and a real capture | Provenance/partial/image checks pass; evidence tied to source and extension versions |
 | CE2 — accept authentication failure and recovery | READY after CE0 | Actual extension; controlled failure target | Visible 401/403 feedback and successful recovery, with successful capture behavior preserved |
-| CE3 — finish course acceptance | READY after CE0 | Signed-in course; separate cost/access boundary for document import | Active-scan reopen and completion verified; one successful bounded CS7 document import, with blocked-host behavior distinguished |
+| CE3 — finish course acceptance | PARTIALLY ACCEPTED (scanner) | Separate cost/access boundary for document import | Active-scan reopen and completion verified; one successful bounded CS7 document import, with blocked-host behavior distinguished |
 | CE4 — release accepted extension repairs | READY after relevant CE1–CE3 work | Concrete candidate; required visual acceptance | Full release ritual, version agreement, delivery and supported live verification |
 | CE5 — CHR3 evidence-context preparation | ACCEPTED (release-checked candidate) | CHR0–CHR2 retained; owning design read | Scoped evidence builder, comparison passages, honest limits and meaningful deterministic tests |
 | CE6 — CHR3 synthesis and persistence | ACCEPTED (release-checked candidate) | Existing chat/provider/storage paths | Correct refreshed turn, refusal/failure/retry behavior and fresh successful snapshot |
@@ -185,10 +185,12 @@ If there is no safe bounded supported import, record the limitation and continue
 started a new scan, visibly reported `3 lessons found` / `Reading the first lesson` / `0 videos found so far`,
 then traversed the three lessons. The popup was closed from that confirmed active state; the course continued
 to its normal completion and reopening the popup showed `3 of 3 lessons ready`, all three named lessons, and
-the shared-video “downloaded once” disclosure. Neither course progress nor any Review & import action was
-triggered. The three-lesson traversal completed before the reopen snapshot, so the distinct exact *active on
-reopen* observation remains open; it is not silently counted as passed. CS7 remains open because no document
-or browser session was sent to the app.
+the shared-video “downloaded once” disclosure. To close the short-course timing race without sending external
+content, the same installed extension scanned the local seven-lesson cards fixture. After its popup was closed
+while active, reopening visibly showed the disabled Scan control, Stop action and `Reading 6 of 7: Conclusion`;
+it then completed `7 of 7 lessons ready` with five video lessons and three linked documents. Neither course
+progress nor any Review & import action was triggered. This accepts scanner active-reopen and completion wiring;
+CS7 remains open because no document or browser session was sent to the app.
 
 ### CE4 — extension release boundary
 
