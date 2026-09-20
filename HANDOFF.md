@@ -26,6 +26,13 @@ or reconfigure Chrome, modify a real credential, or claim the outstanding live f
 read-only probes now reach Crossref and OpenAlex (HTTP 200 each), so FM1's old sandbox-network blocker is gone;
 a real eligible DOI project plus Kyle's A–F usefulness judgment still gate FM1 acceptance.
 
+Latest live Course Scanner evidence: the installed extension, on the signed-in three-lesson Acquisition Ace
+course, visibly entered `3 lessons found` / `Reading the first lesson`, then completed `3 of 3 lessons ready`;
+closing the popup from a confirmed active state did not prevent completion, and its reopened record showed the
+three lessons plus shared-video deduplication. **No Review & import button was pressed**: no course content,
+cookies or document was transmitted. The exact active-state reopen snapshot raced the short scan and remains
+open, as does CS7's one bounded document-import acceptance.
+
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current
 main and reconcile only needed existing harness repairs. Do not silently land the blocked catalog to get a green

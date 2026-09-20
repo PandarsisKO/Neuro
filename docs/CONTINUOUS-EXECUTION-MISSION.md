@@ -40,7 +40,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 |---|---|---|
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
-| Course Scanner | Algorithm accepted; actual popup start/cancel and reopen after cancellation observed | Reopen during an active scan and complete through popup; CS7 document ingestion live acceptance is also unproven |
+| Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
 | Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 implemented and focused fake-provider/frontend gates pass in isolation | Paid real-evidence synthesis acceptance, full release ritual and delivery |
 | Subreddit | Integrated runtime `abdefaa`, evidence checkpoint `c842861`, pushed on `codex/subreddit-integrated`; 2,169 tests and normal release-check PASS | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
@@ -163,6 +163,15 @@ and duplicate handling. If the host requires sign-in, an honest blocked outcome 
 does not prove successful document ingestion. Leave that success gate open until an accessible representative
 is tested. Never transmit course/Google session cookies or import an entire course to prove this small gate.
 If there is no safe bounded supported import, record the limitation and continue CE5.
+
+**Checkpoint (2026-09-19):** on the signed-in Acquisition Ace course, the installed extension's real popup
+started a new scan, visibly reported `3 lessons found` / `Reading the first lesson` / `0 videos found so far`,
+then traversed the three lessons. The popup was closed from that confirmed active state; the course continued
+to its normal completion and reopening the popup showed `3 of 3 lessons ready`, all three named lessons, and
+the shared-video “downloaded once” disclosure. Neither course progress nor any Review & import action was
+triggered. The three-lesson traversal completed before the reopen snapshot, so the distinct exact *active on
+reopen* observation remains open; it is not silently counted as passed. CS7 remains open because no document
+or browser session was sent to the app.
 
 ### CE4 — extension release boundary
 
