@@ -173,8 +173,8 @@ only if net savings > 0 AND relevant-window recall ≥ 0.98. Record the decision
 rule). Gate: committed artifact + written decision, either way.
 
 ### L-05 `[x] aa53a9c` P5.3 kept-rate sample design — lane: claude · tier: sonnet · needs: — · $0
-Haiku default is SHIPPED-PROVISIONAL (rulings §5). Design the smallest review that can contradict it: from the 8
-E5 sources (4 Sonnet / 4 Haiku, ids in docs/T4-ADMISSION-2026-09-14.md), a stratified sample of ~40 findings
+Haiku default is SHIPPED-PROVISIONAL (rulings §5). Design the smallest review that can contradict it: from the fixed 8
+E5 sources (4 Sonnet / 4 Haiku, ids in docs/T4-ADMISSION-2026-09-14.md), an exactly-40-finding sample
 (5 per source, importance-stratified), blind to model, exported by a `tools/sample_findings.py` Kyle runs on the
 Mac to `evals/p53-sample-<date>.json`. Review rubric: accurate to source (y/n), worth keeping (y/n), one-line
 why-not. Gate: script + rubric committed; Kyle can complete it in ≤ 20 minutes.

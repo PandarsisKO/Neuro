@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,7 @@ def _sample(reviews):
     items, key = [], {}
     for i, (model, keep, acc) in enumerate(reviews, start=1):
         items.append({"sample_id": i, "content": "x", "review": {"accurate": acc, "keep": keep, "why_not": None if keep else "vague"}})
-        key[str(i)] = {"note_id": i, "source_id": "s", "model": model}
+        key[str(i)] = {"note_id": i, "source_id": f"s-{model}", "model": model}
     return {"project_id": "p", "n_items": len(items), "models_present": [H, S], "review_these": items, "_scoring_key": key}
 
 
@@ -61,3 +62,24 @@ def test_stated_costs_need_no_database_and_write_nothing(tmp_path, capsys, monke
     assert dk.main(["--sample", str(p), "--cost-per-finding", f"{H}=0.01,{S}=0.02"]) == 0
     assert "DECISION: keep Haiku" in capsys.readouterr().out
     assert p.read_text() == before
+
+
+def test_ledger_costs_are_limited_to_the_sample_cohort(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE usage (project_id TEXT, kind TEXT, model TEXT, source_id TEXT, cost REAL)")
+    conn.execute("CREATE TABLE project_notes (project_id TEXT, model TEXT, source_id TEXT)")
+    sample = {"cohort": {"sources": [
+        {"source_id": "h", "model": H}, {"source_id": "s", "model": S},
+    ]}}
+    conn.executemany("INSERT INTO usage VALUES (?,?,?,?,?)", [
+        ("p", "findings", H, "h", 0.10), ("p", "findings", S, "s", 0.30),
+        ("p", "findings", H, "unrelated", 99.0),
+    ])
+    conn.executemany("INSERT INTO project_notes VALUES (?,?,?)", [
+        ("p", H, "h"), ("p", H, "h"), ("p", S, "s"), ("p", S, "s"), ("p", S, "s"),
+        ("p", H, "unrelated"),
+    ])
+    import neurosearch.db as db
+    monkeypatch.setattr(db, "connect", lambda: conn)
+    assert dk._costs_from_ledger("p", sample) == {H: 0.05, S: 0.1}

@@ -35,7 +35,7 @@ cd "/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO"
 
 ## 4. Review the sample — L-06 — the only genuinely judgment-based item, ~20 min
 
-Open `evals/p53-sample-2026-09-15.json` in any editor. For each of the ~40 items under `review_these`, read the
+Open `evals/p53-sample-2026-09-15.json` in any editor. For each of the 40 items under `review_these`, read the
 finding and fill in:
 - `review.accurate`: `true`/`false` — does it faithfully represent its source?
 - `review.keep`: `true`/`false` — would you actually keep this finding?

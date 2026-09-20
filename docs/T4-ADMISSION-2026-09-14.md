@@ -568,9 +568,11 @@ not-yet-current as of this writing):
 | 0.602 | Recession-Proof Portfolio Builder.pdf | `3b6b9cc84b334248b6d0fb34e01a0555` |
 | 0.600 | How To Buy A Business With Seller Financing (Step-By-Step) | `1bba2517c73a46308749bcdf3263ea4d` |
 
-No `--sources` selection flag was needed: run in relevance order 4 at a time, the first `--live` call marks its
-4 sources current, so a second sequential call naturally advances to the next 4 -- exactly "4 on Sonnet, 4 on
-Haiku" from the same ranked pool, with zero overlap, no new code required.
+The fixed eight-source E5 cohort is now encoded in `tools/sample_findings.py`: the first four IDs above are
+Sonnet and the latter four are Haiku. The sampler refuses a missing cohort member or fewer than five findings
+for its recorded model, excludes historical rows written by another/no model, and records the exact cohort in its
+output. Its ledger calculation is limited to those same source/model pairs; unrelated project history cannot
+change the decision.
 
 **Once E4 is done**, on Kyle's Mac with `neurosearch worker` running:
 

@@ -8,7 +8,7 @@ Rule (T4 plan E5, unchanged): Haiku stays the default ONLY if its cost per KEPT 
 its kept rate is within 10 points of Sonnet's. Otherwise revert the `.env` line and say so.
 
 Cost per finding by model comes from the app's own ledger (`usage` rows of kind 'findings' by model, divided by
-the findings each model wrote for the same sources) when run on the Mac; pass `--cost-per-finding
+the findings each model wrote for the fixed sources in this sample) when run on the Mac; pass `--cost-per-finding
 claude-haiku-4-5=0.011,claude-sonnet-5=0.021` to run it anywhere from stated numbers (e.g. the ones in
 docs/T4-ADMISSION-2026-09-14.md). The script never changes a finding, a status, or `.env`; it prints the
 decision and the numbers behind it, and exits 3 when the review is incomplete rather than deciding on a partial
@@ -67,14 +67,34 @@ def decide(scored: dict[str, Any], haiku: str, sonnet: str) -> dict[str, Any]:
     }
 
 
-def _costs_from_ledger(project_id: str, models: list[str]) -> dict[str, float]:
+def _cohort_by_model(sample: dict[str, Any]) -> dict[str, set[str]]:
+    cohort = sample.get("cohort", {}).get("sources")
+    if not isinstance(cohort, list):
+        cohort = list(sample.get("_scoring_key", {}).values())
+    out: dict[str, set[str]] = {}
+    for item in cohort:
+        model, source_id = item.get("model"), item.get("source_id")
+        if not isinstance(model, str) or not isinstance(source_id, str):
+            raise ValueError("sample cohort has a missing model or source_id")
+        out.setdefault(model, set()).add(source_id)
+    if not out:
+        raise ValueError("sample has no source/model cohort")
+    return out
+
+
+def _costs_from_ledger(project_id: str, sample: dict[str, Any]) -> dict[str, float]:
     from neurosearch import db
     conn = db.connect()
     out: dict[str, float] = {}
-    for model in models:
-        cost = float(conn.execute("SELECT COALESCE(SUM(cost),0) c FROM usage WHERE project_id=? AND kind='findings' AND model=?",
-                                  (project_id, model)).fetchone()["c"])
-        n = int(conn.execute("SELECT COUNT(*) n FROM project_notes WHERE project_id=? AND model=?", (project_id, model)).fetchone()["n"])
+    for model, source_ids in _cohort_by_model(sample).items():
+        placeholders = ",".join("?" * len(source_ids))
+        args = (project_id, model, *sorted(source_ids))
+        cost = float(conn.execute(
+            f"SELECT COALESCE(SUM(cost),0) c FROM usage WHERE project_id=? AND kind='findings' AND model=? "
+            f"AND source_id IN ({placeholders})", args).fetchone()["c"])
+        n = int(conn.execute(
+            f"SELECT COUNT(*) n FROM project_notes WHERE project_id=? AND model=? AND source_id IN ({placeholders})", args
+        ).fetchone()["n"])
         if n:
             out[model] = round(cost / n, 5)
     return out
@@ -92,7 +112,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cost_per_finding:
         costs = {k.strip(): float(v) for k, v in (kv.split("=") for kv in args.cost_per_finding.split(","))}
     else:
-        costs = _costs_from_ledger(sample["project_id"], sample.get("models_present") or [])
+        try:
+            costs = _costs_from_ledger(sample["project_id"], sample)
+        except ValueError as exc:
+            print(f"REFUSING: {exc}")
+            return 3
     scored = score(sample, costs)
     if scored["incomplete"] and not args.allow_partial:
         print(f"REFUSING: {scored['incomplete']} of {sample['n_items']} items are not yet reviewed -- finish the review "
