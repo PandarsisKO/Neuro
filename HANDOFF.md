@@ -2,19 +2,16 @@
 
 ## Current continuation pointer — 2026-09-19
 
-Runtime remains on shared `main`; **do not restart from its stale R1-next checklist below**. The prepared,
-reconciled runtime candidate is `abdefaa` on `codex/subreddit-integrated`, at
-`/private/tmp/neuro-repair-powMDK/integrated-worktree`. Read that checkout's HANDOFF and canonical mission.
-It preserves the later, undelivered `codex/subreddit-r1` (`d318297`) work plus independently tested safety
-repairs. The earlier `codex/subreddit-continuation` / `codex/subreddit-scan-lifecycle` branches are historical
-checkpoints, not competing versions to land. Keep their evidence; continue only from the integrated candidate.
+The prepared delivery candidate is `c86bd60` on `codex/subreddit-delivery`, at
+`/private/tmp/neuro-subreddit-delivery`. It reconciles the catalog candidate (`abdefaa`) with current `main`
+through `483c199` (course-scanner, extension-auth and chat-refresh repairs). The earlier catalog worktrees are
+historical checkpoints, not competing delivery candidates.
 
-**Frozen normal release-check PASS on `abdefaa`**: 2,169 tests, Foundation, Tier 1, repo-check, migrations,
-recovery and backup/restore. Start/end SHA `abdefaa3979575a62d25f7a3728e41cd34c4d3c1`; 217 focused tests
-also pass. Artifact: `evals/release/release-check-0.63.94-abdefaa-20260919-151545.json`. The candidate
-includes the server-side ownership/claim/retry repairs plus escaped scan text, fenced async UI responses,
-stale-action refusal, project-safe list clearing, draft focus preservation and arbitrary selected capture.
-HARDENING records paired 5,000-post timings and real-browser fixture checks.
+**Exact-tree deterministic evidence:** full pytest **2,182 passed** (one Starlette deprecation warning), fake
+Tier 1 PASS, and normal `release-check --no-pytest` PASS at `c86bd60`. The release artifact is
+`evals/release/release-check-0.63.94-c86bd60-20260919-180304.json`. Focused catalog lifecycle/UI checks
+(145), scanner/auth/chat checks (94), and shipped UI harness checks also pass. This candidate includes catalog
+identity/lifecycle/ranking/selected-capture/local-reuse/UI work plus the current scanner and chat repairs.
 
 **Offline implementation is complete; R8b is BLOCKED.** Selection can choose 10 of 4,000 without acquiring
 the other 3,990; selection persists across pages; refresh preserves a search draft/focus; source-list responses
