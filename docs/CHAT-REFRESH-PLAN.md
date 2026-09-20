@@ -1,9 +1,9 @@
 # Conversation Delta / Chat Refresh — plan
 
 **Status (2026-09-19): CHR0 and CHR1 shipped; CHR2 closed at its verified visual checkpoint (`7b43dc8`).
-CHR3's `e99ccac` candidate is deterministically release-checked, but a follow-up isolated evidence-boundary repair
-is prepared and must be validated/released before implementation is called complete. Its real paid synthesis and
-browser acceptance remain open in [the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE7–CE8.** Kyle's request
+CHR3's `e99ccac` candidate is deterministically release-checked, and the follow-up isolated evidence-boundary
+repair is release-checked at `91bd9e1`; safe delivery, real paid synthesis and browser acceptance remain open in
+[the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE7–CE8.** Kyle's request
 for that continuation supersedes the earlier stop-after-CHR2 boundary. No new provider budget is authorized by
 the plan.
 

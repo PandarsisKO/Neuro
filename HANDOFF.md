@@ -8,15 +8,18 @@ acceptance and scoped release → CHR3 whole-chat refresh → existing-feature a
 conditionally when approved access is available. CHR3's earlier deterministic implementation and release ritual
 remain evidence for `e99ccac`, but a follow-up evidence-boundary repair is now prepared in isolation at
 `/private/tmp/neuro-chat-refresh-evidence-repair` on `codex/chat-refresh-evidence-repair`. Do not represent Chat
-Refresh as having no implementation work until that candidate is validated, committed and delivered; uncovered
-spend and human decisions retain their boundaries.
+Refresh as having no implementation work until that candidate is delivered; uncovered spend and human decisions
+retain their boundaries.
 
 The follow-up fixes a reproduced citation-provenance error (a timestamp could select a nearby chunk or a
 locator-only citation could silently select chunk zero), prevents omitted lower-priority evidence from authorizing
 another identical paid refresh, and makes capped evidence visible both to the provider and the user. It is
 conservative: only a containing numeric/exact timestamp chunk is selected; page-like locators are omitted. Focused
-validation currently passes: 65 CHR1 tests, 24 jsdom chat-delta checks, 122 adjacent chat checks, and 18
-frontend/design/source-drawer checks. This is a prepared candidate, not a release or real paid acceptance.
+validation passed: 65 CHR1 tests, 24 jsdom chat-delta checks, 122 adjacent chat checks, and 18
+frontend/design/source-drawer checks. Commit `91bd9e1` is release-checked at
+`evals/release/release-check-0.63.94-91bd9e1-20260919-192933.json`: **2,099 passed, 1 warning**, Foundation,
+Tier 1, migrations, recovery and backup/restore all pass. It remains a prepared, undelivered candidate and has
+not had real paid acceptance.
 
 Latest CHR3 completion evidence: `e99ccac` additionally makes the bounded refresh contract material-first,
 records omitted supporting/comparison excerpts in persisted provenance, and turns a post-admission provider failure
