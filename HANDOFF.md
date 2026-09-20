@@ -28,14 +28,12 @@ spend occurred. This branch is prepared and pushed; shared main remains a docs p
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
-### Reconciled continuation candidate — current restart point
+### Reconciled continuation candidate — historical provenance
 
-Use branch `codex/subreddit-integrated`, checkout `/private/tmp/neuro-repair-powMDK/integrated-worktree`,
-based on `d318297` from the previously undelivered `codex/subreddit-r1` branch. Shared `main` remained
-`da560a4` during preparation. The later branch was absent from main's current handoff; initial continuation
-therefore independently prepared R0/R1/R2 repairs before discovering it. Preserve both histories, but continue
-ONLY from the integrated candidate: it keeps d318297's metadata/ranking/bulk-capture/Research/UI improvements
-and ports the additional boundary/claim/retry repairs, without maintaining a second catalog implementation.
+The original integrated candidate was based on `d318297` from the previously undelivered
+`codex/subreddit-r1` branch. It was subsequently reconciled with current `main` into the prepared delivery
+candidate recorded at the top of this file. The notes below preserve its implementation provenance; do not
+restart from the original checkout.
 
 Prepared changes: atomic catalog authority and per-action writer checks; keyset attachment batches that really
 commit separately; conflicting candidate/Source identity refusal; atomic scan admission and concurrent clicks;

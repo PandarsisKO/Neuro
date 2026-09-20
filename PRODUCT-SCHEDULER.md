@@ -9,9 +9,10 @@ and ladder. Follow [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUT
 baseline and CHR3 CE5–CE6 are complete in the isolated candidate; next finish screenshot/auth/course acceptance,
 the CHR3 browser/release gates, and release eligible repairs.
 Prepare existing research-feature acceptance when higher-priority work is blocked. One runtime rung at a time;
-no routine per-rung pauses. The subreddit candidate is offline-complete on `codex/subreddit-integrated`
-(`abdefaa`, checkpoint `c842861`, 2,169-test release PASS), blocked only for its real-access/acceptance and delivery
-gates; resume it at a safe boundary when approved access exists. Preserve that branch and reconcile later.
+no routine per-rung pauses. The subreddit delivery candidate is offline-complete on `codex/subreddit-delivery`
+(`c86bd60`, evidence retained at `86697bc`, 2,182-test release evidence), blocked only for its real-access/acceptance
+and delivery gates; resume it at a safe boundary when approved access exists. Preserve that branch and do not merge
+it into `main` before R8b clears.
 This plan adds no dollar budget, does not reopen CHR2, and does not admit the parked roadmap. The older
 subreddit-only active-effort/R1-next declarations below are historical and superseded. Feature-specific records
 retain their own gates; the new mission is the sole cross-feature execution ladder.

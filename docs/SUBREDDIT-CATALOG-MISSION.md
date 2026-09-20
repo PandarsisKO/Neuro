@@ -12,13 +12,12 @@ Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
 Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Original planning/execution baselines and worktrees are historical; resume from then-current `main` in isolation.
 
-**Current continuation (2026-09-19):** `codex/subreddit-integrated` reconciles the undelivered `d318297`
-implementation with independently verified R0/R1/R2 repairs. HANDOFF's reconciled continuation is the restart
-point. The combined source plus UI ownership repairs passed its frozen release check on `411480b`
-(2,162 tests, Tier 1, Foundation and recovery).
+**Current continuation (2026-09-19):** `codex/subreddit-delivery` at `c86bd60` reconciles the undelivered
+`d318297` implementation with current scanner, extension-auth and chat-refresh repairs. Its full suite passed
+2,182 tests; fake Tier 1 and normal release-check passed, with evidence retained at `86697bc`.
 Runtime work is authorized by Kyle's later continuation instruction, superseding historical plan-only text
-below. Synthetic paired performance evidence is recorded in HARDENING; R7 interaction/visual work, R8a's
-remaining operational proof, R8b and R9 remain open. Deterministic tests are not live acceptance.
+below. Synthetic paired performance evidence is recorded in HARDENING; R8b and R9 remain open. Deterministic
+tests are not live acceptance.
 
 Additional repairs: admission and catalog actions take the actual writer before validating authority;
 attachment keyset batches commit separately; conflicting Source identities are refused, not merged.

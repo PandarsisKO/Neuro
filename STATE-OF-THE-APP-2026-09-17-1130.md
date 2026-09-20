@@ -8,9 +8,9 @@ CHR2 is closed. The 401/403 handlers exist; real-Chrome acceptance is still open
 Course start/cancel/reopen-after-cancel were observed; active-scan reopening, completion and CS7 document-fetch
 acceptance remain. CHR3's delta-only context, 409 no-evidence refusal, refresh provenance and explicit control
 have focused fake-provider/frontend coverage, but no real paid synthesis or release is claimed. Screenshot case 7
-remains unclosed; case 6 cosmetics stay deferred. Subreddit's integrated
-candidate `abdefaa` / evidence `c842861` passed 2,169 tests and release-check but is not delivered; official API
-configuration was last observed false. No new runtime or live-acceptance claim is made by this planning update.
+remains unclosed; case 6 cosmetics stay deferred. Subreddit's reconciled delivery candidate `c86bd60` (evidence
+retained at `86697bc`) passed 2,182 tests plus release checks but is not delivered; official API configuration was
+last observed false. No new runtime or live-acceptance claim is made by this planning update.
 The new mission supersedes stale queue directions below, while existing feature contracts retain their gates.
 
 Current orientation source for the Neuro Search mission; `STATE-OF-THE-APP-2026-09-16-1540.md` and older are

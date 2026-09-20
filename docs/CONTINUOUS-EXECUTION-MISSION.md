@@ -24,8 +24,8 @@ This document owns cross-feature sequencing and execution status only. It does n
 - [Chat Refresh](CHAT-REFRESH-PLAN.md) owns CHR3 semantics and evidence boundaries.
 - [Send Screenshot](SEND-SCREENSHOT-2026-09-16.md), [Course Scanner](COURSE-SCANNER-2026-09-15.md), and
   [live acceptance cases](KYLE-GATES-2026-09-15.md) own the extension behavior contracts.
-- [Subreddit Catalog](SUBREDDIT-CATALOG-MISSION.md) owns SUB-R8b/R9; use the integrated checkout's newer
-  evidence until it is reconciled into main.
+- [Subreddit Catalog](SUBREDDIT-CATALOG-MISSION.md) owns SUB-R8b/R9; use the prepared delivery branch's
+  evidence until R8b permits reconciliation into main.
 - [Product Intelligence ladder](../EXECUTION-LADDER.md) owns the CR/LP/AD/FM/L acceptance criteria.
 - [HANDOFF](../HANDOFF.md), [CLAUDE](../CLAUDE.md), [Quality Contract](../QUALITY-CONTRACT.md), and
   [Development Operating System](../DEVELOPMENT-OPERATING-SYSTEM.md) retain their standing responsibilities.
@@ -42,16 +42,16 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
 | Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 implemented and focused fake-provider/frontend gates pass in isolation | Paid real-evidence synthesis acceptance, full release ritual and delivery |
-| Subreddit | Integrated runtime `abdefaa`, evidence checkpoint `c842861`, pushed on `codex/subreddit-integrated`; 2,169 tests and normal release-check PASS | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
+| Subreddit | Reconciled delivery candidate `c86bd60` (evidence retained at `86697bc`) on `codex/subreddit-delivery`; 2,182 tests, fake Tier 1 and normal release-check PASS | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
 
 Last supported Reddit configuration observation: `stats.reddit_api=false`. A true value proves configuration
 presence only, not approved access or working listing/capture. The existing monitor
 `resume-reddit-catalog-live-gate` watches this dependency; do not create a duplicate.
 
-The integrated candidate is at `/private/tmp/neuro-repair-powMDK/integrated-worktree`. Main does not contain
-all its runtime or test-isolation corrections. Its passing artifact is not a release pass for shared main or
-for future edits. Do not repeat the stale R1-next checklist or undo those corrections.
+The prepared delivery candidate is at `/private/tmp/neuro-subreddit-delivery`. Shared `main` does not contain
+its runtime or test-isolation corrections. Its passing artifacts are not a release pass for shared main or for
+future edits. Do not repeat the stale R1-next checklist or undo those corrections.
 
 ## 3. Execution loop and isolation
 
