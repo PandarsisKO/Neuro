@@ -9,7 +9,6 @@ import threading
 import time
 
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
-os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -1026,3 +1025,83 @@ def test_refresh_admission_rejects_a_concurrent_second_click(monkeypatch):
     release.set()
     first.join(2)
     assert not first.is_alive()
+
+
+def test_refresh_rechecks_current_source_membership_before_calling_the_provider(monkeypatch):
+    """A source removed after delta selection must not leak through the paid refresh boundary."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    sid = _new_source(pid, "New seller financing terms video",
+                      "Seller financing terms can include a five year standby note with no payments in year one.")
+    evidence = cd.refresh_evidence(conv, pid)
+    assert evidence["new_chunk_ids"], "fixture sanity: delta selected a newly available passage"
+    db.remove_project_sources(pid, [sid])
+    from neurosearch import providers
+    monkeypatch.setattr(providers, "invoke", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("provider called")))
+
+    with pytest.raises(ValueError, match="no concrete new evidence"):
+        qa.ask("Refresh: what's new?", project_id=pid, conversation_id=conv, refresh=evidence)
+    rows = cd._rows(conv)
+    assert not any(r["meta"].get("kind") == "refresh" for r in rows), "a rejected internal refresh must not leave a synthetic turn"
+
+
+def test_refresh_includes_an_early_affected_question_outside_the_history_tail(monkeypatch):
+    """CHR3 must synthesize changes against the whole chat, not only qa.ask's most recent 12 messages."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    early = "What are the seller financing terms typically offered?"
+    qa.ask(early, project_id=pid, conversation_id=conv)
+    for i in range(7):
+        qa.ask(f"Unrelated bookkeeping question {i}: how should receipts be categorized?", project_id=pid, conversation_id=conv)
+    _new_source(pid, "New seller financing terms video",
+                "Seller financing terms can include a five year standby note with no payments in year one.")
+    assert early not in [m["content"] for m in db.get_messages(conv, limit=12)], "fixture must exceed the ordinary history tail"
+
+    from neurosearch import providers
+    real = providers.invoke
+    refresh_prompts = []
+
+    def capture_refresh(task, **kw):
+        if task == "answer.chat":
+            text = str(kw["messages"][-1]["content"])
+            if "Refresh:" in text:
+                refresh_prompts.append(text)
+        return real(task, **kw)
+
+    monkeypatch.setattr(providers, "invoke", capture_refresh)
+    qa.refresh_conversation(conv, pid)
+    assert refresh_prompts and early in refresh_prompts[0]
+
+
+def test_incomplete_refresh_does_not_consume_its_evidence_identity(monkeypatch):
+    """A bounded output failure retains visible provenance but the same evidence remains retryable."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    _new_source(pid, "New seller financing terms video",
+                "Seller financing terms can include a five year standby note with no payments in year one.")
+    from neurosearch import providers
+    real = providers.invoke
+    calls = {"n": 0}
+
+    def first_refresh_truncates(task, **kw):
+        if task == "answer.chat" and calls["n"] <= qa.CONTINUATIONS_MAX:
+            calls["n"] += 1
+            return fake_ai._Blk(
+                stop_reason="max_tokens", model="fake-claude",
+                content=[fake_ai._Blk(type="text", text=f"partial refresh {calls['n']}", citations=None)],
+                usage=fake_ai._Blk(input_tokens=10, output_tokens=4000, cache_read_input_tokens=0,
+                                   cache_creation_input_tokens=0, server_tool_use=None),
+            )
+        return real(task, **kw)
+
+    monkeypatch.setattr(providers, "invoke", first_refresh_truncates)
+    first = qa.refresh_conversation(conv, pid)
+    assert "[Answer cut short" in first["answer"]
+    first_row = cd._rows(conv)[-1]
+    assert first_row["meta"].get("incomplete") is True and first_row["meta"].get("refresh", {}).get("refresh_key")
+
+    second = qa.refresh_conversation(conv, pid)
+    assert second["answer"]
+    assert cd._rows(conv)[-1]["meta"].get("incomplete") is not True

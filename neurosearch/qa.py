@@ -402,6 +402,33 @@ def save_failure(conversation_id: str | None, project_id: str | None, error: str
         log.warning("could not save the failure message: %s", e)
 
 
+def _refresh_hits(refresh: dict[str, Any], project_id: str) -> list[dict[str, Any]]:
+    """Resolve a CHR3 evidence contract immediately before its paid call.
+
+    ``refresh_evidence`` makes the deterministic selection, but a source can be removed or become unavailable
+    between that read and the provider invocation.  Re-check membership here, at the final boundary.  A refresh
+    with no surviving *new* passage is refused rather than spending money to summarize stale evidence.
+    """
+    selected = list(refresh.get("new_chunk_ids") or []) + list(refresh.get("comparison_chunk_ids") or [])
+    rows = db.get_chunks_by_ids(selected)
+    allowed_sources = set(db.project_source_ids(project_id, ready_only=True))
+    new_ids = {int(cid) for cid in (refresh.get("new_chunk_ids") or [])}
+    hits: list[dict[str, Any]] = []
+    for cid in selected:
+        chunk = rows.get(int(cid))
+        if not chunk or chunk["source_id"] not in allowed_sources:
+            continue
+        is_new = int(cid) in new_ids
+        hit = hit_from_chunk(chunk, 1.0)
+        if not is_new:
+            hit["text"] = "[previously cited]\n" + hit["text"]
+        hits.append(hit)
+    hits = hits[:MAX_EXCERPTS]
+    if not any(int(h["chunk_id"]) in new_ids for h in hits):
+        raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
+    return hits
+
+
 def ask(
     question: str,
     project_id: str | None = None,
@@ -436,7 +463,10 @@ def ask(
     # there is one. `saved_user` stops the late path writing it twice.
     saved_user = False
     user_message_id: int | None = None   # CHR0: the assistant row records which user row it answered, by id
-    if conversation_id:
+    # A normal question is saved immediately, before external work begins.  A refresh is an internal synthetic
+    # turn, so wait until its evidence survives the final current-membership check below; otherwise a rejected
+    # stale refresh would leave a misleading user row in the chat.
+    if conversation_id and not refresh:
         try:
             user_meta = {"kind": "refresh"} if refresh else None
             user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id,
@@ -502,21 +532,17 @@ def ask(
     if refresh:
         # CHR3's hard evidence boundary: the paid turn receives exactly the chunks selected by the deterministic
         # delta plus previously-cited comparison passages. It must never re-search the corpus just because it is
-        # allowed to call the provider.
-        selected = list(refresh.get("new_chunk_ids") or []) + list(refresh.get("comparison_chunk_ids") or [])
-        rows = db.get_chunks_by_ids(selected)
-        new_ids = {int(cid) for cid in (refresh.get("new_chunk_ids") or [])}
-        hits = []
-        for cid in selected:
-            chunk = rows.get(int(cid))
-            if not chunk:
-                continue
-            hit = hit_from_chunk(chunk, 1.0)
-            if int(cid) not in new_ids:
-                hit["text"] = "[previously cited]\n" + hit["text"]
-            hits.append(hit)
-        hits = hits[:MAX_EXCERPTS]
+        # allowed to call the provider.  This final revalidation closes the source-removal race after delta
+        # selection and before a paid provider invocation.
+        hits = _refresh_hits(refresh, project["id"])
         full_context = False
+        if conversation_id:
+            try:
+                user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id,
+                                                  title=titles.for_question(question), meta={"kind": "refresh"})
+                saved_user = True
+            except Exception as e:  # noqa: BLE001 — do not lose a valid refresh because its audit row could not be filed
+                log.warning("could not save the refresh question: %s", e)
         phase("retrieving", "gathering the evidence that changed in this chat…")
     else:
         phase("retrieving", "searching this project's sources…")
@@ -559,11 +585,17 @@ def ask(
         note += f"\n(Note: the user attached {', '.join(attached_titles)} to this message; it has been added to the project and its content is in the excerpts marked [attached].)"
     refresh_instruction = ""
     if refresh:
+        affected = refresh.get("affected_questions") or []
+        affected_part = ""
+        if affected:
+            affected_part = "\n\nThe newly available evidence specifically bears on these earlier questions; address them even if they are outside the recent chat tail:\n" + "\n".join(
+                f"- {item.get('question', '').strip()}" for item in affected if item.get("question", "").strip()
+            )
         refresh_instruction = ("\n\nReview the newly available evidence against the conclusions and questions already discussed "
                                "in this conversation. Report only material differences. Separate: what changes an earlier "
                                "answer, what adds genuinely useful information, and what only confirms what was already known. "
                                "Call out contradictions explicitly. If the new evidence does not materially change or add anything, "
-                               "say so briefly. Do not retell the conversation.")
+                               "say so briefly. Do not retell the conversation." + affected_part)
     messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}{refresh_instruction}"})
     from . import usage
 
@@ -773,7 +805,9 @@ def refresh_conversation(conversation_id: str, project_id: str | None = None, *,
             raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
         for row in reversed(conversation_delta._rows(conversation_id)):
             prior_key = (row.get("meta") or {}).get("refresh", {}).get("refresh_key") if row["role"] == "assistant" else None
-            if prior_key == evidence["refresh_key"]:
+            # An answer cut off at the output ceiling is explicitly not a new knowledge baseline.  It may retain
+            # refresh provenance for the UI, but must never consume this evidence identity and block a retry.
+            if prior_key == evidence["refresh_key"] and not (row.get("meta") or {}).get("incomplete"):
                 raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
         since = evidence.get("since")
         label = datetime.fromtimestamp(float(since)).strftime("%b %-d") if since else "the last answer"

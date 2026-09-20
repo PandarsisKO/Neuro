@@ -961,6 +961,22 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
 
     new_chunk_ids = ordered_unique(new_ids)
     comparison_chunk_ids = ordered_unique(comparison_ids, exclude=set(new_chunk_ids))
+    # CHR3 is a whole-conversation refresh, but qa.ask() deliberately keeps its ordinary prompt history to a
+    # bounded tail.  Carry the actual earlier questions touched by this delta along with the evidence contract so
+    # a new passage that changes Q1 is not synthesized only against the last few, unrelated turns in a long chat.
+    # The paid path receives prose only -- these ids are not another retrieval route.
+    affected_question_ids: set[int] = set()
+    for unit in units:
+        if unit.get("question_message_id") is not None:
+            affected_question_ids.add(int(unit["question_message_id"]))
+        for touch in unit.get("touches_questions") or []:
+            if touch.get("question_message_id") is not None:
+                affected_question_ids.add(int(touch["question_message_id"]))
+    affected_questions = [
+        {"message_id": q["question_message_id"], "question": q["question"]}
+        for q in _questions(conversation_id)
+        if q["question_message_id"] in affected_question_ids
+    ]
     baseline = db.conversation_baseline(conversation_id)
     # This identity is deliberately derived from the bounded evidence contract rather than timestamps.  The same
     # delta must not buy another answer on a second click; a genuinely changed unit/chunk gets a new key.
@@ -981,5 +997,6 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
         "baseline_message_id": baseline.get("message_id") if baseline else None,
         "since": baseline.get("answered_at") if baseline else result.get("latest_activity_at"),
         "delta_summary": {"material": len(result.get("material_changes") or []), "supporting": len(result.get("supporting_changes") or [])},
+        "affected_questions": affected_questions,
         "refresh_key": refresh_key,
     }

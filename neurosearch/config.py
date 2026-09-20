@@ -8,7 +8,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Tests and release commands establish a scrubbed environment deliberately.  Loading a developer's local .env
+# afterwards would silently restore credentials, model overrides, or the live data directory.
+if os.environ.get("PYTHON_DOTENV_DISABLED", "").lower() not in ("1", "true", "yes"):
+    load_dotenv()
 
 
 def _env(name: str, default: str | None = None) -> str | None:
