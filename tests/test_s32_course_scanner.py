@@ -233,6 +233,19 @@ def test_a_player_that_arrives_late_is_still_found():
     assert outcomes(r) == [("Slow one", "video_found"), ("Slow two", "video_found")]
 
 
+def test_route_change_waits_for_new_lesson_content_before_attributing_the_player():
+    """A router may update only the URL before replacing the old lesson.  URL alone must never attach that old
+    player to the new lesson title (the live Acquisition Ace failure this reproduces)."""
+    r = scan("courses/route-delay.html")
+    lessons = r["summary"]["lessons"]
+    assert outcomes(r) == [("Route one", "video_found"), ("Route two", "video_found")]
+    assert [l["media"][0]["url"] for l in lessons] == [
+        "https://www.loom.com/embed/route1111route1111route1111route1",
+        "https://www.loom.com/embed/route2222route2222route2222route2",
+    ]
+    assert [l["page_url"].rsplit("/", 1)[1] for l in lessons] == ["1", "2"]
+
+
 def test_a_badge_glued_directly_onto_a_lesson_count_does_not_hide_the_module():
     """CS5, live SMB Market: a module card's "N lessons" span sits directly next to a "New" badge span with no
     whitespace text node between them -- plain textContent glues them into "6 lessonsxNew", which defeated

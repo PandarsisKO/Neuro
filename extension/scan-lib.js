@@ -421,8 +421,9 @@
       win.setTimeout(tick, o.sample_ms);
     });
   }
-  // Multi-signal: any one of heading / player set / new resources / url is enough to call the lesson "shown";
-  // none of them changing is the only way to `content_unchanged`. Mutation counts are diagnostic, never a verdict.
+  // Multi-signal navigation diagnostic: any one of heading / player set / new resources / url says an activation
+  // did something.  It deliberately is not the attribution verdict below: SPA routers can change the URL before
+  // the old lesson's DOM has been replaced.
   function changed(before, after) {
     const signals = [];
     if (before.heading !== after.heading) signals.push('heading');
@@ -430,6 +431,21 @@
     if (after.resources > before.resources) signals.push('resources');
     if (before.url !== after.url) signals.push('url');
     return { changed: signals.length > 0, signals };
+  }
+  // A lesson is safe to attribute only once rendered lesson content changed.  A URL/resource change by itself
+  // is useful diagnosis, but accepting it here records the previous lesson's player under the new lesson title.
+  function lessonContentChanged(before, after) {
+    return before.heading !== after.heading || before.players !== after.players;
+  }
+  async function waitForLessonContent(win, doc, before, opts) {
+    const o = { ...SETTLE, ...(opts || {}) };
+    const grace = o.content_grace_ms != null ? o.content_grace_ms : o.grace_ms;
+    const started = Date.now(); let after = signature(doc, win);
+    while (!lessonContentChanged(before, after) && Date.now() - started < grace) {
+      await new Promise(resolve => win.setTimeout(resolve, o.sample_ms));
+      after = signature(doc, win);
+    }
+    return after;
   }
 
   // ------------------------------------------------------------------ outcome contract
@@ -600,8 +616,10 @@
           if (!alreadyShown) {
             await activate(win, el); await settle(win, doc, o.settle); diagnosis.activated++;
             let s1 = signature(doc, win);
-            if (!changed(s0, s1).changed) { activateHard(win, el); await settle(win, doc, o.settle); s1 = signature(doc, win); }
-            if (!changed(s0, s1).changed) { diagnosis.unchanged++; await emitLesson(lessonRecord(lesson, moduleTitle, startUrl, [], 'scan_failed', { detail: 'activated, but the page did not change (heading, players, resources all the same)' })); continue; }
+            if (!lessonContentChanged(s0, s1)) s1 = await waitForLessonContent(win, doc, s0, o.settle);
+            if (!lessonContentChanged(s0, s1)) { activateHard(win, el); await settle(win, doc, o.settle); s1 = signature(doc, win); }
+            if (!lessonContentChanged(s0, s1)) s1 = await waitForLessonContent(win, doc, s0, o.settle);
+            if (!lessonContentChanged(s0, s1)) { diagnosis.unchanged++; await emitLesson(lessonRecord(lesson, moduleTitle, startUrl, [], 'scan_failed', { detail: 'activated, but rendered lesson content did not change' })); continue; }
           }
           let players = renderedPlayers(doc, startUrl);
           if (!players.length) {
@@ -633,6 +651,6 @@
   }
 
   globalThis.NSScan = { PLAYER, mediaIdentity, mediaKey, findPlayers, documentIdentity, findAttachments, classifyLinks, findLessonStructure, cardRows, findBackControl, isDangerous,
-                        settle, signature, changed, outcomeFor, duplicates, adapters, run, OUTCOMES, SETTLE,
+                        settle, signature, changed, lessonContentChanged, waitForLessonContent, outcomeFor, duplicates, adapters, run, OUTCOMES, SETTLE,
                         _re: { LESSON_TEXT, MODULE_TEXT, DANGER, BAD_LINK, GOOD_LINK, CHROME, CARD_DURATION, CHAPTER_HEAD } };
 })();

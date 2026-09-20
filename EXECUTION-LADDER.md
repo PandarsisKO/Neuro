@@ -1,5 +1,13 @@
 # EXECUTION LADDER — Product Intelligence Mission
 
+**Current execution routing — 2026-09-19:** the active cross-feature mission and ordered ladder are
+[docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md), starting at CE0. This file retains
+the canonical Product Intelligence gate definitions and history; it is not a competing NOW queue. Its historical
+agent-lane restrictions, known-failure allowance and Kyle-runs-terminal directions below do not override the
+current mission/HANDOFF: the executing agent performs eligible supported operations, release failures must be
+resolved, and only actual judgment/access/spend/physical dependencies need Kyle. Existing CR/LP/AD/FM/L statuses
+are not closed by the new plan. Record evidence in their owning entries when CE9 actually satisfies a gate.
+
 Machine-executable work queue for `PRODUCT-INTELLIGENCE-MISSION.md` (rulings win). Any session -- Sonnet, Haiku,
 Codex -- picks up here without conversation context. Admission authority stays with `PRODUCT-SCHEDULER.md`;
 this file is the ordered runbook for what is admitted, plus the parked tail so nobody re-plans it.

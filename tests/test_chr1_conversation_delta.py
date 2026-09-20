@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
@@ -927,3 +928,100 @@ def test_delta_endpoint_smoke():
     assert set(body) >= {"mode", "nothing_new", "questions_checked", "material_changes", "supporting_changes",
                         "irrelevant_new_source_count", "plan_impacts"}
     assert client.get("/api/conversations/does-not-exist/delta", headers=H).status_code == 404
+
+
+def test_refresh_is_explicit_delta_evidence_only_and_establishes_a_fresh_baseline(monkeypatch):
+    """CHR3: the paid call gets the delta's selected new passage, not a second broad retrieval, and its synthetic
+    user turn can never become another topic in the next delta."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    sid = _new_source(pid, "New seller financing terms video",
+                      "Seller financing terms can include a five year standby note with no payments in year one.")
+    expected = cd.refresh_evidence(conv, pid)
+    assert expected["new_chunk_ids"], "fixture sanity: the delta must select a concrete new passage"
+    monkeypatch.setattr(qa, "_hits_for", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("refresh re-searched the corpus")))
+    before_claims = db.connect().execute("SELECT COUNT(*) n FROM project_claims WHERE project_id=?", (pid,)).fetchone()["n"]
+
+    res = qa.refresh_conversation(conv, pid)
+    assert res["answer"]
+    rows = cd._rows(conv)
+    refresh_user = next(r for r in rows if r["role"] == "user" and r["meta"].get("kind") == "refresh")
+    refresh_answer = rows[-1]
+    assert refresh_answer["role"] == "assistant"
+    assert refresh_answer["meta"]["refresh"]["baseline_message_id"] is not None
+    first_refresh_key = refresh_answer["meta"]["refresh"]["refresh_key"]
+    assert refresh_answer["meta"]["evidence"]["complete"] is True
+    shown_sources = set(refresh_answer["meta"]["evidence"]["shown_source_ids"])
+    assert sid in shown_sources
+    assert cd._questions(conv)[0]["question_message_id"] != refresh_user["id"]
+    assert len(cd._questions(conv)) == 1
+    after_claims = db.connect().execute("SELECT COUNT(*) n FROM project_claims WHERE project_id=?", (pid,)).fetchone()["n"]
+    assert after_claims == before_claims, "a refresh response is not silently made into Claim evidence"
+    # The original question's delta remains visible by design (it is the conversation's durable comparison
+    # baseline), so admission needs an evidence identity rather than a timestamp/base-message heuristic.
+    with pytest.raises(ValueError, match="no concrete new evidence"):
+        qa.refresh_conversation(conv, pid)
+    assert first_refresh_key
+
+
+def test_refresh_key_changes_when_the_bounded_evidence_contract_changes():
+    """The admission identity must be content-addressed: unchanged evidence blocks a repeat spend, while a
+    distinct selected passage is eligible.  Supplying the deterministic delta directly isolates that contract
+    from FTS ranking, which is intentionally allowed to select a bounded subset of many new sources."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    sid_a = _new_source(pid, "Seller financing one", "Seller financing terms include a five year standby note.", tag="refresh-key-a")
+    sid_b = _new_source(pid, "Seller financing two", "Seller financing terms include a seven year standby note.", tag="refresh-key-b")
+    cid_a = db.get_chunks(sid_a)[0]["id"]
+    cid_b = db.get_chunks(sid_b)[0]["id"]
+    first = {"material_changes": [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid_a, "chunk_ids": [cid_a]}], "supporting_changes": []}
+    second = {"material_changes": first["material_changes"] + [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid_b, "chunk_ids": [cid_b]}], "supporting_changes": []}
+    assert cd.refresh_evidence(conv, pid, first)["refresh_key"] != cd.refresh_evidence(conv, pid, second)["refresh_key"]
+
+
+def test_refresh_evidence_drops_cross_project_chunks_even_if_a_bad_unit_names_them():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    other = db.create_project("Other project", "isolated")["id"]
+    other_sid = _new_source(other, "Other seller source", "seller financing terms are unrelated to this project", tag="other-project")
+    other_chunk = db.get_chunks(other_sid)[0]["id"]
+    evidence = cd.refresh_evidence(conv, pid, {
+        "material_changes": [{"source_id": other_sid, "chunk_ids": [other_chunk]}],
+        "supporting_changes": [], "latest_activity_at": None,
+    })
+    assert evidence["new_chunk_ids"] == []
+
+
+def test_refresh_endpoint_refuses_without_concrete_new_evidence():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    client = TestClient(app)
+    response = client.post(f"/api/conversations/{conv}/refresh", headers=H, json={})
+    assert response.status_code == 409
+    assert "no concrete new evidence" in response.json()["detail"].lower()
+
+
+def test_refresh_admission_rejects_a_concurrent_second_click(monkeypatch):
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    _new_source(pid, "New seller financing terms video",
+                "Seller financing terms can include a five year standby note with no payments in year one.")
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked_ask(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return {"answer": "done"}
+
+    monkeypatch.setattr(qa, "ask", blocked_ask)
+    first = threading.Thread(target=lambda: qa.refresh_conversation(conv, pid))
+    first.start()
+    assert entered.wait(2)
+    with pytest.raises(ValueError, match="already refreshing"):
+        qa.refresh_conversation(conv, pid)
+    release.set()
+    first.join(2)
+    assert not first.is_alive()

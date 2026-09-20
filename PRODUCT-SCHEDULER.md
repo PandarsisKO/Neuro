@@ -4,6 +4,18 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
+**CONTINUOUS EXECUTION — 2026-09-19, current authority.** Kyle requested the recommended plan as a mission
+and ladder. Follow [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md): CE0's focused
+baseline and CHR3 CE5–CE6 are complete in the isolated candidate; next finish screenshot/auth/course acceptance,
+the CHR3 browser/release gates, and release eligible repairs.
+Prepare existing research-feature acceptance when higher-priority work is blocked. One runtime rung at a time;
+no routine per-rung pauses. The subreddit candidate is offline-complete on `codex/subreddit-integrated`
+(`abdefaa`, checkpoint `c842861`, 2,169-test release PASS), blocked only for its real-access/acceptance and delivery
+gates; resume it at a safe boundary when approved access exists. Preserve that branch and reconcile later.
+This plan adds no dollar budget, does not reopen CHR2, and does not admit the parked roadmap. The older
+subreddit-only active-effort/R1-next declarations below are historical and superseded. Feature-specific records
+retain their own gates; the new mission is the sole cross-feature execution ladder.
+
 **SUBREDDIT CORRECTION — 2026-09-19 (supersedes older active-effort orientation below).** Kyle requested
 an updated remaining-work plan for the partial subreddit implementation already on `main`. Codex is the executor; Claude
 is no longer executing this mission. Follow [the canonical mission, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority),

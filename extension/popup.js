@@ -22,6 +22,9 @@ async function load() {
       const ps = await api('/api/projects');
       $('#pageProject').innerHTML = ps.map(p => `<option value="${p.id}" ${p.id === cfg.lastProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('') || '<option value="">(create a project in the app first)</option>';
       await chrome.storage.local.remove(['authError', 'authErrorAt']);
+      // The saved refusal was just recovered from.  Leaving its old copy visible implies the password is still
+      // rejected even though the authenticated projects request succeeded.
+      if (savedAuthError) $('#pageMsg').textContent = '';
     } catch (e) { $('#pageMsg').textContent = 'Could not load projects: ' + e.message; }
     try {
       // B1: does the app want THIS page? (one click, the project and reason already known)
