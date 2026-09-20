@@ -126,6 +126,13 @@ image, including the later axis-ceiling/corruption fix recorded in HANDOFF parts
 Record identifiers, expected versus observed values and browser evidence without secrets. Repair only a measured
 gap through the existing capture/provenance/drawer owners. Case 6's explicitly deferred cosmetic issue stays deferred.
 
+**Checkpoint (2026-09-19):** supported live app inspection confirmed the partial fixture source
+`f5eb0c54f23d41288cd18ff50b730ecd` shows its real title, capture time, `part of the page` wording, `partial` tag,
+source URL and separately-labelled note; supported digest data confirms `mode=partial_page` and
+`partial_reason=ceiling_axis`. Two normal captures showed `the visible area` and digest-confirmed
+`mode=visible_only`. No existing safe full-page capture was available, so that mode and the actual image's
+full integrity remain open rather than manufacturing a production capture without a covered cost boundary.
+
 ### CE2 — extension 401/403 failure and recovery
 
 Inspect and reuse the existing handlers. Exercise popup project loading, background/form upload and pending-poll
