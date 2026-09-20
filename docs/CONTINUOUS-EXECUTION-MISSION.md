@@ -1,7 +1,7 @@
 # Continuous execution — finish acceptance, then Chat Refresh
 
-Status: ACTIVE — CE0 focused baseline and CE5–CE6 implementation checkpoint complete; continue with CE1–CE4
-acceptance and CE7–CE8 bounded validation.
+Status: ACTIVE — deterministic CHR3 release evidence and extension-auth runtime regression coverage are complete;
+continue with the remaining live acceptance gates and bounded validation.
 Updated: 2026-09-19. Owner: executing agent, currently Codex.
 Planning base: shared `main` at `aea21ef369603308ef48d5b4eee85d608786ea6e`.
 
@@ -39,7 +39,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Area | Verified position at planning time | Remaining |
 |---|---|---|
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
-| Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight mocked executable checks passed | Real extension failure/recovery acceptance; repair only demonstrated defects |
+| Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; actual popup start/cancel and reopen after cancellation observed | Reopen during an active scan and complete through popup; CS7 document ingestion live acceptance is also unproven |
 | Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 implemented and focused fake-provider/frontend gates pass in isolation | Paid real-evidence synthesis acceptance, full release ritual and delivery |
 | Subreddit | Integrated runtime `abdefaa`, evidence checkpoint `c842861`, pushed on `codex/subreddit-integrated`; 2,169 tests and normal release-check PASS | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
@@ -142,6 +142,13 @@ claim a successful send. Restore valid connectivity and prove the error clears a
 Do not invalidate the user's working token or edit live credentials to manufacture a failure. Mocked JavaScript
 checks are regression evidence; they are not a substitute for the Chrome interaction. Record test-profile versus
 production evidence separately.
+
+**Checkpoint (2026-09-19):** the shipped `popup.js` and `background.js` now run under the narrow
+`tests/js/run-extension-auth.mjs` Chrome/HTTP harness, rather than only source-text assertions. It exercised
+both popup 401/403 responses, background API 401, form-upload 403, and background polling's 401 persistence
+versus quiet 500 behavior; `tests/test_s74_extension_auth.py` is **8 passed**. This closes the deterministic
+regression gap only. No extension was installed or pointed at a controlled failure endpoint, and no user
+credential was touched, so CE2's live failure-and-recovery acceptance remains open.
 
 ### CE3 — course completion, persistence and document outcome
 
@@ -256,6 +263,12 @@ permanent facts. Do not bypass an access restriction. Every judgment package con
 its limitations, the exact acceptance question and the agent's recommendation. The agent handles operations;
 only judgment, physical action, account access and uncovered spend require Kyle.
 
+**Checkpoint (2026-09-19):** public, read-only availability probes returned HTTP 200 from both
+`api.crossref.org` and `api.openalex.org`, replacing the prior sandbox-unreachable observation. FM1 is therefore
+no longer infrastructure-blocked; it still needs an eligible real project with a scholarly/review DOI and Kyle's
+six-part usefulness judgment. No project database, provider credential, candidate, source or claim was read or
+changed for this probe.
+
 ### CE10 — subreddit conditional track
 
 Use the existing supported authenticated community-status check. If configuration is absent/unavailable, remain
@@ -325,3 +338,8 @@ a new runtime release.
 Baseline source-only `repo_check.check_repo()` PASS with no findings; `git diff --check` PASS. Planning validation
 and final commit are recorded in the corresponding handoff checkpoint. CE0 is the next execution action; CE10
 remains blocked on approved Reddit API access. No feature gate is closed by writing this mission.
+
+2026-09-19: isolated candidate `8a347720f0ddd820431c18d9e41d850e42c56bd7` adds executable extension-auth
+regression coverage only: the focused auth gate is 8 passed. Its adjacent Send Screenshot, Course Scanner and
+course-document gates remain to be run before release. The HTTP 200 public catalogue probes above remove FM1's
+historical network limitation but do not constitute a Field Map run or a live research-feature acceptance.

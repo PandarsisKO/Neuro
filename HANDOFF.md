@@ -19,6 +19,13 @@ chip and cited answer (including a 500px no-horizontal-overflow light/dark check
 `evals/release/release-check-0.63.94-fa4cf30-20260919-170428.json`. These prove
 prepared code, not a real paid synthesis, production delivery or live verification.
 
+Latest autonomous extension/auth evidence: `8a34772` replaces source-text-only auth assertions with the shipped
+popup/background executable harness (`tests/js/run-extension-auth.mjs`); `tests/test_s74_extension_auth.py` is
+**8 passed** across popup 401/403, background/form auth and quiet ordinary polling failure. It did not install
+or reconfigure Chrome, modify a real credential, or claim the outstanding live failure/recovery gate. Public
+read-only probes now reach Crossref and OpenAlex (HTTP 200 each), so FM1's old sandbox-network blocker is gone;
+a real eligible DOI project plus Kyle's A–F usefulness judgment still gate FM1 acceptance.
+
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current
 main and reconcile only needed existing harness repairs. Do not silently land the blocked catalog to get a green
