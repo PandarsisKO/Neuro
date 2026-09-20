@@ -874,12 +874,38 @@ def get_delta(conversation_id: str, project_id: str | None = None) -> dict[str, 
 # CHR3 — the paid synthesis is deliberately built from the delta's evidence, not from another broad retrieval.
 # It lives here, beside the delta, so the source-scope gate cannot drift from the code that decides what changed.
 
-def _citation_chunk_ids(citations: list[dict[str, Any]], allowed_sources: set[str]) -> list[int]:
-    """Resolve persisted chat/Note citations to their closest real chunks.
+def _citation_offset(citation: dict[str, Any]) -> float | None:
+    """Return an exact numeric citation position, without guessing at page-like locators."""
+    for value in (citation.get("start"), citation.get("timestamp"), citation.get("locator")):
+        if value is None:
+            continue
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value).strip()
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        # Timestamp locators are an exact representation of a media offset.  Other historic locators ("p. 4",
+        # "§ 3", sheet cells) have no trustworthy mapping onto a text chunk, so deliberately leave them out.
+        parts = text.split(":")
+        if len(parts) not in (2, 3) or not all(part.isdigit() for part in parts):
+            continue
+        values = [int(part) for part in parts]
+        if any(part >= 60 for part in values[1:]):
+            continue
+        if len(values) == 2:
+            return float(values[0] * 60 + values[1])
+        return float(values[0] * 3600 + values[1] * 60 + values[2])
+    return None
 
-    Historic citations predate stable chunk ids, but they do contain source_id and usually start/end offsets.  This
-    is intentionally conservative: an unresolved citation contributes no invented passage, and every returned
-    chunk remains within the current project's source membership.
+
+def _citation_chunk_ids(citations: list[dict[str, Any]], allowed_sources: set[str]) -> list[int]:
+    """Resolve persisted citations to chunks that actually contain their exact offsets.
+
+    Historic citations predate stable chunk ids.  The refresh boundary must therefore be conservative: an
+    unresolved or page-like locator contributes no invented passage, and a timestamp can only select a chunk
+    whose interval contains it.  Every returned chunk remains within the current project's source membership.
     """
     out: list[int] = []
     for cite in citations:
@@ -889,12 +915,23 @@ def _citation_chunk_ids(citations: list[dict[str, Any]], allowed_sources: set[st
         chunks = db.get_chunks(sid)
         if not chunks:
             continue
-        start = cite.get("start")
-        if start is None:
-            out.append(int(chunks[0]["id"]))
+        offset = _citation_offset(cite)
+        if offset is None:
             continue
-        nearest = min(chunks, key=lambda c: abs(float(c.get("start") or 0) - float(start)))
-        out.append(int(nearest["id"]))
+        containing = [chunk for chunk in chunks
+                      if chunk.get("start") is not None and chunk.get("end") is not None
+                      and float(chunk["start"]) <= offset < float(chunk["end"])]
+        if containing:
+            out.append(int(containing[0]["id"]))
+            continue
+        # A citation at the final endpoint is still real evidence, but never let an ordinary shared boundary pick
+        # the preceding chunk instead of the next one.
+        last_end = max((float(chunk["end"]) for chunk in chunks if chunk.get("end") is not None), default=None)
+        if last_end is not None and offset == last_end:
+            last = next((chunk for chunk in reversed(chunks)
+                         if chunk.get("end") is not None and float(chunk["end"]) == last_end), None)
+            if last:
+                out.append(int(last["id"]))
     return out
 
 
@@ -954,11 +991,12 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
     if claim_ids:
         marks = ",".join("?" * len(claim_ids))
         rows = conn.execute(
-            f"SELECT ce.claim_id, ce.source_id, ce.start FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id "
+            f"SELECT ce.claim_id, ce.source_id, ce.start, ce.locator FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id "
             f"WHERE c.project_id=? AND ce.claim_id IN ({marks})", (pid, *sorted(claim_ids))).fetchall()
         for cid in claim_ids:
             claim_chunks[cid] = _citation_chunk_ids(
-                [{"source_id": r["source_id"], "start": r["start"]} for r in rows if r["claim_id"] == cid],
+                [{"source_id": r["source_id"], "start": r["start"], "locator": r["locator"]}
+                 for r in rows if r["claim_id"] == cid],
                 allowed_sources,
             )
 
@@ -973,7 +1011,8 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
     # Material differences must survive before corroborating excerpts and old comparison passages.  The delta has
     # already ranked units by CATEGORY_ORDER; preserve that order inside each bucket, then record any overflow so a
     # completed refresh is never mistaken for a complete representation of a larger delta.
-    candidates: list[tuple[str, str, int]] = []
+    candidates: list[tuple[str, str, int, int | None]] = []
+    unit_indexes_by_chunk: dict[int, set[int]] = {}
     for spec in sorted(unit_specs, key=lambda s: (0 if s["bucket"] == "material" else 1,
                                                    CATEGORY_ORDER.get(s["category"], 99), s["index"])):
         ids = list(spec["ids"])
@@ -982,15 +1021,18 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
             ids.extend(finding_chunks.get(int(unit["finding_id"]), []))
         if unit.get("claim_id"):
             ids.extend(claim_chunks.get(str(unit["claim_id"]), []))
-        candidates.extend((spec["bucket"], "new", cid) for cid in ids)
-    candidates.extend(("comparison", "comparison", cid) for cid in comparison_ids)
+        for cid in ids:
+            candidates.append((spec["bucket"], "new", cid, spec["index"]))
+            unit_indexes_by_chunk.setdefault(cid, set()).add(spec["index"])
+    candidates.extend(("comparison", "comparison", cid, None) for cid in comparison_ids)
 
     cap = max(1, int(MAX_EXCERPTS))
     selected_new: list[int] = []
     selected_comparison: list[int] = []
+    selected_unit_indexes: set[int] = set()
     omitted = {"material": 0, "supporting": 0, "comparison": 0}
     seen: set[int] = set()
-    for bucket, kind, cid in candidates:
+    for bucket, kind, cid, _unit_index in candidates:
         if cid in seen:
             continue
         seen.add(cid)
@@ -998,6 +1040,8 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
             omitted[bucket] += 1
             continue
         (selected_new if kind == "new" else selected_comparison).append(cid)
+        if kind == "new":
+            selected_unit_indexes.update(unit_indexes_by_chunk.get(cid, set()))
 
     new_chunk_ids = selected_new
     comparison_chunk_ids = selected_comparison
@@ -1006,7 +1050,8 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
     # a new passage that changes Q1 is not synthesized only against the last few, unrelated turns in a long chat.
     # The paid path receives prose only -- these ids are not another retrieval route.
     affected_question_ids: set[int] = set()
-    for unit in units:
+    selected_units = [spec["unit"] for spec in unit_specs if spec["index"] in selected_unit_indexes]
+    for unit in selected_units:
         if unit.get("question_message_id") is not None:
             affected_question_ids.add(int(unit["question_message_id"]))
         for touch in unit.get("touches_questions") or []:
@@ -1018,17 +1063,13 @@ def refresh_evidence(conversation_id: str, project_id: str | None = None,
         if q["question_message_id"] in affected_question_ids
     ]
     baseline = db.conversation_baseline(conversation_id)
-    # This identity is deliberately derived from the bounded evidence contract rather than timestamps.  The same
-    # delta must not buy another answer on a second click; a genuinely changed unit/chunk gets a new key.
-    refresh_material = [
-        {k: unit.get(k) for k in ("category", "kind", "question_message_id", "source_id", "finding_id",
-                                   "claim_id", "tension_id", "relation", "chunk_ids", "previous_state",
-                                   "current_state")}
-        for unit in units
-        if not unit.get("source_id") or unit.get("source_id") in allowed_sources
-    ]
-    refresh_key = hashlib.sha256(json.dumps({"units": refresh_material, "new_chunk_ids": new_chunk_ids,
-                                              "comparison_chunk_ids": comparison_chunk_ids}, sort_keys=True,
+    # This identity is derived from what reaches the paid prompt, not from lower-priority evidence omitted by the
+    # cap.  The same selected context must not buy another answer merely because more omitted passages arrived.
+    # Crossing into truncation is retained: the prompt then gains its honesty instruction.
+    refresh_key = hashlib.sha256(json.dumps({"new_chunk_ids": new_chunk_ids,
+                                              "comparison_chunk_ids": comparison_chunk_ids,
+                                              "affected_question_ids": [item["message_id"] for item in affected_questions],
+                                              "truncated": any(omitted.values())}, sort_keys=True,
                                              default=str, separators=(",", ":")).encode()).hexdigest()
     return {
         "project_id": pid,

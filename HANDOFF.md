@@ -5,9 +5,18 @@
 Kyle requested a mission and ladder for the recommended continuation. The canonical sequence is now
 [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md): CE0 baseline → screenshot/auth/course
 acceptance and scoped release → CHR3 whole-chat refresh → existing-feature acceptance; subreddit R8b/R9 resumes
-conditionally when approved access is available. CHR3's deterministic implementation and release ritual are now
-complete. The remaining items are real-world acceptance calls and Kyle judgments, not unimplemented Chat Refresh
-code; uncovered spend and human decisions retain their boundaries.
+conditionally when approved access is available. CHR3's earlier deterministic implementation and release ritual
+remain evidence for `e99ccac`, but a follow-up evidence-boundary repair is now prepared in isolation at
+`/private/tmp/neuro-chat-refresh-evidence-repair` on `codex/chat-refresh-evidence-repair`. Do not represent Chat
+Refresh as having no implementation work until that candidate is validated, committed and delivered; uncovered
+spend and human decisions retain their boundaries.
+
+The follow-up fixes a reproduced citation-provenance error (a timestamp could select a nearby chunk or a
+locator-only citation could silently select chunk zero), prevents omitted lower-priority evidence from authorizing
+another identical paid refresh, and makes capped evidence visible both to the provider and the user. It is
+conservative: only a containing numeric/exact timestamp chunk is selected; page-like locators are omitted. Focused
+validation currently passes: 65 CHR1 tests, 24 jsdom chat-delta checks, 122 adjacent chat checks, and 18
+frontend/design/source-drawer checks. This is a prepared candidate, not a release or real paid acceptance.
 
 Latest CHR3 completion evidence: `e99ccac` additionally makes the bounded refresh contract material-first,
 records omitted supporting/comparison excerpts in persisted provenance, and turns a post-admission provider failure

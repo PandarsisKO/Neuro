@@ -1,7 +1,7 @@
 # Continuous execution — finish acceptance, then Chat Refresh
 
-Status: ACTIVE — deterministic CHR3 completion and release evidence are complete; continue only with the remaining
-live acceptance gates and Kyle decisions.
+Status: ACTIVE — an isolated CHR3 evidence-boundary repair is prepared after a follow-up audit; continue with its
+validation/release path, remaining live acceptance gates, and Kyle decisions.
 Updated: 2026-09-19. Owner: executing agent, currently Codex.
 Planning base: shared `main` at `aea21ef369603308ef48d5b4eee85d608786ea6e`.
 
@@ -41,7 +41,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
-| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 completion `e99ccac` has material-first bounded provenance, durable failure handling, and a production-safe full release-check PASS (**2,095 passed**) | Paid real-evidence synthesis acceptance only; no further implementation work is open |
+| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 completion `e99ccac` has material-first bounded provenance, durable failure handling, and a production-safe full release-check PASS (**2,095 passed**) | Validate/release the isolated citation-resolution, capped-evidence disclosure and duplicate-admission repair; then paid real-evidence synthesis acceptance |
 | Subreddit | Prepared delivery candidate `7191fdf` on `codex/subreddit-delivery`; offline implementation and release proof are complete | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
 
@@ -231,6 +231,14 @@ an incomplete assistant failure after a post-admission provider error. Its exact
 passed with **2,095 passed, 1 warning** and wrote
 `evals/release/release-check-0.63.94-e99ccac-20260919-185514.json`. This does not
 authorize or claim the remaining real paid synthesis, human production visual judgment, delivery or live verification.
+
+**Follow-up deterministic repair (2026-09-19, prepared):** a private reproduction found that historic citations
+could select the next chunk by nearest start, while locator-only evidence silently selected chunk zero. The isolated
+candidate resolves only containing numeric/exact timestamp chunks and omits page-like/unresolvable locators. It also
+keeps an unchanged capped selection from becoming a new paid refresh merely because additional omitted passages
+arrive, limits affected-question prompt wording to selected evidence, and tells both provider and user when the cap
+omitted lower-priority passages. It has not yet replaced the `e99ccac` release evidence; validate, commit and run
+the ordinary release ritual before treating CE5/CE6 as accepted again.
 
 ### CE7 — CHR3 UI and browser acceptance
 

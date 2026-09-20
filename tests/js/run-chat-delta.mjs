@@ -47,6 +47,7 @@ function makeDom() {
     <span id="shareChatMsg"></span><span id="wsFoot"></span>
   </body>`, { url: 'https://ns.test/', runScripts: 'dangerously', pretendToBeVisual: true });
   const { window } = dom;
+  window.HTMLElement.prototype.scrollIntoView = () => {};
   window.fetchLog = [];
   window.deltaResponses = {};   // conversation_id -> response object (or {__error:true})
   window.uiFetch = async (p, opts = {}) => {
@@ -180,6 +181,17 @@ function makeDom() {
   await refreshing;
   if (window.state.conv !== 'c9' || loads || selects) fail('gate 19: a completed refresh reopened or reloaded the old chat after the user switched');
   else pass('gate 19: a completed refresh leaves a newer chat selection untouched');
+}
+
+// gate 20: capped refresh provenance is visible and included in portable-answer warnings, including old rows
+// that predate the server-side warning field.
+{
+  const { window } = makeDom();
+  window.addMsg('assistant', 'A bounded refresh answer.', [], { meta: { refresh: { selection: { truncated: true } } } });
+  const msg = window.document.querySelector('.msg.assistant');
+  if (!msg?.textContent.includes('capped evidence selection')) fail('gate 20: capped refresh provenance was not visible on the answer');
+  else if (!JSON.parse(msg.dataset.warns || '[]').some(w => w.includes('capped evidence selection'))) fail('gate 20: capped refresh provenance was omitted from portable-answer warnings');
+  else pass('gate 20: capped refresh provenance is visible and portable');
 }
 
 // gate 10/11: empty states

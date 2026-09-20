@@ -596,11 +596,16 @@ def ask(
             affected_part = "\n\nThe newly available evidence specifically bears on these earlier questions; address them even if they are outside the recent chat tail:\n" + "\n".join(
                 f"- {item.get('question', '').strip()}" for item in affected if item.get("question", "").strip()
             )
+        limit_instruction = ""
+        if (refresh.get("selection") or {}).get("truncated"):
+            limit_instruction = ("\n\nImportant limit: this refresh uses a capped evidence selection, and some "
+                                 "lower-priority passages were not included. Do not represent it as a complete review "
+                                 "of every new passage.")
         refresh_instruction = ("\n\nReview the newly available evidence against the conclusions and questions already discussed "
                                "in this conversation. Report only material differences. Separate: what changes an earlier "
                                "answer, what adds genuinely useful information, and what only confirms what was already known. "
                                "Call out contradictions explicitly. If the new evidence does not materially change or add anything, "
-                               "say so briefly. Do not retell the conversation." + affected_part)
+                               "say so briefly. Do not retell the conversation." + affected_part + limit_instruction)
     messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}{refresh_instruction}"})
     from . import usage
 
@@ -750,6 +755,9 @@ def ask(
         meta = dict(validation or {})
         if refresh:
             meta["refresh"] = {k: refresh.get(k) for k in ("baseline_message_id", "since", "delta_summary", "selection", "refresh_key")}
+            if (refresh.get("selection") or {}).get("truncated"):
+                meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + \
+                                  "This refresh uses a capped evidence selection; some lower-priority passages were not included."
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:
             meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + "answer incomplete: output limit reached twice"

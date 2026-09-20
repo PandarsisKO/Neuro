@@ -64,6 +64,11 @@ globalThis.addMsg = function addMsg(role, text, cites = [], extra = {}) {
     const val = extra.validation || extra.meta || {};
     if (val.warning) h += `<div class="web status-warn">⚠ ${esc(val.warning)}</div>`;
     else if (val.repaired) h += `<div class="web muted">✓ citations were corrected after a validation check</div>`;
+    const refreshLimit = val.refresh?.selection?.truncated
+      ? 'This refresh uses a capped evidence selection; some lower-priority passages were not included.' : '';
+    // Older persisted refreshes have selection provenance but predate the server-side warning. Keep their copy and
+    // visible state honest too, without duplicating the warning on newer rows.
+    if (refreshLimit && !String(val.warning || '').includes('capped evidence selection')) h += `<div class="web status-warn">⚠ ${esc(refreshLimit)}</div>`;
     if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
     for (const a of extra.actions || []) {
       if (a.type === 'brief_updated') h += `<div class="web">✎ Brief updated: <i>${esc(a.brief)}</i></div>`;
@@ -83,6 +88,7 @@ globalThis.addMsg = function addMsg(role, text, cites = [], extra = {}) {
     // Portable Answers (C0): one-click copy that keeps every source, its deep link and every evidence-status warning.
     const warns = [];
     if (val.warning) warns.push(val.warning);
+    if (refreshLimit && !String(val.warning || '').includes('capped evidence selection')) warns.push(refreshLimit);
     for (const a of extra.actions || []) if (a.type === 'gap_noted') warns.push('Research gap recorded: this answer identified something the sources do not yet cover.');
     h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">Pin to findings</button>` : '') + `<span class="muted copied text-xs"></span></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites); d.dataset.warns = JSON.stringify(warns);

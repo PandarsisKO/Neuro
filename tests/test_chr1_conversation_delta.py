@@ -971,13 +971,109 @@ def test_refresh_key_changes_when_the_bounded_evidence_contract_changes():
     from FTS ranking, which is intentionally allowed to select a bounded subset of many new sources."""
     pid = _golden()
     conv = db.create_conversation(pid)["id"]
-    sid_a = _new_source(pid, "Seller financing one", "Seller financing terms include a five year standby note.", tag="refresh-key-a")
-    sid_b = _new_source(pid, "Seller financing two", "Seller financing terms include a seven year standby note.", tag="refresh-key-b")
-    cid_a = db.get_chunks(sid_a)[0]["id"]
-    cid_b = db.get_chunks(sid_b)[0]["id"]
-    first = {"material_changes": [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid_a, "chunk_ids": [cid_a]}], "supporting_changes": []}
-    second = {"material_changes": first["material_changes"] + [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid_b, "chunk_ids": [cid_b]}], "supporting_changes": []}
+    sid = _new_source(pid, "Seller financing evidence", "placeholder", tag="refresh-key")
+    db.replace_chunks(sid, [
+        {"start": 0.0, "end": 30.0, "text": "Seller financing can include a five year standby note."},
+        {"start": 30.0, "end": 60.0, "text": "Seller financing can include a seven year standby note."},
+    ])
+    cid_a, cid_b = [chunk["id"] for chunk in db.get_chunks(sid)]
+    first = {"material_changes": [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid, "chunk_ids": [cid_a]}], "supporting_changes": []}
+    second = {"material_changes": first["material_changes"] + [{"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid, "chunk_ids": [cid_b]}], "supporting_changes": []}
     assert cd.refresh_evidence(conv, pid, first)["refresh_key"] != cd.refresh_evidence(conv, pid, second)["refresh_key"]
+
+
+def test_refresh_citation_resolution_requires_a_containing_or_exact_timestamp_chunk():
+    """A historic locator must never be converted to a nearby-but-unsupported passage."""
+    pid = _golden()
+    sid = _new_source(pid, "Timestamp evidence", "placeholder", tag="timestamp-evidence")
+    db.replace_chunks(sid, [
+        {"start": 0.0, "end": 100.0, "text": "The first timestamped passage."},
+        {"start": 100.0, "end": 200.0, "text": "The second timestamped passage."},
+    ])
+    chunks = db.get_chunks(sid)
+    assert cd._citation_chunk_ids([{"source_id": sid, "start": 90}], {sid}) == [chunks[0]["id"]]
+    assert cd._citation_chunk_ids([{"source_id": sid, "timestamp": "1:30"}], {sid}) == [chunks[0]["id"]]
+    assert cd._citation_chunk_ids([{"source_id": sid, "locator": "p. 4"}], {sid}) == []
+
+    claim = claims.add_claim(pid, "The timestamped first passage is relevant.", claim_type="market")
+    claims.add_evidence(claim["id"], sid, locator="1:30", excerpt="first timestamped passage")
+    evidence = cd.refresh_evidence(conv := db.create_conversation(pid)["id"], pid, {
+        "material_changes": [{"kind": "claim", "category": "claim_transition", "claim_id": claim["id"]}],
+        "supporting_changes": [],
+    })
+    assert evidence["new_chunk_ids"] == [chunks[0]["id"]]
+
+
+def test_refresh_key_ignores_additional_evidence_that_the_cap_omits(monkeypatch):
+    """Extra unseen overflow must not make the same paid prompt eligible again."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    sid = _new_source(pid, "Capped refresh evidence", "placeholder", tag="capped-refresh-key")
+    db.replace_chunks(sid, [
+        {"start": float(i), "end": float(i + 1), "text": f"Passage {i}"}
+        for i in range(4)
+    ])
+    ids = [chunk["id"] for chunk in db.get_chunks(sid)]
+    monkeypatch.setattr(qa, "MAX_EXCERPTS", 2)
+    first = {"material_changes": [], "supporting_changes": [
+        {"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid, "chunk_ids": ids[:3]}]}
+    second = {"material_changes": [], "supporting_changes": [
+        {"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid, "chunk_ids": ids}]}
+    first_evidence, second_evidence = cd.refresh_evidence(conv, pid, first), cd.refresh_evidence(conv, pid, second)
+    assert first_evidence["new_chunk_ids"] == second_evidence["new_chunk_ids"] == ids[:2]
+    assert first_evidence["selection"]["truncated"] and second_evidence["selection"]["truncated"]
+    assert first_evidence["refresh_key"] == second_evidence["refresh_key"]
+
+
+def test_refresh_only_names_questions_supported_by_selected_evidence(monkeypatch):
+    """An omitted passage cannot make the provider claim it bears on an unrelated earlier question."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are seller financing terms?", project_id=pid, conversation_id=conv)
+    qa.ask("What bookkeeping software should I use?", project_id=pid, conversation_id=conv)
+    questions = cd._questions(conv)
+    sid = _new_source(pid, "Capped question evidence", "placeholder", tag="capped-affected-question")
+    db.replace_chunks(sid, [
+        {"start": float(i), "end": float(i + 1), "text": f"Passage {i}"}
+        for i in range(3)
+    ])
+    ids = [chunk["id"] for chunk in db.get_chunks(sid)]
+    monkeypatch.setattr(qa, "MAX_EXCERPTS", 1)
+    evidence = cd.refresh_evidence(conv, pid, {"material_changes": [], "supporting_changes": [
+        {"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid, "chunk_ids": [ids[0]],
+         "question_message_id": questions[0]["question_message_id"]},
+        {"kind": "new_excerpt", "category": "new_excerpt", "source_id": sid, "chunk_ids": ids[1:],
+         "question_message_id": questions[1]["question_message_id"]},
+    ]})
+    assert evidence["new_chunk_ids"] == [ids[0]]
+    assert evidence["affected_questions"] == [{"message_id": questions[0]["question_message_id"],
+                                                "question": "What are seller financing terms?"}]
+
+
+def test_capped_refresh_tells_the_provider_and_persists_a_user_visible_limit(monkeypatch):
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    sid = _new_source(pid, "Capped refresh evidence", "A concrete update.", tag="capped-refresh-warning")
+    chunk_id = db.get_chunks(sid)[0]["id"]
+    from neurosearch import providers
+    real = providers.invoke
+    prompts = []
+
+    def capture_prompt(task, **kw):
+        if task == "answer.chat":
+            prompts.append(str(kw["messages"][-1]["content"]))
+        return real(task, **kw)
+
+    monkeypatch.setattr(providers, "invoke", capture_prompt)
+    qa.ask("Refresh: what's new?", project_id=pid, conversation_id=conv, refresh={
+        "new_chunk_ids": [chunk_id], "comparison_chunk_ids": [], "baseline_message_id": None,
+        "since": None, "delta_summary": {"material": 0, "supporting": 2},
+        "selection": {"cap": 1, "selected": 1, "truncated": True,
+                      "omitted": {"material": 0, "supporting": 1, "comparison": 0}},
+        "affected_questions": [], "refresh_key": "capped-refresh-test",
+    })
+    assert prompts and "some lower-priority passages were not included" in prompts[0]
+    assert "capped evidence selection" in cd._rows(conv)[-1]["meta"]["warning"]
 
 
 def test_refresh_evidence_drops_cross_project_chunks_even_if_a_bad_unit_names_them():
