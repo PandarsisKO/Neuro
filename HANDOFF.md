@@ -5,19 +5,15 @@
 Kyle requested a mission and ladder for the recommended continuation. The canonical sequence is now
 [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md): CE0 baseline → screenshot/auth/course
 acceptance and scoped release → CHR3 whole-chat refresh → existing-feature acceptance; subreddit R8b/R9 resumes
-conditionally when approved access is available. **CE1–CE4 acceptance and CE7 browser/release validation are next.**
-CE0's focused baseline and CHR3's isolated CE5–CE6 implementation checkpoint are complete: concrete delta-only
-evidence selection, a 409 empty-evidence refusal, refresh provenance/fresh baseline, and the explicit cost-labelled
-open-chat control have focused Python and jsdom gates. No real paid synthesis, full release or delivery is claimed;
-those remain bounded by the existing budget and visual-acceptance rules. CHR3 is included in the requested
-continuation; routine rung progression does not need another approval, while uncovered spend and genuine human
-judgments retain their boundaries.
+conditionally when approved access is available. CHR3's deterministic implementation and release ritual are now
+complete. The remaining items are real-world acceptance calls and Kyle judgments, not unimplemented Chat Refresh
+code; uncovered spend and human decisions retain their boundaries.
 
-Latest isolated CHR3 evidence: fake-AI browser wiring exercised a meaningful delta through the persisted refresh
-chip and cited answer (including a 500px no-horizontal-overflow light/dark check); full pytest is **2,079 passed,
-1 warning**. The candidate-bound deterministic release gate passed at `fa4cf30`, artifact
-`evals/release/release-check-0.63.94-fa4cf30-20260919-170428.json`. These prove
-prepared code, not a real paid synthesis, production delivery or live verification.
+Latest CHR3 completion evidence: `797be0a` repairs the final source-membership race, long-chat question context,
+and retry-after-incomplete behavior. Its focused suite is **80 passed, 1 warning**; the production-safe,
+commit-bound release gate passes every deterministic proof (including full pytest, Foundation, Tier 1, migrations,
+recovery, and backup/restore) at `evals/release/release-check-0.63.94-797be0a-20260919-183236.json`. This does not
+claim a paid real-evidence synthesis or any user judgment/visual gate.
 
 Latest autonomous extension/auth evidence: `8a34772` replaces source-text-only auth assertions with the shipped
 popup/background executable harness (`tests/js/run-extension-auth.mjs`); `tests/test_s74_extension_auth.py` is
@@ -47,18 +43,15 @@ checkpoint, and no new runtime release is claimed.
 
 ## Current continuation pointer — 2026-09-19
 
-Runtime remains on shared `main`; **do not restart from its stale R1-next checklist below**. The prepared,
-reconciled runtime candidate is `abdefaa` (evidence checkpoint `c842861`) on `codex/subreddit-integrated`, at
-`/private/tmp/neuro-repair-powMDK/integrated-worktree`. Read that checkout's HANDOFF and canonical mission.
-It preserves the later, undelivered `codex/subreddit-r1` (`d318297`) work plus independently tested safety
-repairs. The earlier `codex/subreddit-continuation` / `codex/subreddit-scan-lifecycle` branches are historical
-checkpoints, not competing versions to land. Keep their evidence; continue only from the integrated candidate.
+Runtime changes are prepared from `main` in isolation. The Chat Refresh completion candidate is `797be0a` on
+`codex/chat-refresh-completion`; once published, start other runtime work from that new `main` tip. The separately
+prepared catalog candidate is `7191fdf` on `codex/subreddit-delivery`, at
+`/private/tmp/neuro-subreddit-delivery`. It must remain separate until R8b's approved official-API live gate; do
+not land it merely to make main appear complete. The earlier subreddit branches are historical checkpoints.
 
-**Frozen normal release-check PASS on `abdefaa`**: 2,169 tests, Foundation, Tier 1, repo-check, migrations,
-recovery and backup/restore. Start/end SHA `abdefaa3979575a62d25f7a3728e41cd34c4d3c1`; 217 focused tests
-also pass. Artifact is on the prepared branch:
-`evals/release/release-check-0.63.94-abdefaa-20260919-151545.json`. It includes safe selected capture,
-project-safe list clearing, refresh draft/focus preservation and bounded synthetic lifecycle proof.
+The catalog candidate's frozen normal release-check remains its own evidence: **2,182 tests**, Foundation, Tier 1,
+repo-check, migrations, recovery and backup/restore pass at its source checkpoint; reconcile it with later main
+only after the R8b gate is actually available.
 
 **Offline work complete; R8b BLOCKED.** A supported live community-status read reports `reddit_api: false`,
 so approved official Reddit API configuration is absent. No credential was read/changed and no Reddit request,

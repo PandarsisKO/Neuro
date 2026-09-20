@@ -977,3 +977,17 @@ This is isolated UI wiring evidence, not a paid synthesis or production acceptan
 `tests/test_chr1_conversation_delta.py` = 63 passed; `node tests/js/run-chat-delta.mjs` = 22 passed; chat failure,
 truncation, frontend-integrity and design-drift tests = 32 passed. The remaining CE7 boundary is a real paid
 synthesis only under an already-approved budget, followed by full release validation in CE8.
+
+### CHR3 completion correction (Codex, 2026-09-19)
+
+`797be0a` closes three discovered implementation gaps without widening the refresh contract: the selected chunks
+are rechecked against current ready project membership immediately before the provider call; the delta names every
+earlier question its units touch so a long chat's bounded history tail cannot hide the affected question; and an
+output-limited refresh keeps visible provenance but does not consume the refresh identity, so retry remains
+available. A rejected stale refresh creates neither a synthetic user row nor a provider call.
+
+Focused CHR0/CHR1, truncation, and test-isolation coverage is **80 passed, 1 warning**. The production-safe
+commit-bound release gate passes at `evals/release/release-check-0.63.94-797be0a-20260919-183236.json`, including
+the full suite, Foundation, Tier 1, migrations, recovery and backup/restore. The only remaining CHR3 acceptance is
+a bounded paid real-evidence synthesis under an approved budget; it is not an engineering task to execute without
+that authority.

@@ -1,7 +1,7 @@
 # Continuous execution — finish acceptance, then Chat Refresh
 
-Status: ACTIVE — deterministic CHR3 release evidence and extension-auth runtime regression coverage are complete;
-continue with the remaining live acceptance gates and bounded validation.
+Status: ACTIVE — deterministic CHR3 completion and release evidence are complete; continue only with the remaining
+live acceptance gates and Kyle decisions.
 Updated: 2026-09-19. Owner: executing agent, currently Codex.
 Planning base: shared `main` at `aea21ef369603308ef48d5b4eee85d608786ea6e`.
 
@@ -41,17 +41,17 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
-| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 implemented and focused fake-provider/frontend gates pass in isolation | Paid real-evidence synthesis acceptance, full release ritual and delivery |
-| Subreddit | Integrated runtime `abdefaa`, evidence checkpoint `c842861`, pushed on `codex/subreddit-integrated`; 2,169 tests and normal release-check PASS | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
+| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 completion `797be0a` has focused 80-pass coverage and a production-safe full release-check PASS | Paid real-evidence synthesis acceptance only; no further implementation work is open |
+| Subreddit | Prepared delivery candidate `7191fdf` on `codex/subreddit-delivery`; offline implementation and release proof are complete | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
 
 Last supported Reddit configuration observation: `stats.reddit_api=false`. A true value proves configuration
 presence only, not approved access or working listing/capture. The existing monitor
 `resume-reddit-catalog-live-gate` watches this dependency; do not create a duplicate.
 
-The integrated candidate is at `/private/tmp/neuro-repair-powMDK/integrated-worktree`. Main does not contain
-all its runtime or test-isolation corrections. Its passing artifact is not a release pass for shared main or
-for future edits. Do not repeat the stale R1-next checklist or undo those corrections.
+The catalog candidate is at `/private/tmp/neuro-subreddit-delivery`. It remains intentionally separate from main
+until approved Reddit API access permits R8b. Do not repeat the stale R1-next checklist or land it to bypass that
+live gate.
 
 ## 3. Execution loop and isolation
 
