@@ -38,7 +38,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 
 | Area | Verified position at planning time | Remaining |
 |---|---|---|
-| Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
+| Screenshot | Case 7's partial and bounded full-page provenance/image paths are live-accepted; case 6 cosmetic issue remains deliberately deferred | Broader historical matrix cases only; no unmeasured repair is admitted |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
 | Chat | CHR0/CHR1 shipped; CHR2 closed; the delivered follow-up repair adds conservative citation resolution, capped-evidence disclosure and duplicate-admission boundaries | Supported live verification and paid real-evidence synthesis acceptance |
@@ -93,7 +93,7 @@ Priority is table order among eligible work. CE10 may resume at the next safe bo
 | Rung | Initial state | Dependencies | Exit gate |
 |---|---|---|---|
 | CE0 — establish the execution baseline | ACCEPTED (focused) | None | Isolated source/harness identified, existing repairs reconciled, relevant baseline passing |
-| CE1 — finish screenshot acceptance | READY after CE0 | Actual Chrome and a real capture | Provenance/partial/image checks pass; evidence tied to source and extension versions |
+| CE1 — finish screenshot acceptance | ACCEPTED (2026-09-19) | Actual Chrome and a real capture | Provenance/partial/image checks pass; evidence tied to source and extension versions |
 | CE2 — accept authentication failure and recovery | READY after CE0 | Actual extension; controlled failure target | Visible 401/403 feedback and successful recovery, with successful capture behavior preserved |
 | CE3 — finish course acceptance | READY after CE0 | Signed-in course; separate cost/access boundary for document import | Active-scan reopen and completion verified; one successful bounded CS7 document import, with blocked-host behavior distinguished |
 | CE4 — release accepted extension repairs | READY after relevant CE1–CE3 work | Concrete candidate; required visual acceptance | Full release ritual, version agreement, delivery and supported live verification |
@@ -139,8 +139,16 @@ against this gate's timezone requirement. `6738674` adds the browser's short tim
 has a regression gate and a full deterministic release PASS at
 `evals/release/release-check-0.63.94-6738674-20260919-193846.json` (**2,100 passed, 1 warning**), and was
 delivered at `9ad45a2`. After browser reload, the card visibly rendered `Sep 19, 2026, 6:59:22 PM PDT` alongside
-the correct title, partial mode/tag and URL. This closes the partial-provenance portion; full-page capture/image
-integrity remains open.
+the correct title, partial mode/tag and URL.
+
+**Bounded complete-capture acceptance (2026-09-19):** the installed `1.9.3` extension captured the local synthetic
+two-tile fixture added at `ee27ec0`, visibly reporting `Captured the full page — sent to Neuro Search`. Its ready
+source `6dc4abaccd7147e19d6a8e9aa515b5db` opened through the supported drawer with the true title, `Sep 19, 2026,
+7:51:17 PM PDT`, `the full page` wording, fixture URL, and the independently labelled synthetic note. The stored
+image visibly included the bottom `END OF COMPLETE FIXTURE` marker and matched the direct browser full-page rendering
+at `3840×2864`; it was not merely assumed complete from metadata. The S54 gate is **73 passed, 1 warning**. Together
+with the partial and visible-only checks above, this closes CE1/Case 7; Case 6's explicitly deferred cosmetic issue
+is unchanged.
 
 ### CE2 — extension 401/403 failure and recovery
 

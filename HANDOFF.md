@@ -53,7 +53,16 @@ truthfulness defect: the timestamp had no timezone label. Candidate `6738674` fi
 `evals/release/release-check-0.63.94-6738674-20260919-193846.json` (**2,100 passed, 1 warning**, Foundation,
 Tier 1, migrations, recovery and backup/restore). It was delivered to shared `main` at `9ad45a2`; after a browser
 reload the same card visibly read `Sep 19, 2026, 6:59:22 PM PDT`. This closes Case 7's partial-provenance card.
-Safe full-page image integrity remains separate. No course import, credential change or model-spend action was taken.
+
+Latest bounded full-page acceptance: installed Chrome extension `1.9.3` captured the local synthetic two-tile
+fixture at `http://127.0.0.1:8766/tests/fixtures/capture/live-full-page.html` and visibly reported `Captured the
+full page — sent to Neuro Search`. The source `6dc4abaccd7147e19d6a8e9aa515b5db` appeared ready through the app,
+and its drawer visibly showed the title, `Sep 19, 2026, 7:51:17 PM PDT`, `the full page`, URL and the separately
+labelled note `Synthetic full-page acceptance fixture; no external content.` The actual stored image rendered its
+bottom `END OF COMPLETE FIXTURE` sentinel and matched the direct browser full-page rendering at `3840×2864`; this
+is visual evidence, not an inferred dimension claim. The fixture is commit `ee27ec0` and the shipped S54 gate is
+**73 passed, 1 warning** with the shared jsdom dependency path. This closes CE1/Case 7's safe full-page
+image-integrity portion. No model-spend, course import or credential change occurred.
 
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current

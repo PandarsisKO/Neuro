@@ -14,6 +14,17 @@ pipeline as evidence — the same pipeline an uploaded photo of a whiteboard alr
 findings → claims). No new ingestion system was built for this; the extension side is new, the server side is a
 narrow, explicit extension of one existing endpoint.
 
+## Current supported acceptance record — 2026-09-19
+
+The installed extension `1.9.3` completed a bounded, no-cost full-page acceptance against the repository's
+synthetic two-tile fixture (`tests/fixtures/capture/live-full-page.html`, commit `ee27ec0`). Chrome visibly reported
+`Captured the full page — sent to Neuro Search`; the supported source drawer for
+`6dc4abaccd7147e19d6a8e9aa515b5db` showed the captured title, PDT timestamp, full-page wording, source URL and a
+separate synthetic note. The stored image visibly contained the fixture's bottom sentinel and matched direct
+browser full-page rendering at `3840×2864`. Existing accepted partial and visible-only records cover their distinct
+provenance paths. This closes the mission's Case 7/CE1 provenance and bounded-image-integrity gate; it does not
+claim every historical matrix scenario below has been rerun.
+
 ## What Kyle approved, and why (revision history)
 
 The plan went through three rounds of explicit revision before "Approved, execute the mission." Each item below
