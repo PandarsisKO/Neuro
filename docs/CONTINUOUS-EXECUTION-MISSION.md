@@ -133,6 +133,14 @@ source URL and separately-labelled note; supported digest data confirms `mode=pa
 `mode=visible_only`. No existing safe full-page capture was available, so that mode and the actual image's
 full integrity remain open rather than manufacturing a production capture without a covered cost boundary.
 
+**Follow-up (2026-09-19, release-checked candidate):** a direct Source Drawer view completed for the partial
+fixture and confirmed the title, partial wording/tag and URL. Its unsuffixed local timestamp exposed an ambiguity
+against this gate's timezone requirement. `6738674` uses the browser's short timezone label (for example, PDT)
+on the same card, with a regression gate and a full deterministic release PASS at
+`evals/release/release-check-0.63.94-6738674-20260919-193846.json` (**2,100 passed, 1 warning**). Deliver and
+visually confirm that label before closing the partial-provenance portion; full-page capture/image integrity
+remains open.
+
 ### CE2 — extension 401/403 failure and recovery
 
 Inspect and reuse the existing handlers. Exercise popup project loading, background/form upload and pending-poll

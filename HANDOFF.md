@@ -46,10 +46,13 @@ open, as does CS7's one bounded document-import acceptance.
 Latest controlled Send Screenshot observation: the installed extension captured the local intentionally tall
 fixture and visibly reported `Captured part of the page — sent to Neuro Search`; the source then appeared ready in
 the selected project as `Neuro Search partial capture fixture`, with its image transcript rendered in-app. This
-confirms the actual partial-capture path and image availability without a paid call. It does **not** close Case 7:
-the aggregate Source Drawer request remained on `reading everything this source gave…`, so the card's timestamp,
-mode wording, partial tag, URL and note still need a direct live view. No note was supplied and no course import,
-credential change or model-spend action was taken.
+confirms the actual partial-capture path and image availability without a paid call. The Source Drawer later
+completed and showed the real title, timestamp, `part of the page` wording, `partial` tag and fixture URL. No
+note was supplied, and the card correctly omitted its conditional note line. That direct check found one small
+truthfulness defect: the timestamp had no timezone label. Candidate `6738674` fixes it and is release-checked at
+`evals/release/release-check-0.63.94-6738674-20260919-193846.json` (**2,100 passed, 1 warning**, Foundation,
+Tier 1, migrations, recovery and backup/restore). It awaits delivery and one browser reload/visible-label check;
+safe full-page image integrity remains separate. No course import, credential change or model-spend action was taken.
 
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current
