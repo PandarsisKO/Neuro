@@ -36,6 +36,16 @@ def test_the_drawer_provenance_card_links_to_the_actual_image():
     assert "${capturedThumb}" in src, "capturedThumb was computed but never actually inserted into capturedLine's markup"
 
 
+def test_the_drawer_capture_timestamp_names_its_timezone():
+    src = RESEARCH_JS.read_text()
+    assert "const capturedAt = cap ? new Intl.DateTimeFormat" in src, \
+        "capture provenance must format its stored timestamp through one explicit display seam"
+    assert "timeZoneName: 'short'" in src, \
+        "the drawer must name the timezone instead of showing an ambiguous browser-local date/time"
+    assert "${esc(capturedAt)}" in src, \
+        "the capture card must render the timezone-labelled timestamp, not a discarded formatter result"
+
+
 def test_view_transcript_shows_the_picture_for_image_sources_not_just_ocr_text():
     src = SOURCES_JS.read_text()
     # the image branch must come BEFORE the generic transcript fallback, and must return, or an image source
