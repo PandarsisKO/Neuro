@@ -25,6 +25,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 EXT = ROOT / "extension"
 FIX = ROOT / "tests" / "fixtures" / "capture" / "sticky-fixed.html"
+LIVE_FULL_PAGE_FIX = ROOT / "tests" / "fixtures" / "capture" / "live-full-page.html"
 RUN = ROOT / "tests" / "js" / "run-capture.mjs"
 
 
@@ -50,6 +51,20 @@ def test_shipped_capture_lib_exists_and_is_valid_js() -> None:
     assert lib.exists(), "extension/capture-lib.js must exist — background.js importScripts() it"
     out = subprocess.run([_node(), "--check", str(lib)], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr[:400]
+
+
+def test_live_full_page_fixture_is_local_synthetic_and_requires_tiling() -> None:
+    """Keep the no-cost live acceptance fixture bounded and purpose-specific.
+
+    The real browser, not jsdom, establishes the viewport height and proves the capture result.  This
+    small contract prevents an accidental replacement with a one-tile page (which is correctly
+    labeled ``visible_only``) or with any non-fixture content.
+    """
+    html = LIVE_FULL_PAGE_FIX.read_text()
+    assert "Neuro Search full-page capture fixture" in html
+    assert "synthetic local test content" in html
+    assert "min-height: 2800px" in html
+    assert "END OF COMPLETE FIXTURE" in html
 
 
 def test_measure_reports_viewport_and_dpr() -> None:
