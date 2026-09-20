@@ -41,7 +41,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight executable runtime checks pass against controlled responses | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; live popup scan completed all 3 lessons and its record survived popup closure | Exact active-state reopen snapshot and CS7 document ingestion live acceptance remain unproven |
-| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 completion `797be0a` has focused 80-pass coverage and a production-safe full release-check PASS | Paid real-evidence synthesis acceptance only; no further implementation work is open |
+| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 completion `e99ccac` has material-first bounded provenance, durable failure handling, and a production-safe full release-check PASS (**2,095 passed**) | Paid real-evidence synthesis acceptance only; no further implementation work is open |
 | Subreddit | Prepared delivery candidate `7191fdf` on `codex/subreddit-delivery`; offline implementation and release proof are complete | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
 
@@ -97,8 +97,8 @@ Priority is table order among eligible work. CE10 may resume at the next safe bo
 | CE2 — accept authentication failure and recovery | READY after CE0 | Actual extension; controlled failure target | Visible 401/403 feedback and successful recovery, with successful capture behavior preserved |
 | CE3 — finish course acceptance | READY after CE0 | Signed-in course; separate cost/access boundary for document import | Active-scan reopen and completion verified; one successful bounded CS7 document import, with blocked-host behavior distinguished |
 | CE4 — release accepted extension repairs | READY after relevant CE1–CE3 work | Concrete candidate; required visual acceptance | Full release ritual, version agreement, delivery and supported live verification |
-| CE5 — CHR3 evidence-context preparation | ACCEPTED (isolated) | CHR0–CHR2 retained; owning design read | Scoped evidence builder, comparison passages, honest limits and meaningful deterministic tests |
-| CE6 — CHR3 synthesis and persistence | ACCEPTED (isolated) | Existing chat/provider/storage paths | Correct refreshed turn, refusal/failure/retry behavior and fresh successful snapshot |
+| CE5 — CHR3 evidence-context preparation | ACCEPTED (release-checked candidate) | CHR0–CHR2 retained; owning design read | Scoped evidence builder, comparison passages, honest limits and meaningful deterministic tests |
+| CE6 — CHR3 synthesis and persistence | ACCEPTED (release-checked candidate) | Existing chat/provider/storage paths | Correct refreshed turn, refusal/failure/retry behavior and fresh successful snapshot |
 | CE7 — CHR3 interaction and visual acceptance | PREPARED (isolated) | Working isolated candidate | Real browser task exercise, clear spend consequence, correct state and required human visual review |
 | CE8 — CHR3 release | PREPARED (deterministic gate passed) | Exact frozen candidate | Full release ritual, delivered source/version and supported live verification |
 | CE9 — existing-feature acceptance package | READY after CE0; lower priority than eligible CE1–CE8 | Supported reads and existing real evidence | Fresh evidence gathered, eligible live gates run, remaining judgments made concrete |
@@ -225,9 +225,11 @@ refresh provenance, a 409 no-evidence refusal, normal fresh evidence snapshots a
 tests cover success, refusal, refresh-topic exclusion, cross-project exclusion and no direct Claim creation.
 
 **CE7/CE8 checkpoint (2026-09-19):** an isolated fake-AI browser exercised the meaningful-delta control through
-persisted chip and cited answer; the 500px layout had no horizontal overflow in light/dark states. Full pytest was
-2,079 passed (one Starlette warning). The candidate-bound deterministic release-check passed at `fa4cf30` and wrote
-`evals/release/release-check-0.63.94-fa4cf30-20260919-170428.json`. This does not
+persisted chip and cited answer; the 500px layout had no horizontal overflow in light/dark states. The later
+`e99ccac` repair makes selected evidence material-first under the hard excerpt cap, records overflow, and persists
+an incomplete assistant failure after a post-admission provider error. Its exact candidate-bound release check
+passed with **2,095 passed, 1 warning** and wrote
+`evals/release/release-check-0.63.94-e99ccac-20260919-185514.json`. This does not
 authorize or claim the remaining real paid synthesis, human production visual judgment, delivery or live verification.
 
 ### CE7 — CHR3 UI and browser acceptance

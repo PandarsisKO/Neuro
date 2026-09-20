@@ -1,8 +1,8 @@
 # Conversation Delta / Chat Refresh — plan
 
 **Status (2026-09-19): CHR0 and CHR1 shipped; CHR2 closed at its verified visual checkpoint (`7b43dc8`).
-CHR3 is IMPLEMENTED in the isolated continuous-execution candidate; deterministic and fake-provider gates pass.
-Its real paid synthesis and release acceptance remain open in [the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE7–CE8.** Kyle's request
+CHR3 is IMPLEMENTED and deterministically release-checked in the isolated continuous-execution candidate; its
+real paid synthesis and browser acceptance remain open in [the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE7–CE8.** Kyle's request
 for that continuation supersedes the earlier stop-after-CHR2 boundary. No new provider budget is authorized by
 the plan.
 
@@ -991,3 +991,18 @@ commit-bound release gate passes at `evals/release/release-check-0.63.94-797be0a
 the full suite, Foundation, Tier 1, migrations, recovery and backup/restore. The only remaining CHR3 acceptance is
 a bounded paid real-evidence synthesis under an approved budget; it is not an engineering task to execute without
 that authority.
+
+### CHR3 bounded-evidence and failure repair (Codex, 2026-09-19)
+
+`e99ccac` closes the final deterministic defects found during an independent cap/failure audit. Selection is now
+material-first: Claim, tension, Finding and plan-impact evidence cannot be displaced by a large set of supporting
+excerpts or old comparison passages. The exact hard-cap selection, including distinct omitted material/supporting/
+comparison counts, is persisted in `meta.refresh.selection`; the provider path no longer silently slices it later.
+If a valid synthetic refresh turn has been saved but the provider then fails, the API persists an incomplete
+assistant failure turn, matching ordinary chat rather than leaving a dangling user chip.
+
+Focused CHR0/CHR1, source-drawer and extension-auth coverage is **81 passed, 1 warning**. The exact candidate's
+normal release check is PASS — **2,095 passed, 1 warning** in full pytest plus Foundation, Tier 1, migrations,
+recovery and backup/restore — at `evals/release/release-check-0.63.94-e99ccac-20260919-185514.json`. Remaining
+acceptance is still only a bounded paid real-evidence synthesis under approved budget and required human/browser
+review; neither was simulated or claimed here.

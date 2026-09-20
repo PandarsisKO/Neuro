@@ -2,13 +2,13 @@
 
 **Continuation update — 2026-09-19:** the dated snapshot below is historical where superseded by HANDOFF.
 Current execution follows [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md): CE0's
-focused baseline and CHR3 CE5–CE6 implementation are complete in isolation; screenshot/auth/course acceptance,
-CHR3 browser/release validation, existing-feature acceptance and a conditional subreddit delivery track remain.
+focused baseline and CHR3 implementation plus deterministic release proof are complete; screenshot/auth/course
+acceptance, CHR3 paid/browser acceptance, existing-feature acceptance and a conditional subreddit delivery track remain.
 CHR2 is closed. The 401/403 handlers exist; real-Chrome acceptance is still open.
 Course start/cancel/reopen-after-cancel were observed; active-scan reopening, completion and CS7 document-fetch
-acceptance remain. CHR3's delta-only context, 409 no-evidence refusal, refresh provenance and explicit control
-have focused fake-provider/frontend coverage, but no real paid synthesis or release is claimed. Screenshot case 7
-remains unclosed; case 6 cosmetics stay deferred. Subreddit's integrated
+acceptance remain. CHR3's delta-only context, 409 no-evidence refusal, material-first bounded provenance and
+explicit control have deterministic coverage and a commit-bound release PASS at `e99ccac`, but no real paid
+synthesis is claimed. Screenshot case 7 remains unclosed; case 6 cosmetics stay deferred. Subreddit's integrated
 candidate `abdefaa` / evidence `c842861` passed 2,169 tests and release-check but is not delivered; official API
 configuration was last observed false. No new runtime or live-acceptance claim is made by this planning update.
 The new mission supersedes stale queue directions below, while existing feature contracts retain their gates.

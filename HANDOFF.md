@@ -9,11 +9,13 @@ conditionally when approved access is available. CHR3's deterministic implementa
 complete. The remaining items are real-world acceptance calls and Kyle judgments, not unimplemented Chat Refresh
 code; uncovered spend and human decisions retain their boundaries.
 
-Latest CHR3 completion evidence: `797be0a` repairs the final source-membership race, long-chat question context,
-and retry-after-incomplete behavior. Its focused suite is **80 passed, 1 warning**; the production-safe,
-commit-bound release gate passes every deterministic proof (including full pytest, Foundation, Tier 1, migrations,
-recovery, and backup/restore) at `evals/release/release-check-0.63.94-797be0a-20260919-183236.json`. This does not
-claim a paid real-evidence synthesis or any user judgment/visual gate.
+Latest CHR3 completion evidence: `e99ccac` additionally makes the bounded refresh contract material-first,
+records omitted supporting/comparison excerpts in persisted provenance, and turns a post-admission provider failure
+into a visible incomplete assistant turn instead of a dangling refresh chip. Its focused chat/drawer/auth suite is
+**81 passed, 1 warning**; the production-safe, commit-bound release gate passes every deterministic proof (including
+**2,095 passed, 1 warning** full pytest, Foundation, Tier 1, migrations, recovery, and backup/restore) at
+`evals/release/release-check-0.63.94-e99ccac-20260919-185514.json`. This does not claim a paid real-evidence
+synthesis or any user judgment/visual gate.
 
 Latest autonomous extension/auth evidence: `8a34772` replaces source-text-only auth assertions with the shipped
 popup/background executable harness (`tests/js/run-extension-auth.mjs`); `tests/test_s74_extension_auth.py` is
@@ -43,7 +45,7 @@ checkpoint, and no new runtime release is claimed.
 
 ## Current continuation pointer — 2026-09-19
 
-Runtime changes are prepared from `main` in isolation. The Chat Refresh completion candidate is `797be0a` on
+Runtime changes are prepared from `main` in isolation. The Chat Refresh completion candidate is `e99ccac` on
 `codex/chat-refresh-completion`; once published, start other runtime work from that new `main` tip. The separately
 prepared catalog candidate is `7191fdf` on `codex/subreddit-delivery`, at
 `/private/tmp/neuro-subreddit-delivery`. It must remain separate until R8b's approved official-API live gate; do
