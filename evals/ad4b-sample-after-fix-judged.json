@@ -1,0 +1,903 @@
+{
+  "generated_at": "2026-09-21T10:44:49-0700",
+  "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+  "question": "For each item: would you want this in the project? Judge ONLY from what is shown \u2014 title, creator, description, length, date. That is all the relevance ranker saw. Set review.keep to true or false and add one line in review.why. Do not scroll to _scoring_key until you are done.",
+  "population": {
+    "total_rejected_and_scored": 8654,
+    "by_band": {
+      "0-19": 6076,
+      "20-34": 1811,
+      "35-44": 570,
+      "45-49": 197
+    }
+  },
+  "sampling": {
+    "per_band": 10,
+    "seed": 77,
+    "sampled": 40
+  },
+  "review_these": [
+    {
+      "item": 1,
+      "title": "Caleb Basile: An Acquisition Lab Quality of Earnings Advisor!",
+      "creator": "Acquisition Lab",
+      "description": "Meet Caleb Basile of QOE Prep. He's one of Acquisition Lab's official Quality of Earnings advisors for 2026. He's helped over 500 people acquire companies by answering the two most important questions in any deal: are the seller's numbers right, and will your return be worth it? Proud to have him on our team.",
+      "length": "0m",
+      "published": "2026-05-14",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 2,
+      "title": "Would You Buy a 30-Year-Old Book Bindery?",
+      "creator": "Acquisitions Anonymous Podcast",
+      "description": "In this episode, the panel analyzes a profitable 30-year-old book bindery, debating whether its valuable equipment, repeat customers, and niche market outweigh the long-term risks facing the printing industry.\n\nBusiness Listing \u2013 https://www.bizbuysell.com/business-opportunity/profitable-book-bindery-fully-staffed-with-strong-repeat-business/2519816/\n\nWelcome to Acquisitions Anonymous \u2013 the #1 podcast for small business M&A. Every week, we break down businesses for sale and talk about buying, operating, and growing them.\n\nLooking to build a professional website in minutes? Try Wix: https://wix",
+      "length": "35m",
+      "published": "2026-08-04",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 3,
+      "title": "The Job that Now Makes Him $3.6M/Year\u2026",
+      "creator": "UpFlip",
+      "description": "#ad  I\u2019m proud to have Bizee sponsor this video. Their platform makes launching and managing an LLC straightforward, and it\u2019s a service I genuinely believe in and recommend to anyone ready to start their business. https://bizee.com/?utm_source=youtube&utm_medium=content_sponsorship&utm_campaign=upflip\n\nBrian Batch never set out to become a restaurant owner, but life had other plans. After growing up in a tough family situation that forced him to be independent from a young age, Brian learned to adapt, create, and survive. Years later, while working at a small caf\u00e9 in Texas, he met Ryan McElroy",
+      "length": "25m",
+      "published": "2025-03-17",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 4,
+      "title": "Is It Possible To Make Deals With Bad People?",
+      "creator": "BigDeal by Codie Sanchez ",
+      "description": "Can you do a good deal with a bad person? \ud83e\udd1d\n\nBillionaire David Adelman almost did at 24, in his very first real estate negotiation.\n\nHe had a shot at owning a full city block in Philadelphia. But the seller kept demeaning him and changing terms, so David walked.\n\nWhat happened next is a lesson he's never forgotten.",
+      "length": "0m",
+      "published": "2026-09-13",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 5,
+      "title": "Why is Marketing So Expensive and How to Budget for It?",
+      "creator": "Anders Virtual CFO",
+      "description": "Many accounting practitioners and firm owners feel that marketing their firm is expensive. If this is you, don\u2019t miss out on our next CPE webinar. Matt Banker, Founder of Banker Creative, joins us to discuss why marketing feels expensive, three ways you have to pay for marketing, and how to develop and maximize a realistic marketing budget.\n\nInstructors:\n-Matt Banker, Founder, Banker Creative\n-Facilitated by Tom Wadelton, CPA - Virtual CFO at Summit VCFO by Anders\n\nLearning Objectives:\n-Discover why marketing feels expensive\n-Learn to develop & maximize a marketing budget\n-Explore ways to pay ",
+      "length": "56m",
+      "published": "2023-06-06",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 6,
+      "title": "Buying A Funeral Care Business - Jonathan Jay -  2025",
+      "creator": "Jonathan Jay",
+      "description": "Your free training on how to buy a business without cash is here: https://bit.ly/3PVtYVL\n\nFind out how to buy a business without risk - https://bit.ly/3VRmViX\n\nWant to know how to buy an established business? \n\nIn this video, acquisitions expert Jonathan Jay invites James Gardner, an experienced entrepreneur who has bought and started multiple businesses, to discuss the advantages of business acquisitions and strategies for scaling your enterprise.\n\nShould you buy an existing business or start one from scratch?\n\nJames Gardner shares his insights based on his 20-plus years of entrepreneurial ex",
+      "length": "36m",
+      "published": "2022-11-07",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 7,
+      "title": "SAVE TIME With These QuickBooks Online Shortcuts",
+      "creator": "Accounting Stuff",
+      "description": "\ud83d\udc49 Get 50% off QuickBooks Online for 3 months: https://geni.us/quickbooksonlineusa\n\nBecome lightning fast at QuickBooks Online (QBO) with these keyboard shortcuts!!\n\nThis video is the second in the series of QuickBooks Online tutorials 2019.  In watching this video, you'll learn how to get things done faster in QuickBooks Online by applying keyboard shortcuts.\n\nI recommend that you practice these with me using the QuickBooks Online Sample company which I explain how to access in this video \u2192 https://youtu.be/9CoNzoyu5QQ\n\n\ud83d\udd34Subscribe for more Accounting Tutorials \u2192 https://geni.us/subtothechannel",
+      "length": "7m",
+      "published": "2019-01-08",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 8,
+      "title": "I Will Never Fix Another n8n Workflow (Claude Code)",
+      "creator": "Nate Herk | AI Automation",
+      "description": "My FREE AI OS Course: https://www.skool.com/ai-automation-society/about?el=i-will-never-fix-another-n8n-workflow-claude-code&hcategory=youtube-videos&utm_campaign=free-group\nFull courses + unlimited support: https://www.skool.com/ai-automation-society-plus/about?el=i-will-never-fix-another-n8n-workflow-claude-code&hcategory=youtube-videos&utm_campaign=ais-plus\nApply for my YT podcast: https://podcast.nateherk.com/apply\nWork with me: https://uppitai.com/\n\nMy Tools\ud83d\udcbb\nFREE MONTH voice to text: https://get.glaido.com/nate\nCode NATEHERK for 10% off VPS (annual plan): https://www.hostinger.com/vps/cl",
+      "length": "13m",
+      "published": "2026-01-22",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 9,
+      "title": "$0 - $1M+ in 18 months Acquiring An Ecommerce Brand With Marketing Mastermind Martin Bispels",
+      "creator": "Jaryd Krause - Buying Online Businesses",
+      "description": "Imagine mastering sales and marketing from working alongside legendary entrepreneurs like Tony Robbins and Joy Mangano; wouldn\u2019t it be fun? Today, we\u2019re thrilled to have a conversation with Martin Bispels, a marketing mastermind with over 30 years of experience in D2C marketing and business development.\n\nMartin's impressive career includes driving over $6 billion in sales and orchestrating two significant business acquisitions during his tenure at QVC. Now, he owns and operates his own e-commerce venture, Upper Park Disc Golf, while also serving as a marketing consultant and CMO for various bu",
+      "length": "56m",
+      "published": "2024-07-18",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 10,
+      "title": "How I Manage A $100M Team (3 Part Formula)",
+      "creator": "Leila Hormozi",
+      "description": "Want to learn how to scale your business? You can get my free personalized roadmap here: https://www.acquisition.com/roadmap\n\nIf you\u2019re new to my channel, my name is Leila Hormozi. \n\nI\u2019m the founder and CEO of Acquisition.com, where we help ambitious people scale extraordinary companies.\n\nA little about me..\n\n10 years ago:\n- Was 100lbs overweight.\n- Had $1,000 saved after 19 months of work.\n\nThis year:\n+ We bought our first headquarters here in Las Vegas.\n+ We grew our holding company team at Acquisition.com to 65 people.\n\nSuccess is accessible to anyone willing to do the work required.\nBig vi",
+      "length": "9m",
+      "published": "2022-09-22",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 11,
+      "title": "Stop Overpaying for Talent",
+      "creator": "Nick Huber - Sweaty Startup",
+      "description": "Most business owners are stuck thinking they need expensive American employees to grow. They don\u2019t. The game changes when you realize you can build entire high-performing teams internationally for a fraction of the cost.\n\nIn this video, I share how I went from paying $50,000 per hire to building entire teams for the same price. I break down why outsourcing is the fastest path to scale, how BPOs (Business Process Outsourcing) are a multi-billion dollar industry, and why South Africa and the Philippines are gold mines for talent. If you want to build a $10 million per month business without gett",
+      "length": "3m",
+      "published": "2025-05-20",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 12,
+      "title": "How to Buy the Worst Formula 1 Team (and Make Money)",
+      "creator": "Kenny Finance",
+      "description": "Formula 1 is more than an exciting sport. It's a billion dollar investment opportunity. \nSubscribe for more Smart Money Moves.\n\nFormula 1 is exploding in popularity \u2014 a new movie, packed grandstands, and global superstars like Lewis Hamilton, Max Verstappen, and Carlos Sainz. But while fans watch the highlights, private equity firms are making moves behind the scenes.\n\nPrivate Equity and Ryan Reynolds and Michael B. Jordan are quietly buying teams like Alpine Racing and Williams Racing\u2026 even as many teams continue to lose money. Why?\n\nThis video unpacks the real economics behind Ferrari, McLar",
+      "length": "20m",
+      "published": "2025-06-27",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 13,
+      "title": "#343 Podcast Highlights 2025 Part 2",
+      "creator": "Jonathan Jay",
+      "description": "In the second part of our special two-part highlights series, Jonathan Jay dives into more of the most impactful, practical, and inspiring moments from the 2025 season of Business Buying Strategies.\r\n\r\n Whether you\u2019re brand new to acquisitions or have a few deals under your belt, this curated episode brings together essential wisdom from trusted voices in the Dealmakers community.\r\n\r\n Here\u2019s what you\u2019ll hear: 1. The Legal Pitfalls First-Time Buyers Must Avoid\r\n\r\n Top M&amp;A lawyer John Andrews shares critical advice for getting your structure right from day one.\r\n\r\n You\u2019ll learn:\r\n\r\n  Why a s",
+      "length": "52m",
+      "published": "2026-01-22",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 14,
+      "title": "MMA Champion Explains How to Work Harder than 99% of People [Mike Chandler Interview]",
+      "creator": "BigDeal by Codie Sanchez ",
+      "description": "My new book Own Or Be Owned launches September 18. More profit, less pain, and a business that runs without you \u2014 this book is a how-to manual. Grab your ticket to the book launch here: https://contrarianthinking.biz/oobo_bigdeal\n\n\nHow can you stay mentally strong when life gets tough? @mikechandlermma  shares his advice with host @CodieSanchezCT , highlighting his UFC and MMA experience. Michael offers an inside look at the preparations needed to excel as a fighter and family man, focusing on gratitude, self-perception, and the pursuit of excellence. They also cover his company WalkOn Fitness",
+      "length": "77m",
+      "published": "2024-05-07",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 15,
+      "title": "Why Scott Meier Acquired Budsies",
+      "creator": "Acquisition Lab",
+      "description": "You might see just a stuffed animal.\n\nScott Meier saw a reason to buy a business. \ud83e\uddf8\n\nThe best acquisitions are not just financial decisions. Sometimes the deal finds you in a moment you were not prepared for.\n\nWatch the full episode here: https://youtu.be/GCbJXZUDPhU?si=zY9-m039jbvGdeWA?utm_source=youtube&utm_medium=organic-social&utm_campaign=2026-q3-youtube-docuseries-scott-meier\n\n#AcquisitionLab #DocuSeries #BuyThenBuild #ETA #EntrepreneurshipThroughAcquisition",
+      "length": "0m",
+      "published": "2026-07-30",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 16,
+      "title": "Astro just Launched.... Could it be the ultimate web framework?",
+      "creator": "Fireship",
+      "description": "Astro version 1.0 just launched giving developers a way to build server-rendered websites with any JavaScript framework. It uses the islands architecture and partial hydration to deliver fast apps with frameworks like React, Vue, Svelte, and more. \n\n#programming #javascript #TheCodeReport\n\n\ud83d\udd17 Resources\n\n- Astro Launch Blog https://astro.build/blog/astro-1/\n- Astro on GitHub https://github.com/withastro/astro\n- I built a JS framework https://youtu.be/SJeBRW1QQMA\n- Astro in 100 Seconds https://youtu.be/dsTXcSeAZq8\n\n\ud83d\udd25 Get More Content - Upgrade to PRO\n\nUpgrade to Fireship PRO at https://fireship.i",
+      "length": "3m",
+      "published": "2022-08-18",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 17,
+      "title": "Should you learn n8n in 2026?",
+      "creator": "Nick Puru | AI Automation",
+      "description": "\ud83e\udd16 Transform your business with AI: https://salesdone.ai\n\ud83d\udcda We help entrepreneurs & industry experts build & scale their AI Agency: https://theaiaccelerators.com/nickp\n\ud83e\udd1a Join the best community for AI entrepreneurs and connect with 16,000+ members: - https://www.skool.com/systems-to-scale-9517/about\n\nSign up to n8n (free) - https://n8n.partnerlinks.io/nick\n\n\ud83d\ude4b Connect With Me!\nInstagram -   / nicholas.puru  \nX - https://x.com/NicholasPuru\nLinkedIn - https://www.linkedin.com/in/nicholas-puruczky-113818198/\n\n0:00 - Here's what's actually happening in 2026\n0:52 - Quick caveat before we start\n1:21 - ",
+      "length": "17m",
+      "published": "2026-02-16",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 18,
+      "title": "Celebrating 300 Episodes: A Look Back at Our Favorite Moments - Acquisitions Anonymous 300",
+      "creator": "Acquisitions Anonymous Podcast",
+      "description": "In this episode we make a pause to we celebrate our 300th show. We get nostalgic, reflecting on the journey from our rough first podcast to now, with a higher quality production. We dive into some cool business talks, share laughs over memorable moments, and discuss insights from our listeners. It\u2019s a chill session, just catching up and having fun. Hope you enjoy this episode with us.\n\n\ud83d\udd14 Subscribe to Acquisitions Anonymous: https://www.youtube.com/@AcquisitionsAnonymousPodcast?sub_confirmation=1 \n\n\ud83c\udfa7 Listen our full episodes on your favorite podcast platforms: \nApple podcast: https://podcasts.a",
+      "length": "48m",
+      "published": "2024-05-24",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 19,
+      "title": "How AI Agencies Can Win Big w/ Zapier Central in 2024",
+      "creator": "Liam Ottley",
+      "description": "Want an AI Makeover for YOUR Business?\n\ud83d\udc49\ud83c\udffb https://bit.ly/aimakeover\n\nFollow me on Instagram to see behind the scenes:\n\ud83e\udd33\ud83c\udffc https://instagram.com/liamottley\n\n\ud83d\udee0 MY TECH STACK\n\nHostinger (agent & web hosting): https://hostinger.com/liamvps\nHyperagent (AIOS workspace): https://www.hyperagent.com/liam\nOspry (AI lead gen): https://www.ospry.ai?fpr=liam41\nGlaido (voice transcription): https://get.glaido.com/liam-ottley\nFirecrawl (web scraping): https://firecrawl.link/liam-ottley\nSupadata (video scraping): https://supadata.ai/?ref=liam\nApify (all other scraping): https://apify.com?fpr=8txghh\nElevenLabs ",
+      "length": "21m",
+      "published": "2024-04-23",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 20,
+      "title": "Your life needs more \u2018existential grit.\u2019 Here\u2019s how to find it | Kate Bowler",
+      "creator": "Big Think",
+      "description": "This interview is an episode from \u202aThe Well, our publication about ideas that inspire a life well-lived, created with the \u202aJohn Templeton Foundation.\n\nSubscribe to The Well on YouTube \u25ba https://bit.ly/thewell-youtube\nWatch Bowler\u2019s next interview \u25ba Why toxic positivity is making us miserable https://youtu.be/ebCqCPxZcV8\n\nJoy is often mistaken for a stronger version of happiness. But historian and writer Kate Bowler argues that they are fundamentally different emotions.\n\nHappiness, she explains, depends on things going well. It\u2019s cumulative, fragile, and easily undone. Joy, by contrast, can exi",
+      "length": "6m",
+      "published": "2026-03-17",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 21,
+      "title": "I got a private lesson on Claude Cowork & Claude Code",
+      "creator": "Greg Isenberg",
+      "description": "In this episode, I sit down with Boris, the creator of Claude Code and one of the key builders behind Claude Cowork, to unpack what Cowork actually unlocks and how people use it in the real world. He walks through a hands-on demo where Cowork organizes files, extracts receipt data, builds a clean spreadsheet, and even drives the browser to create and share a Google Sheet. We go deep on how \u201cagentic\u201d work feels different when the model takes actions across your computer, your browser, and your tools. Then I shift into Boris\u2019s viral workflow for Claude Code: parallel sessions, plan-first executi",
+      "length": "42m",
+      "published": "2026-01-23",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 22,
+      "title": "Fun with a chain of $13mm family fun centers - Acquisitions Anonymous 267",
+      "creator": "Acquisitions Anonymous Podcast",
+      "description": "In this insightful episode of Acquisitions Anonymous, the hosts delve into a network of indoor family entertainment and recreation centers. With a focus on the business's strategic Midwest locations, operational excellence, and impressive financial growth, the team navigates through various aspects such as the impact of COVID-19, capital expenditure considerations, market competition, and potential buyer profiles. This episode offers a balanced exploration of both opportunities and challenges in acquiring a large-scale entertainment business.\n\nToday's deal comes from Axial.  Axial is a trusted",
+      "length": "36m",
+      "published": "2024-01-30",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 23,
+      "title": "WE MOVED?...\ud83d\ude33",
+      "creator": "Cory Weigel",
+      "description": "",
+      "length": "1m",
+      "published": "2026-09-08",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 24,
+      "title": "Shocking TRUE Story: \u201cI Lost Both Of My Legs Because Of A Tampon\u201d (Health Warning) - Lauren Wasser",
+      "creator": "The Diary Of A CEO",
+      "description": "In this new episode Steven sits down with model, Toxic Shock Syndrome survivor and activist Lauren Wasser.\n\n0:00 Intro\n02:13 Early context\n05:26 The day your life changed forever\n11:49 Toxic shock syndrome caused by a tampon\n20:22 The choice to amputate your leg\n32:52 Your mother during all of this\n37:29 The period after the operation, suicidal thoughts\n50:35 Life after losing your legs\n01:00:22 Therapy & acceptance\n01:10:19 Making the decision to amputate the other leg\n01:12:50 Losing your godfather\n01:17:24 Why golden legs?\n01:21:40 What causes TSS?\n01:26:28 Campaigning to have laws changed\n",
+      "length": "106m",
+      "published": "2023-07-27",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 25,
+      "title": "From Zero to Your First AI Voice Agent in 18 Minutes (No Coding)",
+      "creator": "Liam Ottley",
+      "description": "Want an AI Makeover for YOUR Business?\n\ud83d\udc49\ud83c\udffb https://bit.ly/aimakeover\n\nFollow me on Instagram to see behind the scenes:\n\ud83e\udd33\ud83c\udffc https://instagram.com/liamottley\n\n\ud83d\udee0 MY TECH STACK\n\nHostinger (agent & web hosting): https://hostinger.com/liamvps\nHyperagent (AIOS workspace): https://www.hyperagent.com/liam\nOspry (AI lead gen): https://www.ospry.ai?fpr=liam41\nGlaido (voice transcription): https://get.glaido.com/liam-ottley\nFirecrawl (web scraping): https://firecrawl.link/liam-ottley\nSupadata (video scraping): https://supadata.ai/?ref=liam\nApify (all other scraping): https://apify.com?fpr=8txghh\nElevenLabs ",
+      "length": "18m",
+      "published": "2026-01-24",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 26,
+      "title": "Gemini 3.1 Flash Live Just Changed Voice Agents Forever",
+      "creator": "Nate Herk | AI Automation",
+      "description": "My FREE AI OS Course: https://www.skool.com/ai-automation-society/about?el=gemini-31-flash-live-just-changed-voice-agents&hcategory=youtube-videos&utm_campaign=free-group\nFull courses + unlimited support: https://www.skool.com/ai-automation-society-plus/about?el=gemini-31-flash-live-just-changed-voice-agents&hcategory=youtube-videos&utm_campaign=ais-plus\nApply for my YT podcast: https://podcast.nateherk.com/apply\nWork with me: https://uppitai.com/\n\nMy Tools\ud83d\udcbb\nFREE MONTH voice to text: https://get.glaido.com/nate\nCode NATEHERK for 10% off VPS (annual plan): https://www.hostinger.com/vps/claude-c",
+      "length": "18m",
+      "published": "2026-03-28",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 27,
+      "title": "Increase Blog Revenue By Bolting On A Newsletter Business with Craig Schoolkate",
+      "creator": "Jaryd Krause - Buying Online Businesses",
+      "description": "Have less traffic on your blog? No problem! You can still earn more money through a newsletter.\n\nIn today's episode, Jaryd Krause is joined by the dynamic Craig Schoolkate. So, get ready for insights on ramping up your blog revenue through the power of the newsletter business. \n\nCraig developed his copywriting skills under Quinn Zeda at Zeda Labs. While at Empire Flippers, he found a passion for newsletters and successfully built one with 60,000 readers, boasting impressive engagement statistics. Currently, he authors the Growth Memo and oversees the growth of several newsletters, reaching a c",
+      "length": "49m",
+      "published": "2024-02-07",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 28,
+      "title": "TAX BASICS: a Beginner's Guide to Everything",
+      "creator": "Accounting Stuff",
+      "description": "NEW: Complete Accounting Study Bundle \ud83d\udc49 https://accountingstuff.com/shop\n\n This video is a beginner's guide to all things tax. First I'll explain what tax is. Then we'll cover the burden of tax and how different taxes can be proportional, regressive or progressive. You'll also discover the difference between tax avoidance and tax evasion, along with direct and indirect taxes.\n\nWe'll then break taxes down into three distinct categories:\n\n\u25aa Tax on the Stuff you Earn\n\u25aa Tax on the Stuff you Buy\n\u25aa Tax on the Stuff you Own\n\nWe'll cover the main taxes that fall into each of these groups and give exam",
+      "length": "19m",
+      "published": "2023-01-17",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 29,
+      "title": "DM me if you need help buying a business #leolandaverde #businessbroker #businessacquisition",
+      "creator": "Leo Landaverde",
+      "description": "",
+      "length": "1m",
+      "published": "2026-01-31",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 30,
+      "title": "I Wrote a Best-Selling Book While Buying Back my Time",
+      "creator": "Dan Martell",
+      "description": "\u25b8\u25b8 How to Build a Business You Don\u2019t Grow to Hate: https://www.youtube.com/watch?v=7PDn091o6_E&list=UULFA-mWX9CvCTVFWRMb9bKc9w&index=6\n\n\u25b8\u25b8 Get My New Book (Buy Back Your Time): https://bit.ly/3pCTG78\n\nHow you spend your time will determine your growth. In this video, I share how my philosophy on time (the buy back principle) helped me become an author.\n\nSpoiler alert: The book is called Buy Back Your Time ;)\n\nInstagram: @danmartell\nTwitter: @danmartell\n\n====================\n Contents of this video: \n====================\n00:00 - Intro: Why I decided to write a book\n03:19 - The buyback rate: How",
+      "length": "13m",
+      "published": "2022-09-05",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 31,
+      "title": "I Tested GPT 5.6 Sol vs Fable 5. What You Need To Know.",
+      "creator": "Nate Herk | AI Automation",
+      "description": "My playbook for growing a $1M AI agency: https://app.aiautomationsociety.ai/opaa-ads-optin\nMy FREE resources: https://www.skool.com/ai-automation-society/about?el=fable-vs-sol-5.6&hcategory=youtube-videos&utm_campaign=free-group\n\nMy Tools\ud83d\udcbb\nFREE MONTH voice to text: https://get.glaido.com/nate\nCode NATEHERK for 10% off VPS (annual plan): https://www.hostinger.com/vps/claude-code-hosting\n\nI spent all day running GPT-5.6 Sol against Claude Fable 5, side by side, on real work instead of just staring at benchmarks. I put them head to head in Codex and Claude Code on browser games, interactive websi",
+      "length": "20m",
+      "published": "2026-07-10",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 32,
+      "title": "40 tasks you can get paid to do as a freelance digital business manager",
+      "creator": "Deya",
+      "description": "In this video, I'm sharing 40 tasks you can get paid to do as a freelance digital business manager. Here's the list of 40 tasks I have been paid to do as a freelance digital business manager. \n\n\ud83d\udc49 MY NEW & FREE SERIES:\nHow I Turned My Love of Planning into a 6-Figure Freelance Career:\u00a0https://dbmbootcamp.com/free-series/\n\n\ud83d\udcf1 SAY HI:\nInstagram:\u00a0https://www.instagram.com/mynameisdeya\nTiktok:\u00a0https://www.tiktok.com/@mynameisdeya_\n\n\ud83c\udf9e\ufe0f IN THIS VIDEO:  \n[00:00] what is a digital business manager\n[02:16] project management tasks\n[10:07] team management tasks \n[14:27] systems or operations management\n[1",
+      "length": "19m",
+      "published": "2021-12-03",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 33,
+      "title": "The $20,000/Month Strategy That Changed My Life",
+      "creator": "Nick Huber - Sweaty Startup",
+      "description": "Most entrepreneurs chase the wrong goal.\n\nNot freedom.\n\nStatus.\n\nValuations.\n\nBefore you build anything\u2026\n\nyou need a number.\n\nWhat does your life actually cost?\n\nOnce you know that, everything changes. The focus shifts from ego to probability, from chasing big ideas to building something that actually works. You stop guessing and start making decisions that move you closer to real freedom.\n\nYou don\u2019t win by having more resources. You win by moving faster, testing more, and adjusting quickly. The goal isn\u2019t to be impressive. It\u2019s to build something that gives you control.\n\nOrder my book on Amaz",
+      "length": "3m",
+      "published": "2026-04-22",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 34,
+      "title": "Reyes the Entrepreneur: How He Makes $210K a Year from YouTube (Pt. 1)",
+      "creator": "UpFlip",
+      "description": "Can you really make money with a YouTube channel? Reyes Gasca certainly did. He started his Reyes the Entrepreneur channel in 2015 and today it brings in a revenue of $15K to $20K every month. \n\nHe started Reyes the Entrepreneur with a noble goal: to help other people achieve financial independence. The channel\u2019s tagline is \u201cMaking Business Easy,\u201d so it\u2019s fitting his channel has become a profitable business in its own right. Along the way, he\u2019s amassed nearly 400K subscribers and accumulated over 27 million views. \n\nStrong content is one thing that keeps people coming back to Reyes the Entrepr",
+      "length": "15m",
+      "published": "2020-12-14",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 35,
+      "title": "Intro to Cash Flow Statements | Direct Method",
+      "creator": "Accounting Stuff",
+      "description": "NEW: Complete Accounting Study Bundle \ud83d\udc49 https://accountingstuff.com/shop\n\n Learn all about the Cash Flow Statement and how to prepare it using the Direct Method.\n\n\u25aa Cash Flow Accounting with the Direct Method (Part 2) \u2192 https://youtu.be/KOR10VPsyO8\n\u25aa Cash Flow Accounting with the Indirect Method (Part 3) \u2192 https://youtu.be/8CH-6wdfz0Y\n\nMany people have a hard time getting to grips with the Statement of Cash Flows, but in this episode of Accounting Basics for Beginners we break it down into nice and tasty, brain digestible chunks.  \n\nYou'll learn why CASH IS KING, and why the Direct Method is p",
+      "length": "12m",
+      "published": "2018-11-21",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 36,
+      "title": "30 Brutal Business Truths I Wish I Knew in My 20s",
+      "creator": "Dan Martell",
+      "description": "\u25b8\u25b8 Subscribe to The Martell Method Newsletter: https://bit.ly/3XEBXez\n\n\u25b8\u25b8 Watch these 25 minutes if you want to scale a business you don\u2019t grow to hate: https://www.youtube.com/watch?v=7PDn091o6_E&list=UULFA-mWX9CvCTVFWRMb9bKc9w&index=6\n\n\u25b8\u25b8 Get My New Book (Buy Back Your Time): https://bit.ly/3pCTG78\n\nI've been building businesses for 27 years.\n\nBut, if I had to go back and give my 20 year old self some advice on how to build a business a lot faster...\n\nHere's what I would say.\n\nIG: @danmartell\nX: @danmartell",
+      "length": "12m",
+      "published": "2024-12-15",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 37,
+      "title": "How to Run Reports in QuickBooks Online",
+      "creator": "Accounting Stuff",
+      "description": "Here are four essential reports you can run in QuickBooks Online:\n\n\u2022 Profit and Loss - shows revenue, expenses and profit over a period of time.\n\u2022 Balance Sheet - shows what the business owns and owes at a specific point in time.\n\u2022 Accounts Receivable Aging - shows which customers owe you money and whether payments are overdue.\n\u2022 Statement of Cash Flows - shows how cash moved over a period of time.\n\nTogether, these reports help you understand business performance, financial position and cash flow.\n\nCheck out the current plans and offers through my partner link below \ud83d\udc47\n\n\ud83d\udd17 QUICKBOOKS ONLINE OFFE",
+      "length": "2m",
+      "published": "2026-07-29",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 38,
+      "title": "Episode 131 - \"How Can Agencies Achieve Better Alignment Between Sales & Proj. Management?\"",
+      "creator": "Anders Virtual CFO",
+      "description": "The Creative Agency Success Show (Episode 131): \"Alignment is going in the same direction, fighting for the same things, and looking at the same big picture together.\u201d \u2013 Rachel Gertz\n\nJamie and Hannah chat with Rachel Gertz, Director of Growth and Delivery at Louder Than Ten, about her expertise on project management within digital agencies and creative studios. She emphasizes the importance of alignment between sales and project management, regular check-ins, and effective communication. Rachel discusses her journey into project management, the challenges faced, and solutions for improving de",
+      "length": "38m",
+      "published": "2024-08-26",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    },
+    {
+      "item": 39,
+      "title": "Debit & Credit Quiz (Part 3 of 5)",
+      "creator": "Accounting Stuff",
+      "description": "\ud83d\udcda New! Get my 2nd Edition Accounting Cheat Sheet Bundle \u2192 https://accountingstuff.com/shop\n\nCan you answer these five questions on Debits and Credits in accounting?\n\n11. Do you debit or credit Dividends to decrease it?\n12. Do you debit or credit Accrued Expenses to decrease it?\n13. A business provides services to a client on credit. Which account is debited?\n14. A business pays a supplier for inventory that was purchased on account. Which account is credited?\n15. A business records depreciation on its equipment. Which account is credited?\n\n\ud83d\udd34 Subscribe for more Accounting Tutorials \u2192 https://ge",
+      "length": "3m",
+      "published": "2025-09-24",
+      "kind": "video",
+      "review": {
+        "keep": false,
+        "why": ""
+      }
+    },
+    {
+      "item": 40,
+      "title": "This $41,000/Month Food Truck Started in Her Apartment...",
+      "creator": "UpFlip",
+      "description": "I'm proud to have Bizee sponsor this video. #ad Their platform makes launching and managing an LLC straightforward, and it\u2019s a service I genuinely believe in and recommend to anyone ready to start their business. https://bizee.com/?utm_source=youtube&utm_medium=content_sponsorship&utm_campaign=upflip\n\nA $20 griddle became the start of a real food truck business when Mariah got tired of feeling stuck during the pandemic and decided to try something different. She had spent years working in restaurants, from fast food to fine dining, but after losing a bartending job and sitting at home in a cor",
+      "length": "26m",
+      "published": "2026-04-27",
+      "kind": "video",
+      "review": {
+        "keep": true,
+        "why": ""
+      }
+    }
+  ],
+  "_scoring_key": [
+    {
+      "item": 1,
+      "candidate_id": "cbc62f75e20f428895f0d5ee9e3501f4",
+      "score": 45,
+      "band": "45-49",
+      "model_said": "Quality of Earnings advisor, DD relevance, short",
+      "url": "https://www.youtube.com/shorts/9qjinxU3y5A",
+      "creator": "Acquisition Lab"
+    },
+    {
+      "item": 2,
+      "candidate_id": "ae5ec87503f54194a462bbbb7e526e19",
+      "score": 48,
+      "band": "45-49",
+      "model_said": "Asset-heavy deal risk/valuation teardown",
+      "url": "https://www.youtube.com/watch?v=aNlrDlIZrmU",
+      "creator": "Acquisitions Anonymous Podcast"
+    },
+    {
+      "item": 3,
+      "candidate_id": "f0f248385a414927a5deb95d29c01eba",
+      "score": 30,
+      "band": "20-34",
+      "model_said": "Restaurant scaling story, building not buying",
+      "url": "https://www.youtube.com/watch?v=P3aj8zXV9Dg",
+      "creator": "UpFlip"
+    },
+    {
+      "item": 4,
+      "candidate_id": "bfe260dd6a4c4c229f26b369eae9fdbc",
+      "score": 24,
+      "band": "20-34",
+      "model_said": "Negotiation lesson, short clip, thin",
+      "url": "https://www.youtube.com/shorts/6Li9HxbUnd0",
+      "creator": "BigDeal by Codie Sanchez "
+    },
+    {
+      "item": 5,
+      "candidate_id": "d198bab8ea4f4273994c46548963cf8a",
+      "score": 8,
+      "band": "0-19",
+      "model_said": "Marketing budgets for accounting firms",
+      "url": "https://www.youtube.com/watch?v=DGFishjGqTc",
+      "creator": "Anders Virtual CFO"
+    },
+    {
+      "item": 6,
+      "candidate_id": "fdf072a68279400ead5e03e3adcd1fab",
+      "score": 48,
+      "band": "45-49",
+      "model_said": "Buy vs build discussion, real example",
+      "url": "https://www.youtube.com/watch?v=fSLFbFmms2E",
+      "creator": "Jonathan Jay"
+    },
+    {
+      "item": 7,
+      "candidate_id": "609f42982e1d408485265ade0064937b",
+      "score": 28,
+      "band": "20-34",
+      "model_said": "QuickBooks shortcuts, operating tool tip",
+      "url": "https://www.youtube.com/watch?v=XcBPn1IlbJ0",
+      "creator": "Accounting Stuff"
+    },
+    {
+      "item": 8,
+      "candidate_id": "7c83dc4013bb4dcd9142f989a9ce8d3a",
+      "score": 40,
+      "band": "35-44",
+      "model_said": "Self-healing automation reduces workload",
+      "url": "https://www.youtube.com/watch?v=uUEa6K-FLB8",
+      "creator": "Nate Herk | AI Automation"
+    },
+    {
+      "item": 9,
+      "candidate_id": "2fa38ea5ebca44d7bf60e2dc3775f436",
+      "score": 48,
+      "band": "45-49",
+      "model_said": "Marketing growth post-purchase, not core acquisition method",
+      "url": "https://www.youtube.com/watch?v=ka4T6ot0R1A",
+      "creator": "Jaryd Krause - Buying Online Businesses"
+    },
+    {
+      "item": 10,
+      "candidate_id": "732b20f35d234d58a7526066f726619a",
+      "score": 38,
+      "band": "35-44",
+      "model_said": "Team management not acquisition method",
+      "url": "https://www.youtube.com/watch?v=Dn6bkqsxZBE",
+      "creator": "Leila Hormozi"
+    },
+    {
+      "item": 11,
+      "candidate_id": "8fc2d42350a1417bb792c6a0ad78632e",
+      "score": 45,
+      "band": "45-49",
+      "model_said": "Outsourcing/BPO scaling tactic, workload reduction",
+      "url": "https://www.youtube.com/watch?v=ITlR7rTMYB8",
+      "creator": "Nick Huber - Sweaty Startup"
+    },
+    {
+      "item": 12,
+      "candidate_id": "d1d177b4efaf4285ae9b87362105799b",
+      "score": 38,
+      "band": "35-44",
+      "model_said": "PE buyout/turnaround case study, transferable deal method",
+      "url": "https://www.youtube.com/watch?v=-4dFVeszPfU",
+      "creator": "Kenny Finance"
+    },
+    {
+      "item": 13,
+      "candidate_id": "e6f64bf93d794234b7b0cb8e47c63b56",
+      "score": 45,
+      "band": "45-49",
+      "model_said": "Podcast highlights compilation, broad tips",
+      "url": "https://www.youtube.com/watch?v=C5_a7vhfH7U",
+      "creator": "Jonathan Jay"
+    },
+    {
+      "item": 14,
+      "candidate_id": "2e4b076eda0d475283ef73fd21233065",
+      "score": 4,
+      "band": "0-19",
+      "model_said": "MMA mindset interview, unrelated to business",
+      "url": "https://www.youtube.com/watch?v=2HaTeiAHMyM",
+      "creator": "BigDeal by Codie Sanchez "
+    },
+    {
+      "item": 15,
+      "candidate_id": "94fa62dd4b554e4bb90e62e66b311268",
+      "score": 40,
+      "band": "35-44",
+      "model_said": "Real ETA acquisition story, Acquisition Lab docuseries",
+      "url": "https://www.youtube.com/shorts/XnP2JFXHk14",
+      "creator": "Acquisition Lab"
+    },
+    {
+      "item": 16,
+      "candidate_id": "5f3aa5986ab04ecfa214820a7e2b4d13",
+      "score": 3,
+      "band": "0-19",
+      "model_said": "Web framework launch overview",
+      "url": "https://www.youtube.com/watch?v=gxBkghlglTg",
+      "creator": "Fireship"
+    },
+    {
+      "item": 17,
+      "candidate_id": "4afe5ad457144881adff83f446a4f675",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "n8n overview, general automation landscape",
+      "url": "https://www.youtube.com/watch?v=TlzQMRxLb3I",
+      "creator": "Nick Puru | AI Automation"
+    },
+    {
+      "item": 18,
+      "candidate_id": "41dfbd65a0d04832a6be6ad941d03fde",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Acquisitions podcast retrospective, light on method",
+      "url": "https://www.youtube.com/watch?v=8v_LLjJqo9c",
+      "creator": "Acquisitions Anonymous Podcast"
+    },
+    {
+      "item": 19,
+      "candidate_id": "90027078c6c44e92abc95aac12ed2875",
+      "score": 48,
+      "band": "45-49",
+      "model_said": "Zapier automation for AI agencies, niche",
+      "url": "https://www.youtube.com/watch?v=SO0pm3LA2AI",
+      "creator": "Liam Ottley"
+    },
+    {
+      "item": 20,
+      "candidate_id": "74e20dca91b546b7bd4e9e4fd42b7767",
+      "score": 5,
+      "band": "0-19",
+      "model_said": "Existential grit unrelated to acquisitions",
+      "url": "https://www.youtube.com/watch?v=xAMde6OjqSU",
+      "creator": "Big Think"
+    },
+    {
+      "item": 21,
+      "candidate_id": "fb63cea387404acea0b0c6149db4ebd3",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Claude Cowork demo automating real office tasks",
+      "url": "https://www.youtube.com/watch?v=DW4a1Cm8nG4",
+      "creator": "Greg Isenberg"
+    },
+    {
+      "item": 22,
+      "candidate_id": "04c3bef9b282464e90076e06fb8823cd",
+      "score": 45,
+      "band": "45-49",
+      "model_said": "Capex and growth considerations",
+      "url": "https://www.youtube.com/watch?v=WQeiKOiH-4k",
+      "creator": "Acquisitions Anonymous Podcast"
+    },
+    {
+      "item": 23,
+      "candidate_id": "9833feae951540d0b12c61fdda1c827d",
+      "score": 5,
+      "band": "0-19",
+      "model_said": "Vlog clip, no business content",
+      "url": "https://www.youtube.com/shorts/byX22r-R85E",
+      "creator": "Cory Weigel"
+    },
+    {
+      "item": 24,
+      "candidate_id": "fb2c5300d0ac4054a499caeefce2fe8e",
+      "score": 4,
+      "band": "0-19",
+      "model_said": "Medical trauma story, unrelated",
+      "url": "https://www.youtube.com/watch?v=NB4jZCxRkTw",
+      "creator": "The Diary Of A CEO"
+    },
+    {
+      "item": 25,
+      "candidate_id": "b53e0585d25d4052a8d419deeb8e9d18",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Voice AI tool could automate ops",
+      "url": "https://www.youtube.com/watch?v=oB7gia1kC_g",
+      "creator": "Liam Ottley"
+    },
+    {
+      "item": 26,
+      "candidate_id": "8d46eeef05804d16b8bf76805c4b797f",
+      "score": 30,
+      "band": "20-34",
+      "model_said": "Voice agent build demo tool-specific",
+      "url": "https://www.youtube.com/watch?v=Qt3zMBH-FNg",
+      "creator": "Nate Herk | AI Automation"
+    },
+    {
+      "item": 27,
+      "candidate_id": "c6f8b056230f49feb91e057f711b1a38",
+      "score": 42,
+      "band": "35-44",
+      "model_said": "Newsletter bolt-on acquisition growth",
+      "url": "https://www.youtube.com/watch?v=d0bhnY5vBQ0",
+      "creator": "Jaryd Krause - Buying Online Businesses"
+    },
+    {
+      "item": 28,
+      "candidate_id": "d370e8da30ad49529b5e071637f45143",
+      "score": 45,
+      "band": "45-49",
+      "model_said": "Foundational tax literacy, generic beginner content",
+      "url": "https://www.youtube.com/watch?v=AMXGBH7hoJY",
+      "creator": "Accounting Stuff"
+    },
+    {
+      "item": 29,
+      "candidate_id": "d86c3cc9327a4ece87a1c0a9a429fcc5",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "Broker promo shorts, near-duplicate, thin",
+      "url": "https://www.youtube.com/shorts/23TuhZiY1pI",
+      "creator": "Leo Landaverde"
+    },
+    {
+      "item": 30,
+      "candidate_id": "3246e0de177e4b94a1b20d006da3f5e5",
+      "score": 25,
+      "band": "20-34",
+      "model_said": "Time management buyback principle, tangential delegation insight",
+      "url": "https://www.youtube.com/watch?v=b4Cv_0T8KQo",
+      "creator": "Dan Martell"
+    },
+    {
+      "item": 31,
+      "candidate_id": "d3063dff9a53476fbf9df7dc2f3b9dca",
+      "score": 6,
+      "band": "0-19",
+      "model_said": "AI model comparison, not business relevant",
+      "url": "https://www.youtube.com/watch?v=EthxaDswUFo",
+      "creator": "Nate Herk | AI Automation"
+    },
+    {
+      "item": 32,
+      "candidate_id": "ec05159a8bf2468c97d63400e7bc20bb",
+      "score": 38,
+      "band": "35-44",
+      "model_said": "Remote ops task list, transferable to Gio operating",
+      "url": "https://www.youtube.com/watch?v=dYhnBcUPFYw",
+      "creator": "Deya"
+    },
+    {
+      "item": 33,
+      "candidate_id": "d1d984f60f45402eb52ad3fb96b77e94",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "Freedom-number mindset clip, generic",
+      "url": "https://www.youtube.com/watch?v=rLhnP1wKqjI",
+      "creator": "Nick Huber - Sweaty Startup"
+    },
+    {
+      "item": 34,
+      "candidate_id": "9f369bea242140dfb1e9b4bf6f0d4cd5",
+      "score": 18,
+      "band": "0-19",
+      "model_said": "YouTube income, tangential passive income",
+      "url": "https://www.youtube.com/watch?v=Dg-ymfCpYcQ",
+      "creator": "UpFlip"
+    },
+    {
+      "item": 35,
+      "candidate_id": "beed8d523acc44c4aa85cf93db6eecef",
+      "score": 45,
+      "band": "45-49",
+      "model_said": "Cash flow statement directly ties to SDE",
+      "url": "https://www.youtube.com/watch?v=Xy-yDw0gsgc",
+      "creator": "Accounting Stuff"
+    },
+    {
+      "item": 36,
+      "candidate_id": "5d0504b84c444f9d8bb1987f4c589c9c",
+      "score": 28,
+      "band": "20-34",
+      "model_said": "Broad business truths, thin per topic",
+      "url": "https://www.youtube.com/watch?v=Cwrw05MLVSY",
+      "creator": "Dan Martell"
+    },
+    {
+      "item": 37,
+      "candidate_id": "663217625c51412c8939b63f179ff011",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Basic bookkeeping reports, useful for diligence reading",
+      "url": "https://www.youtube.com/shorts/-fHHozG8p5s",
+      "creator": "Accounting Stuff"
+    },
+    {
+      "item": 38,
+      "candidate_id": "303ddabebc1341cd8920c17696bc763e",
+      "score": 10,
+      "band": "0-19",
+      "model_said": "Agency sales/PM alignment, unrelated",
+      "url": "https://www.youtube.com/watch?v=KAoJsluG8xc",
+      "creator": "Anders Virtual CFO"
+    },
+    {
+      "item": 39,
+      "candidate_id": "5ca91cf1bb454f8a99ea9e395f39cc61",
+      "score": 15,
+      "band": "0-19",
+      "model_said": "Debit/credit trivia quiz duplicate",
+      "url": "https://www.youtube.com/shorts/p-7cPfke_jk",
+      "creator": "Accounting Stuff"
+    },
+    {
+      "item": 40,
+      "candidate_id": "3d6d651adabc49a3b248d128ce582ef6",
+      "score": 28,
+      "band": "20-34",
+      "model_said": "Food truck built from apartment, story-driven",
+      "url": "https://www.youtube.com/watch?v=B9-b2tikrpA",
+      "creator": "UpFlip"
+    }
+  ]
+}

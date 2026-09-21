@@ -8303,3 +8303,50 @@ Codex's half-landed change, finished here.
 **Process change worth keeping:** stage by CHANGE, not by filename. `git add -p` or at minimum a
 `git diff --cached` read-through before every commit, and for anything touching a frozen value, a clean-worktree
 run rather than a working-tree one.
+
+## C1 answered: 77% -> 55%, and the cutoff is in the wrong place — 2026-09-21
+
+Kyle judged all 40 blind against the post-fix scores. Scored with `tools/ad4b_score.py`; the judged rubric is
+`evals/ad4b-sample-after-fix-judged.json`.
+
+**Headline: 22 of 40 kept — 55%, against 77% before the fix and a 25% bar fixed before either run.** The
+direction is real and the work was worth doing. The bar is still exceeded, so AD4B does not close.
+
+Both samples are per-band balanced (10 per band), so 55% describes a BALANCED sample, not the backlog. Weighted
+by the real population the band rates imply **~3,277 of 8,654 (37.9%)** of everything the filter currently
+rejects is material Kyle would keep. Quote 55% against 77%; quote 38% when asking how much is actually sitting
+there.
+
+**The finding that matters is the band table:**
+
+```
+45-49: kept 10/10 (100%)
+35-44: kept  3/10 (30%)
+20-34: kept  6/10 (60%)
+ 0-19: kept  3/10 (30%)
+```
+
+**10/10 in 45-49 is a CUTOFF problem, not a ranking problem.** The ranker ordered those items correctly — it
+placed them just under the line — and `LOW_RELEVANCE = 50` is simply drawn in the wrong spot. 10/10 is strong
+on its own terms (p ≈ 0.001 against a 50% true rate); every other cell here is n=10 and carries roughly ±15
+points, so the 60% vs 30% inversion between 20-34 and 35-44 is three items and must NOT be read as the score
+running backwards. It is better read as: below 45 the score carries little signal either way.
+
+**The deeper finding is in what Kyle kept at the bottom.** Scores 4, 10, 18 and 20 were all keeps — an MMA
+mindset interview the model called "unrelated to business", an agency PM-alignment episode it called
+"unrelated", a broker promo short it called "thin". The 2026-09-20 prompt fix stopped the ranker screening the
+subject BUSINESS against the buy-box, and that worked; what remains is that it still penalises generality,
+brevity and anything off the acquisition method itself, while Kyle's actual library wants operating,
+delegation, mindset and finance-literacy material from creators he trusts. That gap is in the STEERING, not in
+`relevance.SYSTEM` — the brief describes a buy-box and the ranker is faithfully applying it. Re-tuning the
+prompt a second time without changing the brief would be treating the symptom.
+
+**Creator table, for C2:** Nate Herk 0/3, Nick Puru 0/1, Liam Ottley 1/2 — 1 of 6 across the AI-automation
+trio. But the one keep is Liam Ottley's Zapier episode at 48, so a blanket creator exclude would have cost it.
+On this evidence a `project_excludes` creator entry is defensible for Nate Herk alone (n=3, weak), and not for
+the other two. Recommend deciding this AFTER the cutoff change, since that re-sorts what is in front of him.
+
+**Recommended order, highest confidence first:** (1) lower `LOW_RELEVANCE` 50 → 45 and resurface the 197 —
+free, reversible, and the best-supported change available; (2) revise the project brief to say the library
+wants operating/mindset/finance material, not only acquisition method, then re-score; (3) leave 35-44 alone for
+now — 570 items at ~30% is a real judgement call, not an obvious win; (4) C2.
