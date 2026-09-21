@@ -105,8 +105,20 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
     def _by_reason(rows: list[dict[str, Any]]) -> dict[str, int]:
         return {r: sum(1 for x in rows if r in x["reasons"]) for r in REASON_ORDER}
 
+    # S76 (item 1, Kyle's decision session, 2026-09-20): a synthesized summary line above a group of related
+    # weak claims -- e.g. "9 sources give ranges of 1x-7x SDE ... most cluster around 2-4x SDE." Computed over
+    # `shown` -- the same claims actually visible in this queue view -- not the full unbounded `candidates` list:
+    # a project can carry thousands of proposed claims across its whole history, and summarizing all of them
+    # would blend claims the caller never asked to see into one line above claims they did. Grouped by (topic,
+    # basis) so claims measuring genuinely different things (SDE vs. revenue vs. profit vs. cash flow) are never
+    # blended -- this is deliberately NOT claim merging (see claims.py's narrow `merge_into`); the individual
+    # claims below are untouched.
+    from . import claim_synthesis
+    topic_summaries = claim_synthesis.synthesize_topic_summaries(shown)
+
     return {
         "project_id": project_id, "limit": limit,
+        "topic_summaries": topic_summaries,
         "queue": shown,
         "counts": {"proposed_total": len(proposed), "candidates": len(candidates), "shown": len(shown),
                    "by_reason": _by_reason(shown), "not_shown": _by_reason(hidden), "hidden_total": len(hidden)},
