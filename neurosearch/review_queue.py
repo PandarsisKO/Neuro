@@ -51,7 +51,13 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
 
     conn = db.connect()
     proposed = [c for c in claims.list_for_project(project_id, status="proposed", with_evidence=False)]
-    ids = [c["id"] for c in proposed]
+    # 2026-09-21: ACCEPTED Claims are checked too, for the one reason that can apply to them. An accepted Claim
+    # is one the user personally stood behind; if they have since dismissed every finding under it, that is a
+    # direct contradiction between two of their own judgements, and `claims.assess` will never notice -- it
+    # consults source revisions, not note status, so the Claim keeps its strength forever. That makes this the
+    # clearest possible case of "needs a human", not a reason to leave it out of a queue built for exactly that.
+    accepted = [c for c in claims.list_for_project(project_id, status="accepted", with_evidence=False)]
+    ids = [c["id"] for c in proposed] + [c["id"] for c in accepted]
     impact = decision_impact.decision_impact(project_id, ids) if ids else {}
 
     tensions_by_claim: dict[str, list[dict[str, Any]]] = {}
@@ -91,7 +97,8 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
     source_ids_by_claim = claims.evidence_source_ids(project_id) if ids else {}
 
     candidates: list[dict[str, Any]] = []
-    for c in proposed:
+    # every proposed Claim is a candidate; an accepted one only when its evidence is gone
+    for c in proposed + [c for c in accepted if c["id"] in evidence_dismissed]:
         cid = c["id"]
         imp = impact.get(cid, {})
         reasons = []
@@ -112,6 +119,7 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
             # 2,352 unreviewed findings feeding proposed Claims invisibly. A Claim standing on evidence its
             # owner has not looked at is exactly the thing this queue exists to put in front of him.
             "origin": c.get("origin"),
+            "status": c.get("status"),        # "accepted" here means: you stood behind this, then rejected what it stood on
             "strength": c.get("strength"), "strength_why": c.get("strength_why"),
             "reasons": reasons,
             "disagreement": bool(imp.get("disagreement")), "plan_impact": imp.get("plan_impact", "unknown"),
@@ -157,6 +165,7 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
         "topic_summaries": topic_summaries,
         "queue": shown,
         "counts": {"proposed_total": len(proposed), "candidates": len(candidates), "shown": len(shown),
+                   "accepted_on_dismissed_evidence": sum(1 for x in candidates if x.get("status") == "accepted"),
                    "by_reason": _by_reason(shown), "not_shown": _by_reason(hidden), "hidden_total": len(hidden)},
         "basis": {"signals_used": list(REASON_ORDER), "signals_not_used": list(SIGNALS_NOT_USED),
                   "plan_impact_known": bool(ids) and all(v.get("plan_impact") != "unknown" for v in impact.values()),

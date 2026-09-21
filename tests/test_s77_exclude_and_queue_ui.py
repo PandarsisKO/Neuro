@@ -150,3 +150,23 @@ def test_a_claim_built_on_an_unreviewed_finding_says_so():
     assert "finding_suggested" in QUEUE_FN
     assert "from an unreviewed finding" in QUEUE_FN
     assert "status-warn" in QUEUE_FN, "it is a caution, not a neutral label"
+
+
+# ---------------------------------------------------------------- orphaned Claims (2026-09-21)
+
+def test_evidence_dismissed_is_named_in_words_and_shown_as_a_caution():
+    assert "every finding under it was dismissed" in QUEUE_FN
+    assert "r === 'evidence_dismissed' ? ' status-warn'" in QUEUE_FN
+
+
+def test_an_accepted_claim_says_so_and_loses_its_accept_button():
+    assert "you accepted this" in QUEUE_FN
+    assert "x.status === 'accepted' ? ''" in QUEUE_FN, "Accept on an already-accepted Claim is a no-op that reads as a choice"
+
+
+def test_orphans_get_one_bulk_action_and_are_never_auto_rejected():
+    assert "queueRejectOrphans(" in QUEUE_FN and "Reject all" in QUEUE_FN
+    assert "Not auto-rejected, ever" in QUEUE_FN
+    fn = JS.split("globalThis.queueRejectOrphans")[1].split("globalThis.queueDecide")[0]
+    assert "/claims/bulk-status" in fn and "status: 'rejected'" in fn
+    assert "RES.queue = null" in fn

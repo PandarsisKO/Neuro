@@ -297,14 +297,16 @@ globalThis.renderQueuePane = async function renderQueuePane() {
       `<span class="tag${r === 'evidence_dismissed' ? ' status-warn' : ''}">${esc(REASON_WORDS[r] || r)}</span>`).join(' ');
     const tens = (x.tensions || []).filter(t => t.impact === 'high').length;
     // the provenance warning that had no surface: this Claim rests on a finding nobody ever ruled on
+    const wasAccepted = x.status === 'accepted'
+      ? `<span class="tag status-warn" title="You accepted this Claim, and have since dismissed every finding it rested on. Two of your own judgements now disagree; this is here so you can settle which one stands.">you accepted this</span>` : '';
     const unreviewed = x.origin === 'finding_suggested'
       ? `<span class="tag status-warn" title="Harvested from a finding still sitting in Suggested — you have never reviewed the evidence under this Claim.">from an unreviewed finding</span>` : '';
     return `<div class="kn">${stTag(x.strength)}<div class="grow min-w-0">
       <div>${esc(x.text)}</div>
-      <div class="why">${why}${unreviewed ? ' ' + unreviewed : ''} · ${x.independent_sources} independent source${x.independent_sources === 1 ? '' : 's'}${(x.members.note_ids || []).length ? ` · ${x.members.note_ids.length} finding${x.members.note_ids.length === 1 ? '' : 's'} behind it` : ''}${tens ? ` · ${tens} high-impact tension${tens === 1 ? '' : 's'}` : ''}</div>
+      <div class="why">${why}${wasAccepted ? ' ' + wasAccepted : ''}${unreviewed ? ' ' + unreviewed : ''} · ${x.independent_sources} independent source${x.independent_sources === 1 ? '' : 's'}${(x.members.note_ids || []).length ? ` · ${x.members.note_ids.length} finding${x.members.note_ids.length === 1 ? '' : 's'} behind it` : ''}${tens ? ` · ${tens} high-impact tension${tens === 1 ? '' : 's'}` : ''}</div>
       ${x.strength_why ? `<div class="why">${esc(x.strength_why)}</div>` : ''}</div>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-        <button class="small" title="You stand behind this. Reversible — nothing is deleted." onclick="queueDecide('${x.claim_id}','accepted')">Accept</button>
+        ${x.status === 'accepted' ? '' : `<button class="small" title="You stand behind this. Reversible — nothing is deleted." onclick="queueDecide('${x.claim_id}','accepted')">Accept</button>`}
         <button class="small ghost" title="You do not accept this. Reversible." onclick="queueDecide('${x.claim_id}','rejected')">Reject</button>
       </span></div>`;
   }).join('');
@@ -313,10 +315,25 @@ globalThis.renderQueuePane = async function renderQueuePane() {
   const hidden = c.hidden_total
     ? `<div class="muted mt-2">${c.hidden_total} more below the cap (${Object.entries(c.not_shown || {}).filter(([, n]) => n).map(([r, n]) => `${n} ${REASON_WORDS[r] || r}`).join(' · ') || 'no reason recorded'}). Disagreement and rejected evidence are never capped, so nothing contested and nothing standing on findings you dismissed is hidden here.</div>`
     : '';
+  const orphans = shown.filter(x => (x.reasons || []).includes('evidence_dismissed'));
+  // Not auto-rejected, ever: the Claim's text may still be true and the user may want to keep it and find new
+  // evidence. But offered as one action, because bulk dismissals of findings produce bulk orphans.
+  const orphanBar = orphans.length
+    ? `<div class="banner" style="display:flex;gap:8px;align-items:center;margin:8px 0"><span class="grow"><b>${orphans.length}</b> Claim${orphans.length === 1 ? '' : 's'} here rest${orphans.length === 1 ? 's' : ''} only on findings you dismissed${c.accepted_on_dismissed_evidence ? ` (${c.accepted_on_dismissed_evidence} of them you had accepted)` : ''}. Rejecting is usually right; nothing is deleted and it is reversible.</span><button class="small" onclick="queueRejectOrphans(${JSON.stringify(orphans.map(x => x.claim_id))})">Reject all ${orphans.length}</button></div>`
+    : '';
   el.innerHTML =
-    `<div class="muted">The few proposed Claims that actually need a person: sources disagree, the Master Plan depends on it, or the evidence is thin. ${c.shown} of ${c.proposed_total} proposed Claims.</div>
+    `<div class="muted">The few Claims that actually need a person: sources disagree, the Master Plan depends on it, the evidence is thin — or every finding under it has been dismissed. ${c.shown} of ${c.proposed_total} proposed Claims${c.accepted_on_dismissed_evidence ? `, plus ${c.accepted_on_dismissed_evidence} accepted Claim${c.accepted_on_dismissed_evidence === 1 ? '' : 's'} whose evidence is gone` : ''}.</div>
+     ${orphanBar}
      ${sums ? `<div class="mt-3"><b>What the numbers say together</b><div class="muted text-xs">Grouped by topic and by what is being measured, so ranges of different things are never blended.</div><div class="mt-2">${sums}</div></div>` : ''}
      <div class="mt-3">${rows}</div>${hidden}`;
+}
+globalThis.queueRejectOrphans = async function queueRejectOrphans(ids) {
+  if (!ids || !ids.length) return;
+  // the same bulk door every other batch verdict goes through
+  await post(`/api/projects/${state.project.id}/claims/bulk-status`, { claim_ids: ids, status: 'rejected' });
+  toast(`${ids.length} rejected — reversible from the Claims tab`);
+  RES.queue = null;
+  renderQueuePane();
 }
 globalThis.queueDecide = async function queueDecide(claimId, status) {
   await claimStatus(claimId, status);

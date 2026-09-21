@@ -82,3 +82,29 @@ def test_it_leads_the_reason_order_and_is_never_capped():
     pid, cid, _ = _setup(["dismissed"])
     q = review_queue.build(pid, limit=1)
     assert any(x["claim_id"] == cid for x in q["queue"]), "a limit of 1 must not be able to hide it"
+
+
+# ---------------------------------------------------------------- accepted Claims (the case I first deferred)
+
+def test_an_accepted_claim_on_dismissed_evidence_surfaces_too():
+    """The clearest possible 'needs a human': the user stood behind this, then rejected everything under it.
+    assess() will never notice -- it reads source revisions, not note status -- so this queue is the only
+    place the contradiction can become visible."""
+    pid, cid, nids = _setup(["approved", "approved"])
+    claims.set_status(cid, "accepted") if hasattr(claims, "set_status") else \
+        db.connect().execute("UPDATE project_claims SET status='accepted' WHERE id=?", (cid,)) or db.connect().commit()
+    assert _reasons(pid, cid) == [], "an accepted Claim with live evidence has no business in the queue"
+    for nid in nids:
+        db.set_note_status(nid, "dismissed")
+    q = review_queue.build(pid, limit=25)
+    row = next((x for x in q["queue"] if x["claim_id"] == cid), None)
+    assert row and "evidence_dismissed" in row["reasons"] and row["status"] == "accepted"
+    assert q["counts"]["accepted_on_dismissed_evidence"] == 1
+
+
+def test_an_accepted_claim_with_support_stays_out():
+    """Accepted Claims enter for this ONE reason and no other -- the queue's contract for them is narrow."""
+    pid, cid, nids = _setup(["approved", "approved"])
+    db.connect().execute("UPDATE project_claims SET status='accepted' WHERE id=?", (cid,)); db.connect().commit()
+    db.set_note_status(nids[0], "dismissed")            # one of two -- still supported
+    assert _reasons(pid, cid) == []

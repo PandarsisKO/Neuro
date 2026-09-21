@@ -8623,3 +8623,38 @@ to the queue's contract and is Kyle's call.
 **Tests:** `test_s80_evidence_dismissed.py` (6). `test_p4_review_queue` asserts the reason counts whole, so the
 new reason had to be acknowledged there rather than appearing silently — which is the ratchet working.
 Suite: **2,375 passed, 0 failed.**
+
+## Double-checked: accepted Claims covered, orphans get one action, and the root left open on purpose — 2026-09-21
+
+Kyle: *"lets just double check this one more time. whats the best path forward?"*
+
+**What I had wrong on the previous pass.** I recorded "accepted Claims are not covered — Kyle's call" as if
+that were a neutral scoping choice. It was not. An accepted Claim is one Kyle personally stood behind; if he
+has since dismissed every finding under it, that is a direct contradiction between two of his own judgements,
+and `claims.assess` will never notice, because it consults source revisions and not note status — the Claim
+keeps its strength forever. That is the CLEAREST possible "needs a human", not a reason to leave it out of a
+queue built for exactly that. Covered now: accepted Claims enter the queue for this one reason and no other
+(tested both ways), are tagged "you accepted this", and lose their Accept button, which would otherwise be a
+no-op that reads as a choice.
+
+**Orphans get one action.** Bulk dismissals of findings produce bulk orphaned Claims; making the user reject
+them one by one turns a fix into a chore, and a chore is how a queue gets ignored. A banner counts them and
+offers "Reject all N", through the same `/claims/bulk-status` door as every other batch verdict. **Never
+auto-rejected** — the Claim's text may still be true and the user may want to keep it and go find new
+evidence. The choice stays his; only the friction goes.
+
+**The root cause is deliberately NOT fixed here, and this is the "best path" judgement.** The real defect is
+in `claims.assess`: it counts evidence from findings the user has rejected, because `claim_evidence` is keyed
+by source and nothing joins back to note status. The correct fix is for a Claim whose supporting findings are
+all dismissed to be assessed as `unsupported`. But `assess` writes the strength that the Master Plan, chat
+readiness and every Claims view read; changing it can flip plan steps to "needs research" and change what
+chat is willing to say. That is a product-behaviour change with visible consequences, made against a live
+project with 1,438 existing dismissals whose downstream Claims have never been recomputed. It should be done —
+and it should be done with Kyle's explicit go, after he has seen how many Claims the queue now surfaces, and
+with a before/after on the plan. Surfacing-for-decision is the right layer to ship without that.
+
+**Recommended order from here:** (1) open Research → Review queue and see how many orphans the 1,438 existing
+dismissals have already produced — that number decides how urgent the `assess` fix is; (2) run the suggested
+pass; (3) run the second look; (4) decide on the `assess` change.
+
+**Tests:** +5 (`test_s80`, `test_s77`). Suite: **2,380 passed, 0 failed.**
