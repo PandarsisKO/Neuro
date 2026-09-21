@@ -8130,3 +8130,21 @@ the checklist's E1 entry has the exact `.env` line and the one-line check.
 
 **What is left on the checklist is now only what needs the live database or Kyle's judgement:** A1, A2, A3, C1,
 C2, D1, D3 — plus the live channel check for B1, and a UI for E2 if it is wanted.
+
+## A test that only passed because of collection order — 2026-09-21
+
+Found while re-running the suite in slices after E1/E2, and worth recording because the failure lied about its
+cause. `tests/test_s70_write_hold_ledger.py` writes through `db.kv_set` and never created the schema. It passed
+only when some earlier module in the same process happened to call `init_db()` first; run on its own it failed
+with `sqlite3.OperationalError: no such table: kv`, pointing squarely at `db.py` — which was not the problem.
+
+Verified pre-existing, not a regression from anything here: it fails identically in a clean worktree at
+`44bd125`, before either of today's commits. It surfaced now only because the new test files shifted the
+alphabetical split. Since `pytest-randomly` is on by default in this repo, it would also have gone red at random
+on Kyle's Mac sooner or later, and the next person to add a test file sorting before `test_s70` would have
+inherited it.
+
+Fixed with a module-local autouse fixture calling `db.init_db()` — idempotent, and conftest already hard-sets
+`NEUROSEARCH_DATA_DIR` to a temp directory, so it costs nothing and touches nothing real. Swept the rest of the
+suite for the same class by re-running every chunk with randomisation ON (the repo's default, which the slicing
+had been disabling): no others. Only the two known environmental failures remain.

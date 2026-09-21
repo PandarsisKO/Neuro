@@ -9,7 +9,20 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from neurosearch import db, perf
+
+
+@pytest.fixture(autouse=True)
+def _schema():
+    """This module writes through `db.kv_set`, so it needs the schema to exist. It never created it -- it passed
+    only when some EARLIER test module in the same process happened to call `init_db()` first, and failed
+    outright when run on its own (`pytest tests/test_s70_write_hold_ledger.py` -> 'no such table: kv'). A test
+    that depends on collection order is a trap: it goes red for whoever next adds a test file whose name sorts
+    before this one, and the failure points at db.py rather than at the missing setup. `init_db` is idempotent
+    and conftest hard-sets NEUROSEARCH_DATA_DIR to a temp directory, so calling it here is free and safe."""
+    db.init_db()
 
 
 def _samples():
