@@ -270,10 +270,18 @@ def test_discovery_items_never_invent_a_confident_fit(rec, keyed):
 # ------------------------------------------------------------------ gap-first: only where literature is the evidence class
 
 def test_a_target_is_only_queried_when_it_asks_for_expert_evidence():
-    assert scholar.target_wants_literature({"preferred_classes": ["expert"]}) is True
-    assert scholar.target_wants_literature({"preferred_classes": ["authoritative", "market"]}) is True
-    assert scholar.target_wants_literature({"preferred_classes": '["expert"]'}) is True      # stored as JSON
-    assert scholar.target_wants_literature({"preferred_classes": ["experiential"]}) is False
+    # 2026-09-20: preferred_classes alone used to be sufficient -- Kyle hit this directly. An "in-office vs. remote"
+    # workplace-policy target, tagged expert/authoritative like most ordinary business questions are, sent
+    # SCHOLAR_HINT-free text straight to Crossref/OpenAlex and got back furniture-standards and 1914 patent-office
+    # history: real records, term-matched, useless. The class says the target wants EXPERT evidence in general (a
+    # lawyer's opinion counts); only the question's own wording says whether that's the PEER-REVIEWED kind a
+    # scholarly catalogue actually carries. Both must hold now.
+    assert scholar.target_wants_literature({"preferred_classes": ["expert"], "question": "What does the peer-reviewed literature say?"}) is True
+    assert scholar.target_wants_literature({"preferred_classes": ["authoritative", "market"], "question": "Any published research on this?"}) is True
+    assert scholar.target_wants_literature({"preferred_classes": '["expert"]', "question": "Is there an academic study on this?"}) is True      # stored as JSON
+    assert scholar.target_wants_literature({"preferred_classes": ["experiential"], "question": "What does the research say?"}) is False   # wrong class, right words
+    assert scholar.target_wants_literature({"preferred_classes": ["expert"], "question": "Does the buyer need Kyle in the office five days a week?"}) is False   # right class, ordinary business question
+    assert scholar.target_wants_literature({"preferred_classes": ["expert"]}) is False      # no question text at all
     assert scholar.target_wants_literature({"preferred_classes": []}) is False
     assert scholar.target_wants_literature({}) is False
 
@@ -302,9 +310,12 @@ def test_for_target_links_every_candidate_to_the_question(rec, keyed):
 def test_discover_asks_the_catalogue_only_when_literature_is_wanted():
     assert discover.scholar_wanted("find me peer-reviewed studies", {})[0] is True
     assert discover.scholar_wanted("more channels like this", {})[0] is False
-    assert discover.scholar_wanted(None, {"targets": [{"question": "q", "preferred_classes": ["expert"]}]})[0] is True
+    assert discover.scholar_wanted(None, {"targets": [{"question": "any published studies on this?", "preferred_classes": ["expert"]}]})[0] is True
     # a YouTube-only project with experiential questions gets no academic search bolted on
     assert discover.scholar_wanted(None, {"targets": [{"question": "q", "preferred_classes": ["experiential"]}]})[0] is False
+    # 2026-09-20: an ordinary business question tagged expert/authoritative is NOT, by itself, a literature question
+    # -- this is the exact shape of Kyle's real "in-office vs. remote" target that produced furniture-standards noise
+    assert discover.scholar_wanted(None, {"targets": [{"question": "does the buyer need in-office presence?", "preferred_classes": ["expert"]}]})[0] is False
 
 
 def test_the_catalogue_pass_makes_no_model_call(rec, keyed, monkeypatch):

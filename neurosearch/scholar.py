@@ -42,6 +42,24 @@ PROVIDERS = ("crossref", "openalex")
 EVIDENCE_CLASS = "expert"          # peer-reviewed literature; knowledge.CLASSES member
 SCHOLAR_CLASSES = ("expert", "authoritative")   # an evidence target asking for these is what makes a catalogue query worth running
 
+# 2026-09-20 (Kyle): an "in-office vs. remote" workplace-policy target, tagged expert/authoritative like most
+# ordinary business questions are, sent Crossref/OpenAlex a query with nothing academic about it and got back
+# real, term-matched, useless records -- furniture-standards specs, a 1914 Scientific American piece on the
+# patent office, a fisheries remote-sensing survey. All three share ordinary words ("office", "work", "needs",
+# "remote") with the question and nothing else; measured against the actual observed junk, neither raising a
+# token-overlap bar (claims.overlap) nor diluting it with the record's abstract moved the needle -- most
+# Crossref records carry no abstract at all (confirmed against this exact case), and a short title has too
+# little vocabulary for any lexical filter to tell "shares words" from "is about this". A model call could
+# judge that, but this module's whole reason to exist is running the catalogue pass at $0 with no model call
+# (see the module docstring; test_the_catalogue_pass_makes_no_model_call freezes it) -- so the fix has to be
+# in WHETHER the query runs, not in grading what comes back. `preferred_classes` says the target wants EXPERT
+# evidence in general -- a lawyer's opinion or an HR consultant's post both qualify. Only the question's own
+# wording says whether that's the PEER-REVIEWED kind a scholarly catalogue actually carries, which is exactly
+# what SCHOLAR_HINT already tests for the free-text `refine` path below -- so target_wants_literature() now
+# requires it too, on the target's own question text.
+SCHOLAR_HINT = re.compile(r"\b(paper|papers|study|studies|research|literature|journal|peer[- ]review(?:ed)?|"
+                          r"meta[- ]analys[ei]s|trial|preprint|doi|academic|scholar(?:ly)?|citation|evidence base)\b", re.I)
+
 CROSSREF_API = "https://api.crossref.org/works"
 OPENALEX_API = "https://api.openalex.org/works"
 
@@ -452,16 +470,41 @@ def acquire(record: dict[str, Any], project_id: str, *, lane: str = "low") -> di
 # ------------------------------------------------------------------ gap-first: does this target want literature?
 
 def target_wants_literature(target: dict[str, Any]) -> bool:
-    """An evidence target already declares the classes it needs (`knowledge.CLASSES`). A catalogue query is worth a
-    request when the target asks for expert or authoritative evidence, and is not otherwise — which is what keeps
-    this from bolting an academic search onto a question about editing workflow."""
+    """An evidence target already declares the classes it needs (`knowledge.CLASSES`); that used to be the whole
+    test. It is necessary but not sufficient: the class says the target wants EXPERT (or AUTHORITATIVE) evidence
+    in general, and most "expert" business questions want a practitioner's opinion, not a peer-reviewed paper --
+    Crossref/OpenAlex can only ever supply the latter. So a catalogue query is worth a request only when BOTH the
+    class fits AND the target's own question reads like something a scholarly catalogue could plausibly answer
+    (SCHOLAR_HINT) — which is what keeps this from bolting an academic search onto an ordinary workplace-policy
+    or editing-workflow question that only happens to be tagged "expert"."""
     want = target.get("preferred_classes")
     if isinstance(want, str):
         try:
             want = json.loads(want)
         except ValueError:
             want = [want]
-    return bool(set(w for w in (want or []) if isinstance(w, str)) & set(SCHOLAR_CLASSES))
+    if not (set(w for w in (want or []) if isinstance(w, str)) & set(SCHOLAR_CLASSES)):
+        return False
+    return bool(SCHOLAR_HINT.search(str(target.get("question") or "")))
+
+
+def _wants_literature_why(target: dict[str, Any]) -> str:
+    """Same two-part test as target_wants_literature(), but says which half failed -- 'not asking for expert
+    evidence' and 'asking for expert evidence, but not about literature' are different situations and the UI
+    ('already checked') should be able to say which one this was."""
+    want = target.get("preferred_classes")
+    if isinstance(want, str):
+        try:
+            want = json.loads(want)
+        except ValueError:
+            want = [want]
+    classes = [w for w in (want or []) if isinstance(w, str)]
+    if not (set(classes) & set(SCHOLAR_CLASSES)):
+        return (f"this target asks for {', '.join(classes) or 'no particular class'} evidence — scholarly "
+                f"catalogues are only queried for expert or authoritative targets")
+    return ("this target asks for expert/authoritative evidence, but its question doesn't read like a literature "
+            "question (no paper/study/research-type wording) — scholarly catalogues only carry peer-reviewed "
+            "literature, not practitioner opinion, so they wouldn't have anything for it")
 
 
 def for_target(target: dict[str, Any], project_id: str, limit: int = 8,
@@ -474,8 +517,7 @@ def for_target(target: dict[str, Any], project_id: str, limit: int = 8,
     if not q:
         return {"run": False, "why": "the target has no question text"}
     if not target_wants_literature(target):
-        return {"run": False, "why": f"this target asks for {', '.join(target.get('preferred_classes') or ['no particular class'])} "
-                                     f"evidence — scholarly catalogues are only queried for expert or authoritative targets"}
+        return {"run": False, "why": _wants_literature_why(target)}
     try:
         recs = search(q, limit=limit)
     except ScholarUnavailable as e:

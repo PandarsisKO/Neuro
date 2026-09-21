@@ -81,17 +81,16 @@ def _items(raw: list[Any]) -> list[dict[str, Any]]:
 # ------------------------------------------------------------------ catalogue pass (scholar.py, $0, no model call)
 
 SCHOLAR_MAX = 6                    # a supplement to Discover, never a takeover of it
-SCHOLAR_HINT = re.compile(r"\b(paper|papers|study|studies|research|literature|journal|peer[- ]reviewed|"
-                          r"meta[- ]analys[ei]s|trial|preprint|doi|academic|scholar(?:ly)?|citation|evidence base)\b", re.I)
 
 
 def scholar_wanted(refine: str | None, research: dict[str, Any]) -> tuple[bool, str]:
     """A catalogue query is worth a free request when the USER asked for literature, or when an open evidence target
-    already declares that it needs expert/authoritative evidence. It is deliberately NOT run for every project: a
-    corpus of YouTube channels about editing workflow gets nothing from Crossref, and adding unrelated papers to that
+    already declares that it needs expert/authoritative evidence AND its own question reads like a literature
+    question (scholar.target_wants_literature — 2026-09-20). It is deliberately NOT run for every project: a corpus
+    of YouTube channels about editing workflow gets nothing from Crossref, and adding unrelated papers to that
     review card is exactly the noise the user asked to avoid."""
     from . import scholar
-    if refine and SCHOLAR_HINT.search(refine):
+    if refine and scholar.SCHOLAR_HINT.search(refine):
         return True, "you asked for research literature"
     for t in (research.get("targets") or [])[:12]:
         if scholar.target_wants_literature(t):
