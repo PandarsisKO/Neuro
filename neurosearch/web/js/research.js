@@ -1306,34 +1306,62 @@ globalThis.splitFinding = function splitFinding(n) {
 //                       freshest.
 //
 // Capped at 10% of the approved total, as asked, and the cap is stated rather than silently applied.
+// One batch size for every focus pass over findings. Kyle, 2026-09-21: "load 100 at a time so I am not
+// overwhelmed." This REPLACES the 10% cap rather than sitting alongside it: the cap existed to stop a pass
+// being unmanageably long, and `reviewed_at` already solves that better -- anything ruled on stops coming
+// back, so pressing the button again simply serves the next 100. A cap on top would only ever stop him
+// earlier than he asked to stop.
+globalThis.FOCUS_BATCH = 100;
+
+// Suggested findings, most important first (Kyle: "keep vs lose on the suggested findings first").
+//
+// The order is the OPPOSITE of the second look's on purpose. A second look hunts bad approvals, so it shows
+// the weakest first. This pass decides what to promote INTO evidence, so it shows what would matter most if
+// promoted. Same reviewer, same door, opposite end of the same ordering.
+globalThis.fbReviewSuggested = async function fbReviewSuggested() {
+  const btn = $('#fbSuggestedBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = 'Review suggested'; } };
+  let r;
+  try {
+    const p = new URLSearchParams({ status: 'suggested', sort: 'importance', limit: FOCUS_BATCH });
+    r = await api(`/api/projects/${state.project.id}/findings?` + p);
+  } catch (e) { restore(); toast('Could not load suggested findings: ' + (e.message || e), 'err'); return; }
+  restore();
+  const rows = r.findings || [];
+  if (!rows.length) { toast('Nothing left in Suggested'); return; }
+  fbFocusOpen(rows, {
+    title: 'Suggested findings — most important first',
+    subtitle: `${rows.length} of ${r.total} waiting. A suggested finding cannot be cited in chat or exported `
+      + `until you keep it, but it CAN already have become a proposed Claim — so Lose here may weaken one `
+      + `(the Claims review queue marks those "from an unreviewed finding"). Keep files it as approved; Lose `
+      + `dismisses it, which is reversible. `
+      + (r.total > rows.length ? `Press the button again for the next ${FOCUS_BATCH}.` : ''),
+  });
+}
+
 globalThis.fbSecondLook = async function fbSecondLook() {
   const btn = $('#fbSecondBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Finding them…'; }
   const restore = () => { if (btn) { btn.disabled = false; btn.textContent = '↻ Second look'; } };
   let r;
   try {
-    const p = new URLSearchParams({ status: 'approved', reviewed: 'no', used: 'never', sort: 'weakest', limit: 500 });
+    const p = new URLSearchParams({ status: 'approved', reviewed: 'no', used: 'never', sort: 'weakest', limit: FOCUS_BATCH });
     r = await api(`/api/projects/${state.project.id}/findings?` + p);
   } catch (e) { restore(); toast('Could not load the second-look set: ' + (e.message || e), 'err'); return; }
   restore();
-  const approvedTotal = ((r.facets || {}).status || {}).approved || 0;
-  const cap = Math.max(1, Math.floor(approvedTotal * 0.10));
-  const rows = (r.findings || []).slice(0, cap);
+  const rows = r.findings || [];
   if (!rows.length) {
     toast(r.total ? 'Nothing unreviewed left that nothing depends on' : 'No approved findings to re-check');
     return;
   }
-  // Say what was left out and why, in all three directions: the cap, the page, and the safety exclusion.
-  const pageCapped = r.total > (r.findings || []).length;
-  const capped = r.total > rows.length;
   fbFocusOpen(rows, {
     title: 'Second look — weakest approvals first',
-    subtitle: `${rows.length} of ${r.total} approved findings nobody has ruled on and nothing is using`
-      + (capped ? `, capped at 10% of your ${approvedTotal} approved` : '')
-      + (pageCapped ? ' (500 fetched at a time)' : '')
-      + `. Lowest importance first. Anything the plan, a chat answer or a Claim relies on is excluded, so nothing `
+    subtitle: `${rows.length} of ${r.total} approved findings nobody has ruled on and nothing is using. `
+      + `Lowest importance first. Anything the plan, a chat answer or a Claim relies on is excluded, so nothing `
       + `you Lose here can leave a Claim without evidence. Keep files it as approved and marks it reviewed, so it `
-      + `will not come back; Lose dismisses it, which is reversible.`,
+      + `will not come back; Lose dismisses it, which is reversible. `
+      + (r.total > rows.length ? `Press the button again for the next ${FOCUS_BATCH}.` : ''),
   });
 }
 

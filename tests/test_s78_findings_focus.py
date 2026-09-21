@@ -142,14 +142,23 @@ def test_it_shows_the_weakest_first():
     assert "sort: 'weakest'" in SECOND
 
 
-def test_the_ten_percent_cap_is_applied_and_stated():
-    assert "* 0.10" in SECOND
-    assert "capped at 10%" in SECOND, "a cap the user cannot see is a cap they will be surprised by"
+def test_it_serves_one_batch_and_says_there_is_more():
+    """2026-09-21: the 10% cap is GONE, replaced by a batch of 100 (Kyle: "load 100 at a time so I am not
+    overwhelmed"). The cap existed to keep a pass manageable, and `reviewed_at` does that better — anything
+    ruled on stops coming back, so the button simply serves the next batch. A cap on top of that would only
+    ever stop him earlier than he chose to stop."""
+    assert "* 0.10" not in SECOND and "capped at 10%" not in SECOND
+    assert "limit: FOCUS_BATCH" in SECOND
+    assert "Press the button again for the next" in SECOND
 
 
-def test_it_says_what_was_left_out_in_all_three_directions():
-    assert "capped at 10%" in SECOND and "500 fetched at a time" in SECOND
-    assert "is excluded" in SECOND, "the safety exclusion is the least obvious of the three and the most important"
+def test_the_batch_size_is_one_constant_for_every_focus_pass():
+    assert "globalThis.FOCUS_BATCH = 100" in JS
+    assert JS.count("limit: FOCUS_BATCH") == 2, "both passes, one number"
+
+
+def test_the_safety_exclusion_is_still_stated():
+    assert "is excluded" in SECOND, "the least obvious of the exclusions and the most important"
 
 
 def test_it_promises_resumability_and_says_lose_is_reversible():
@@ -166,3 +175,34 @@ def test_both_entry_points_share_one_opener():
 
 def test_an_empty_result_distinguishes_its_two_causes():
     assert "Nothing unreviewed left" in SECOND and "No approved findings" in SECOND
+
+
+# ---------------------------------------------------------------- the suggested pass (2026-09-21)
+
+SUGG = JS.split("globalThis.fbReviewSuggested")[1].split("globalThis.fbSecondLook")[0]
+
+
+def test_the_suggested_button_exists():
+    assert 'onclick="fbReviewSuggested()"' in HTML and 'id="fbSuggestedBtn"' in HTML
+
+
+def test_it_shows_the_most_important_first_the_opposite_of_the_second_look():
+    """Deliberately the reverse. A second look hunts bad approvals, so weakest first. This decides what to
+    promote INTO evidence, so it shows what would matter most if promoted."""
+    assert "sort: 'importance'" in SUGG and "status: 'suggested'" in SUGG
+    assert "sort: 'weakest'" in SECOND
+
+
+def test_it_warns_that_a_suggested_finding_may_already_back_a_claim():
+    """The thing that makes Lose here non-trivial: chat cannot cite a suggested finding, but claim harvesting
+    reads status IN ('approved','suggested'), so one may already stand behind a proposed Claim."""
+    assert "already have become a proposed Claim" in SUGG
+    assert "from an unreviewed finding" in SUGG, "…and it points at where those Claims are visible"
+
+
+def test_it_uses_the_same_batch_and_the_same_opener():
+    assert "limit: FOCUS_BATCH" in SUGG and "fbFocusOpen(rows," in SUGG
+
+
+def test_an_empty_suggested_pile_says_so():
+    assert "Nothing left in Suggested" in SUGG

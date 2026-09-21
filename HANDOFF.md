@@ -8554,3 +8554,28 @@ where approving changes what chat can say and where a `finding_suggested` Claim 
 bearing. Leave the long tail until the quality pass has had a look at it.
 
 Suite: 2,353 passed, 0 failed.
+
+## Suggested-findings pass, and batches of 100 — 2026-09-21
+
+Kyle: *"I want to do keep vs lose on the suggested findings first, then the new second look function should
+load 100 at a time so I am not overwhelmed."*
+
+**The 10% cap is gone, replaced by `FOCUS_BATCH = 100` for both passes.** Not an addition — a replacement. The
+cap existed to stop a pass being unmanageably long, and `reviewed_at` already does that better: anything ruled
+on stops coming back, so pressing the button again serves the next 100. Keeping a cap on top would only ever
+stop him earlier than he chose to stop. One constant, both passes, asserted by test.
+
+**New "Review suggested": status=suggested, most important first, 100 at a time.** The order is deliberately
+the REVERSE of the second look's. A second look hunts bad approvals, so it shows the weakest first; this pass
+decides what to promote INTO evidence, so it shows what would matter most if promoted. Same reviewer, same
+door, opposite end of the same ordering.
+
+Its subtitle carries the thing that makes a Lose here non-trivial: chat cannot cite a suggested finding, but
+claim harvesting reads `status IN ('approved','suggested')`, so one may already stand behind a proposed Claim —
+and it points at where those are now visible ("from an unreviewed finding" in the Claims review queue).
+
+**`test_s50_design_drift` caught an emoji**, CL-6: a 📌 in front of "Review suggested" is a glyph followed by
+text that already says it in words. Dropped rather than excused. The ratchet earning its place twice in two
+days.
+
+Suite: **2,367 passed, 0 failed.**
