@@ -96,14 +96,18 @@ already filtering laundromats. The first teaches the system; the second is immed
 
 ## D. Judgement calls, then small builds
 
-**D1. Should a dismissed finding count NEGATIVELY against a creator, or just at zero?** It now counts zero
-(fixed 2026-09-20 — before that, 1,438 rejections counted as wins). Sources got symmetric treatment; findings
-did not. A design change, not a bug. — *Kyle decides, Cowork builds*
+**D1. ~~Should a dismissed finding count NEGATIVELY against a creator, or just at zero?~~ DECIDED 2026-09-21:
+stays at zero. NO CODE CHANGE NEEDED** — that is already the behaviour. `candidates.creator_yield` filters with
+`COALESCE(status,'') <> 'dismissed'`, so a dismissed finding is excluded from the count rather than subtracted
+from it. Verified in place rather than assumed. The asymmetry with sources (where a Lose is worth exactly what
+a Keep is worth) is now a deliberate, recorded choice: dismissing a finding usually means "not this claim", not
+"not this creator". — *decided by Kyle*
 
-**D2. A findings focus reviewer.** The component is surface-agnostic and would work, but 17,193 findings is many
-hours, and findings need different handling: they carry citations worth checking, and "dismiss" means something
-different from "do not ingest this video". Only worth it if D1 makes finding-level judgement load-bearing.
-— *Kyle decides*
+**D2. ~~A findings focus reviewer.~~ CLOSED 2026-09-21 — not worth building, on D1's answer.** This item was
+explicitly gated: "only worth it if D1 makes finding-level judgement load-bearing." D1 decided that a dismissed
+finding counts zero, so finding-level judgement feeds nothing downstream — there is no scoring signal for hours
+of review to improve. Reopen only if some future feature gives a finding decision weight beyond the finding
+itself. — *closed on Kyle's D1 answer*
 
 **D3. Backfill descriptions for the remaining states.** `skipped_limit` (574, none have descriptions) and
 `acquired` (841, 2%). Cheap — ~28 quota units total. Lower value than A2 since these are not in the review path,
@@ -124,8 +128,16 @@ recent real value. And it does not know the SBA spread: that is SOP 50 10's, and
 constant here would be a second unversioned copy of a document `works.py` exists to version. `max_rate(spread,
 spread_source=...)` takes it and says in the result where it came from. 19 tests. — *Cowork*
 
-**Kyle: the key.** Free, no card, about a minute — sign in at https://fredaccount.stlouisfed.org/apikeys,
-request an API key, then add the line to `.env` (git-ignored) exactly as the YouTube one was added:
+**BLOCKED 2026-09-21 — Kyle reports FRED is not available to him right now; revisit later.** The module stays
+inert and costs nothing while it waits. A keyless path exists in principle (`fredgraph.csv`, FRED's own public
+CSV download, same series ids, no key), but BOTH the Cowork sandbox and the device VM have `fred.stlouisfed.org`
+blocked by egress policy, so it could not be verified from here — and shipping unverified network code is the
+exact mistake `youtube_api` got away with once. Not built. Say the word and it is a small addition, verified on
+the Mac rather than guessed.
+
+**Kyle: the key, when it is available.** Free, no card, about a minute — sign in at
+https://fredaccount.stlouisfed.org/apikeys, request an API key, then add the line to `.env` (git-ignored)
+exactly as the YouTube one was added:
 
 ```
 NEUROSEARCH_FRED_API_KEY=your-key-here

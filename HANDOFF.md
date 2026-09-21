@@ -8372,3 +8372,33 @@ members would be claim merging by accident. Queue is fetched on tab open, cleare
 - the FRED key (account creation)
 - C2 / D1 / D2 / the 35-44 band (decisions)
 - D3 (`--state` verified to exist; `available` is the default, so `skipped_limit` and `acquired` need it named)
+
+## Decisions in, and what the brief change means mechanically — 2026-09-21
+
+Kyle: the resurface run and the brief revision are both done; FRED is unavailable to him for now; and a
+dismissed finding **stays at zero**.
+
+**D1 needs no code.** That is already the behaviour — `candidates.creator_yield` filters with
+`COALESCE(status,'') <> 'dismissed'`, excluding a dismissed finding from the count rather than subtracting it.
+Verified in place rather than assumed. The asymmetry with sources is now a recorded choice, not an oversight:
+dismissing a finding usually means "not this claim", not "not this creator".
+
+**D2 closes on that answer.** It was gated — "only worth it if D1 makes finding-level judgement load-bearing" —
+and D1 says it does not. There is no scoring signal that hours of finding review would improve, so a findings
+focus reviewer would cost Kyle time and change nothing. Reopen only if some later feature gives a finding
+decision weight beyond the finding itself.
+
+**The brief change will really re-score, and this was worth checking before spending money on it.**
+`relevance.input_hash` folds `db.brief_revision(project)`, which is a sha over brief, goal, audience,
+output_pref, source_prefs, questions and context — so editing the brief invalidates every cached relevance
+score for the project. A re-score now genuinely re-judges rather than returning the old numbers against a new
+brief, which would have been the silent failure worth fearing here.
+
+**E1 blocked, deliberately not worked around.** A keyless path exists in principle — `fredgraph.csv`, FRED's
+own public CSV download, same series ids, no key — but `fred.stlouisfed.org` is blocked by egress policy from
+BOTH the Cowork sandbox and the device VM, so no request could be made to confirm the format. Writing a parser
+against a format nobody here can see is how `youtube_api` shipped unverified; it got away with it once. Not
+built. `fred.py` stays inert and costs nothing while it waits.
+
+**Open after this:** C2 (the AI-automation creators — the exclude UI now exists for it), the 35-44 band, and
+the third AD4B measurement once the re-score against the new brief has run.
