@@ -8528,3 +8528,29 @@ Suite: **2,348 passed, 0 failed.**
 
 **Note for whoever runs the app next:** the migration adds a column to `project_notes` on `init_db`. Additive
 and nullable, following the established MIGRATIONS pattern, but it does touch the live schema.
+
+## "Suggested" is not a parking lot — 2026-09-21
+
+Kyle asked what to do with his 2,352 suggested findings. Tracing it first turned up something worth its own
+entry.
+
+**A suggested finding is blocked at one door and open at another.** `list_project_notes` defaults to
+approved-only, so chat cannot cite one and exports do not carry it. But `claims.unharvested_note_ids` selects
+`status IN ('approved','suggested')`, so suggested findings ARE harvested into proposed Claims — and
+`claims.py:611` tags those `origin="finding_suggested"` precisely because their provenance is weaker.
+
+**That tag has existed all along and nothing has ever surfaced it.** Not in the API, not in the UI. So Kyle has
+proposed Claims standing on findings he has never looked at, with nothing telling him which — and accepting
+such a Claim promotes unreviewed evidence into the thing the plan and chat lean on. The Claims review queue is
+exactly where that belongs, so `review_queue.build` now carries `origin` and the queue pane shows **"from an
+unreviewed finding"** as a caution badge.
+
+This makes "leave them alone" a real choice with a real cost rather than a neutral default, which is what the
+question needed.
+
+**Recommendation recorded** (Kyle's call, not taken here): do not bulk-approve — that is how the 17,193 became
+untrustworthy. Work the importance 4-5 slice of the suggested pile with the focus reviewer first, since that is
+where approving changes what chat can say and where a `finding_suggested` Claim is most likely to be load-
+bearing. Leave the long tail until the quality pass has had a look at it.
+
+Suite: 2,353 passed, 0 failed.

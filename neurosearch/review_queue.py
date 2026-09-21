@@ -79,6 +79,11 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
             continue
         candidates.append({
             "claim_id": cid, "text": c["text"], "claim_type": c.get("claim_type"), "topic": c.get("topic"),
+            # 2026-09-21: `origin` has recorded 'finding_suggested' since claims.py:611 -- a Claim harvested
+            # from a finding nobody ever reviewed -- and NOTHING has ever surfaced it. On Kyle's project that is
+            # 2,352 unreviewed findings feeding proposed Claims invisibly. A Claim standing on evidence its
+            # owner has not looked at is exactly the thing this queue exists to put in front of him.
+            "origin": c.get("origin"),
             "strength": c.get("strength"), "strength_why": c.get("strength_why"),
             "reasons": reasons,
             "disagreement": bool(imp.get("disagreement")), "plan_impact": imp.get("plan_impact", "unknown"),

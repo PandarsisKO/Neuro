@@ -133,3 +133,19 @@ def test_the_empty_state_distinguishes_nothing_proposed_from_nothing_flagged():
 
 def test_a_failed_queue_build_does_not_render_as_an_empty_queue():
     assert "could not build the review queue" in QUEUE_FN
+
+
+# ---------------------------------------------------------------- provenance that had no surface (2026-09-21)
+
+def test_the_queue_carries_the_claims_origin():
+    from pathlib import Path as _P
+    rq = (_P(__file__).resolve().parents[1] / "neurosearch" / "review_queue.py").read_text()
+    assert '"origin": c.get("origin")' in rq
+
+
+def test_a_claim_built_on_an_unreviewed_finding_says_so():
+    """claims.py has tagged these `finding_suggested` all along and nothing ever showed it. A Claim resting on
+    evidence its owner has never looked at is precisely what this queue exists to surface."""
+    assert "finding_suggested" in QUEUE_FN
+    assert "from an unreviewed finding" in QUEUE_FN
+    assert "status-warn" in QUEUE_FN, "it is a caution, not a neutral label"

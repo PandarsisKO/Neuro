@@ -294,9 +294,12 @@ globalThis.renderQueuePane = async function renderQueuePane() {
   const rows = shown.map(x => {
     const why = (x.reasons || []).map(r => `<span class="tag">${esc(REASON_WORDS[r] || r)}</span>`).join(' ');
     const tens = (x.tensions || []).filter(t => t.impact === 'high').length;
+    // the provenance warning that had no surface: this Claim rests on a finding nobody ever ruled on
+    const unreviewed = x.origin === 'finding_suggested'
+      ? `<span class="tag status-warn" title="Harvested from a finding still sitting in Suggested — you have never reviewed the evidence under this Claim.">from an unreviewed finding</span>` : '';
     return `<div class="kn">${stTag(x.strength)}<div class="grow min-w-0">
       <div>${esc(x.text)}</div>
-      <div class="why">${why} · ${x.independent_sources} independent source${x.independent_sources === 1 ? '' : 's'}${(x.members.note_ids || []).length ? ` · ${x.members.note_ids.length} finding${x.members.note_ids.length === 1 ? '' : 's'} behind it` : ''}${tens ? ` · ${tens} high-impact tension${tens === 1 ? '' : 's'}` : ''}</div>
+      <div class="why">${why}${unreviewed ? ' ' + unreviewed : ''} · ${x.independent_sources} independent source${x.independent_sources === 1 ? '' : 's'}${(x.members.note_ids || []).length ? ` · ${x.members.note_ids.length} finding${x.members.note_ids.length === 1 ? '' : 's'} behind it` : ''}${tens ? ` · ${tens} high-impact tension${tens === 1 ? '' : 's'}` : ''}</div>
       ${x.strength_why ? `<div class="why">${esc(x.strength_why)}</div>` : ''}</div>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
         <button class="small" title="You stand behind this. Reversible — nothing is deleted." onclick="queueDecide('${x.claim_id}','accepted')">Accept</button>
