@@ -8490,3 +8490,41 @@ the panel says which verdict maps to which status rather than leaving Keep/Lose 
 vocabularies for one action.
 
 **Tests:** `tests/test_s78_findings_focus.py` (16). Suite: **2,308 passed, 0 failed.**
+
+## Second look at the bulk approvals, and the column that made it possible — 2026-09-21
+
+Kyle: *"I have BULK approved the majority of the approved findings, can we load the lower confidence ones into
+the keep vs lose tool so I can get a second look at them? maybe like 10% max."* His real counts: **17,193
+approved · 2,352 suggested · 1,438 dismissed · 17 reserve.**
+
+**The gap this exposed.** Nothing recorded that a status had been set deliberately. `status` arrived as a
+migration with `DEFAULT 'approved'`, and Kyle bulk-approved most of the rest — so "17,193 approved" was never
+17,193 judgements, and neither he nor the app could tell which was which. A second-look pass also had no way to
+know where it had already been: Keeping a finding leaves it approved, so it would come back forever.
+
+New `project_notes.reviewed_at REAL`, set in `db.set_note_status` — the one door every status change goes
+through, so the drawer, the workbench, bulk, focus review and the sweeps are all covered and a new caller
+cannot bypass it. Every existing row starts NULL, which is the truthful answer for all of them. A test pins the
+case that matters: setting `approved` on an already-approved finding still stamps, or the second look would
+never terminate.
+
+`findings_view.query` gains a `reviewed` scope ("no"/"yes", deliberately not faceted — it is a scope, not a
+dimension to browse) and a `weakest` sort, ascending importance, the exact reverse of the default.
+
+**The set is defined narrowly, and `used=never` is the reason.** A second look at APPROVED findings can take
+evidence away: dismissing one that a Claim rests on can leave that Claim with nothing behind it, which is what
+`retire.py` counts as `claims_losing_all_evidence` before it acts. A fast K/L pass is the worst possible place
+to discover that. Restricting to findings the plan, chat and Claims are not using makes a Lose here
+structurally unable to break anything — the safety property, not a convenience.
+
+So: `status=approved · reviewed=no · used=never · sort=weakest`, capped at 10% of the approved total as asked,
+with the cap, the 500-row fetch and the safety exclusion all stated in the panel rather than applied silently.
+
+`fbFocus` and `fbSecondLook` now share one opener (`fbFocusOpen`), so the score scale, the facts row, the
+submit path and the refresh cannot drift between the two entry points.
+
+**Tests:** `test_s79_second_look.py` (4, against a real database) and 9 more in `test_s78_findings_focus.py`.
+Suite: **2,348 passed, 0 failed.**
+
+**Note for whoever runs the app next:** the migration adds a column to `project_notes` on `init_db`. Additive
+and nullable, following the established MIGRATIONS pattern, but it does touch the live schema.

@@ -3433,12 +3433,16 @@ def api_source_digest(project_id: str, source_id: str) -> dict[str, Any]:
 
 @app.get("/api/projects/{project_id}/findings", dependencies=[Depends(require_auth)])
 def api_findings_query(project_id: str, q: str | None = None, status: str | None = "approved", min_importance: int | None = None, source_id: str | None = None,
-                       used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance", limit: int = 100, offset: int = 0) -> dict[str, Any]:
-    """S4: the Findings workbench — composable filters, facets, sort, paging; use badges (plan · chat · Claim); the low-value sweep."""
+                       used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance",
+                       reviewed: str | None = None, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    """S4: the Findings workbench — composable filters, facets, sort, paging; use badges (plan · chat · Claim); the low-value sweep.
+
+    `reviewed` ("no" | "yes") scopes to findings whose status has or has not been set deliberately, which is what
+    a second-look pass needs: an approved finding nobody ever ruled on is a different thing from one you kept."""
     from . import findings_view
     if not db.get_project(project_id):
         raise HTTPException(404)
-    return findings_view.query(project_id, q=q, status=status, min_importance=min_importance, source_id=source_id, used=used, stale=stale, area=area, sort=sort, limit=limit, offset=offset)
+    return findings_view.query(project_id, q=q, status=status, min_importance=min_importance, source_id=source_id, used=used, stale=stale, area=area, sort=sort, reviewed=reviewed, limit=limit, offset=offset)
 
 
 @app.get("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])

@@ -28,7 +28,9 @@ JS = (WEB / "js" / "research.js").read_text()
 FOCUS = (WEB / "js" / "focus.js").read_text()
 HTML = (WEB / "index.html").read_text()
 CSS = (WEB / "styles.css").read_text()
-FN = JS.split("globalThis.fbFocus")[1].split("globalThis.findingCard")[0]
+# fbFocus is now a thin wrapper over fbFocusOpen; the region below spans BOTH, which is the unit that
+# actually defines the reviewer's behaviour.
+FN = JS.split("globalThis.fbFocus =")[1].split("globalThis.findingCard")[0]
 
 
 # ---------------------------------------------------------------- it exists and is reachable
@@ -114,3 +116,53 @@ def test_bulk_and_list_controls_are_untouched():
     assert 'id="fbStatus"' in HTML and 'id="fbQ"' in HTML and 'id="fbSort"' in HTML, "filters and sorting"
     assert "sweepLow" in JS, "the low-value sweep"
     assert "findingCard" in JS, "the list rows themselves"
+
+
+# ---------------------------------------------------------------- second look at bulk approvals (S79)
+
+SECOND = JS.split("globalThis.fbSecondLook")[1].split("globalThis.fbFocus =")[0]
+
+
+def test_the_second_look_button_exists():
+    assert 'onclick="fbSecondLook()"' in HTML and 'id="fbSecondBtn"' in HTML
+
+
+def test_it_only_offers_findings_nothing_depends_on():
+    """THE safety property. Dismissing a finding that evidence rests on can leave a Claim with nothing behind
+    it (retire.py counts `claims_losing_all_evidence` for exactly this), and a fast K/L pass is the worst place
+    to find that out. `used=never` makes a Lose here structurally unable to break anything."""
+    assert "used: 'never'" in SECOND
+
+
+def test_it_only_offers_approvals_nobody_actually_ruled_on():
+    assert "reviewed: 'no'" in SECOND and "status: 'approved'" in SECOND
+
+
+def test_it_shows_the_weakest_first():
+    assert "sort: 'weakest'" in SECOND
+
+
+def test_the_ten_percent_cap_is_applied_and_stated():
+    assert "* 0.10" in SECOND
+    assert "capped at 10%" in SECOND, "a cap the user cannot see is a cap they will be surprised by"
+
+
+def test_it_says_what_was_left_out_in_all_three_directions():
+    assert "capped at 10%" in SECOND and "500 fetched at a time" in SECOND
+    assert "is excluded" in SECOND, "the safety exclusion is the least obvious of the three and the most important"
+
+
+def test_it_promises_resumability_and_says_lose_is_reversible():
+    assert "will not come back" in SECOND
+    assert "reversible" in SECOND
+
+
+def test_both_entry_points_share_one_opener():
+    """Two openers would drift: the score scale, the facts row and the submit path all have to stay identical."""
+    assert "globalThis.fbFocusOpen" in JS
+    assert "fbFocusOpen(rows," in JS.split("globalThis.fbFocus =")[1]
+    assert "fbFocusOpen(rows," in SECOND
+
+
+def test_an_empty_result_distinguishes_its_two_causes():
+    assert "Nothing unreviewed left" in SECOND and "No approved findings" in SECOND

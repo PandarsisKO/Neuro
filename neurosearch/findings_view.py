@@ -220,7 +220,8 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
 
 
 def query(project_id: str, *, q: str | None = None, status: str | None = "approved", min_importance: int | None = None, source_id: str | None = None,
-          used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+          used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance",
+          reviewed: str | None = None, limit: int = 100, offset: int = 0) -> dict[str, Any]:
     limit = max(1, min(limit, PAGE_MAX))
     needs_decorations = bool(used or stale or area) or sort == "used"
     dec = decorations(project_id, block=needs_decorations)
@@ -231,6 +232,12 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
         if skip != "status" and status and status != "all" and r["status"] != status:
             return False
         if skip != "importance" and min_importance and int(r.get("importance") or 0) < min_importance:
+            return False
+        # `reviewed_at` is NULL for every row that predates the column and for anything auto-approved, which is
+        # precisely the set a second look wants. Not faceted: it is a scope, not a dimension to browse by.
+        if reviewed == "no" and r.get("reviewed_at") is not None:
+            return False
+        if reviewed == "yes" and r.get("reviewed_at") is None:
             return False
         if skip != "source" and source_id and r.get("source_id") != source_id:
             return False
@@ -261,6 +268,9 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
         "source": Counter((r.get("source_id") or "", r["source_title"]) for r in rows if passes(r, "source")),
     }
     keyf = {"importance": lambda r: (-int(r.get("importance") or 0), -(r.get("created_at") or 0)),
+            # weakest first -- what a second look wants, and the exact reverse of the default. Ties break
+            # oldest-first so a long pass moves steadily through the backlog rather than re-treading new rows.
+            "weakest": lambda r: (int(r.get("importance") or 0), (r.get("created_at") or 0)),
             "newest": lambda r: -(r.get("created_at") or 0),
             "source": lambda r: (r["source_title"].lower(), -int(r.get("importance") or 0)),
             "used": lambda r: (-(r["used"]["plan"] * 3 + r["used"]["chat"] + (2 if r["used"]["claim_counts"] else 0)), -int(r.get("importance") or 0))}.get(sort) or (lambda r: (-int(r.get("importance") or 0),))

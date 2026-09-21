@@ -216,6 +216,7 @@
       </section>
       <div class="row" style="gap:8px;flex-wrap:wrap;margin:14px 0 6px;align-items:center" id="fbBar">
         <button class="small" onclick="fbFocus()" title="Go through the findings on this page one at a time — Keep files it as approved, Lose as dismissed. The list, the filters and the bulk buttons all still work; this is just a calmer way to read them.">◉ Review one at a time</button>
+        <button class="small ghost" id="fbSecondBtn" onclick="fbSecondLook()" title="Re-check the approvals nobody actually ruled on: lowest importance first, only ones the plan, chat and Claims are not using, capped at 10% of your approved findings. Nothing you dismiss here can leave a Claim without evidence.">↻ Second look</button>
         <input id="fbQ" placeholder="Search findings…" oninput="debounce(loadWorkbench)" style="flex:1;min-width:160px">
         <div class="row" id="fbStatusChips" style="gap:4px;flex-wrap:wrap"></div>
         <select id="fbStatus" hidden><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>

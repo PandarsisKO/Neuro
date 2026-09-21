@@ -1286,15 +1286,72 @@ globalThis.splitFinding = function splitFinding(n) {
 // It walks the page ON SCREEN, filters included, rather than re-querying for everything. Reviewing "the 100
 // findings I am looking at" is a promise the interface can keep; reviewing "all 17,193" is not, and silently
 // widening the set beyond what the filters say would be the same class of lie as the pool's truncated count.
+// Second look (Kyle, 2026-09-21: "I have BULK approved the majority of the approved findings, can we load the
+// lower confidence ones into the keep vs lose tool so I can get a second look at them? maybe like 10% max").
+//
+// The set is defined narrowly on purpose, because a second look at APPROVED findings can take evidence away:
+//
+//   status=approved   - the ones already counting as evidence in chat, exports, the plan and Claims
+//   reviewed=no       - never ruled on deliberately. `reviewed_at` is NULL for every row predating the column
+//                       and for anything bulk-approved, which is exactly the population Kyle is describing.
+//                       It also means a pass can be resumed: whatever he rules on here stops coming back.
+//   used=never        - nothing in the plan, a chat answer or a Claim rests on it. THIS is the safety property.
+//                       Dismissing a finding that evidence depends on can leave a Claim with nothing behind it
+//                       (see retire.py's `claims_losing_all_evidence`), and a fast K/L pass is the worst place
+//                       to discover that. Excluding used findings means no Lose here can break anything.
+//   sort=weakest      - lowest importance first: the least defensible approvals, reviewed while attention is
+//                       freshest.
+//
+// Capped at 10% of the approved total, as asked, and the cap is stated rather than silently applied.
+globalThis.fbSecondLook = async function fbSecondLook() {
+  const btn = $('#fbSecondBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Finding them…'; }
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = '↻ Second look'; } };
+  let r;
+  try {
+    const p = new URLSearchParams({ status: 'approved', reviewed: 'no', used: 'never', sort: 'weakest', limit: 500 });
+    r = await api(`/api/projects/${state.project.id}/findings?` + p);
+  } catch (e) { restore(); toast('Could not load the second-look set: ' + (e.message || e), 'err'); return; }
+  restore();
+  const approvedTotal = ((r.facets || {}).status || {}).approved || 0;
+  const cap = Math.max(1, Math.floor(approvedTotal * 0.10));
+  const rows = (r.findings || []).slice(0, cap);
+  if (!rows.length) {
+    toast(r.total ? 'Nothing unreviewed left that nothing depends on' : 'No approved findings to re-check');
+    return;
+  }
+  // Say what was left out and why, in all three directions: the cap, the page, and the safety exclusion.
+  const pageCapped = r.total > (r.findings || []).length;
+  const capped = r.total > rows.length;
+  fbFocusOpen(rows, {
+    title: 'Second look — weakest approvals first',
+    subtitle: `${rows.length} of ${r.total} approved findings nobody has ruled on and nothing is using`
+      + (capped ? `, capped at 10% of your ${approvedTotal} approved` : '')
+      + (pageCapped ? ' (500 fetched at a time)' : '')
+      + `. Lowest importance first. Anything the plan, a chat answer or a Claim relies on is excluded, so nothing `
+      + `you Lose here can leave a Claim without evidence. Keep files it as approved and marks it reviewed, so it `
+      + `will not come back; Lose dismisses it, which is reversible.`,
+  });
+}
+
 globalThis.fbFocus = function fbFocus() {
   const rows = FB.rows || [];
   if (!rows.length) { toast('Nothing to review here'); return; }
-  const impClass = v => (v >= 4 ? 'hi' : v >= 3 ? 'mid' : '');   // importance is 1-5, NOT the 0-100 relevance scale
-  focusOpen({
-    kind: 'findings',
+  fbFocusOpen(rows, {
     title: 'Findings — one at a time',
     subtitle: `${rows.length} on this page, in the order shown. Keep files it as approved, Lose as dismissed; `
             + `anything you do not judge is left exactly as it is. Nothing is deleted either way.`,
+  });
+}
+
+// One opener for both entry points: the card, the scale, the submit path and the refresh are identical whether
+// the rows came from the page on screen or from the second-look query, and only the framing differs.
+globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
+  const impClass = v => (v >= 4 ? 'hi' : v >= 3 ? 'mid' : '');   // importance is 1-5, NOT the 0-100 relevance scale
+  focusOpen({
+    kind: 'findings',
+    title: opts.title,
+    subtitle: opts.subtitle,
     scoreTitle: 'importance, 1-5', scoreWord: 'importance',
     scoreClass: impClass,
     items: rows.map(n => {

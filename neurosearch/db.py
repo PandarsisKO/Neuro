@@ -900,6 +900,12 @@ MIGRATIONS = [
     ("project_notes", "source_id", "ALTER TABLE project_notes ADD COLUMN source_id TEXT"),
     ("project_notes", "importance", "ALTER TABLE project_notes ADD COLUMN importance INTEGER"),
     ("project_notes", "title", "ALTER TABLE project_notes ADD COLUMN title TEXT"),
+    # 2026-09-21: when a status was last set DELIBERATELY. Nothing recorded this, so "approved" could not be
+    # told apart from "defaulted to approved" -- the column itself arrived with DEFAULT 'approved', and Kyle
+    # bulk-approved most of the rest. 17,193 approved findings was therefore not 17,193 judgements, and a
+    # second-look pass had no way to know where it had already been. NULL means exactly that: never explicitly
+    # ruled on. Every existing row starts NULL, which is the truthful answer for all of them.
+    ("project_notes", "reviewed_at", "ALTER TABLE project_notes ADD COLUMN reviewed_at REAL"),
     ("sources", "summary", "ALTER TABLE sources ADD COLUMN summary TEXT"),
     ("sources", "substance", "ALTER TABLE sources ADD COLUMN substance INTEGER"),
     ("project_sources", "suggested_at", "ALTER TABLE project_sources ADD COLUMN suggested_at REAL"),
@@ -4469,9 +4475,12 @@ def note_counts(project_id: str) -> dict[str, int]:
 
 
 def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:
+    """The one door every status change goes through, so stamping `reviewed_at` here covers every path -- the
+    drawer, the workbench, bulk, focus review and the sweeps -- and cannot be bypassed by adding a caller."""
     with tx() as conn:
-        conn.execute("UPDATE project_notes SET status=?, created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?",
-                     (status, status, now(), note_id))
+        conn.execute("UPDATE project_notes SET status=?, reviewed_at=?, "
+                     "created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?",
+                     (status, now(), status, now(), note_id))
         return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
 
 
