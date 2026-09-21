@@ -198,6 +198,16 @@ CREATE TABLE IF NOT EXISTS project_notes (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS project_excludes (
+    id         INTEGER PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,         -- keyword | creator -- what `term` is matched against
+    term       TEXT NOT NULL,         -- keyword: substring matched case-insensitively against candidate title/description/topic
+                                       -- creator: exact creator/channel name, case-insensitive
+    reason     TEXT,                  -- why, in the user's own words -- shown back when a candidate is filtered
+    created_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS project_facts (
     id         INTEGER PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -4654,6 +4664,35 @@ def list_facts(project_id: str) -> list[dict[str, Any]]:
 def delete_fact(fact_id: int) -> None:
     with tx() as conn:
         conn.execute("DELETE FROM project_facts WHERE id=?", (fact_id,))
+
+
+# Discovery exclude list (item 2, 2026-09-20): a short, explicit "not interested in" list the user controls per
+# project, separate from the free-text brief. `project_facts` already had a `rejected` kind for this same intent
+# (Kyle rejected laundromats there twice -- ids 8 and 19 on "buying businesses" -- retiring 84 sources at the
+# time) but nothing ever READ project_facts to filter candidates; it was pure history, not an active rule. This
+# table is deliberately narrow and mechanical (kind + term, nothing else) so `candidates._excluded_by` can check
+# every candidate against it cheaply, in Python, with no model call -- unlike the brief, which is free text an AI
+# has to interpret.
+def add_exclude(project_id: str, kind: str, term: str, reason: str | None = None) -> dict[str, Any]:
+    assert kind in ("keyword", "creator")
+    with tx() as conn:
+        existing = conn.execute("SELECT id FROM project_excludes WHERE project_id=? AND kind=? AND lower(term)=lower(?)",
+                                 (project_id, kind, term)).fetchone()
+        if existing:
+            return dict(conn.execute("SELECT * FROM project_excludes WHERE id=?", (existing["id"],)).fetchone())
+        cur = conn.execute("INSERT INTO project_excludes (project_id, kind, term, reason, created_at) VALUES (?,?,?,?,?)",
+                           (project_id, kind, term, reason, now()))
+        return dict(conn.execute("SELECT * FROM project_excludes WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+def list_excludes(project_id: str) -> list[dict[str, Any]]:
+    return [dict(r) for r in connect().execute(
+        "SELECT * FROM project_excludes WHERE project_id=? ORDER BY created_at", (project_id,)).fetchall()]
+
+
+def delete_exclude(exclude_id: int) -> None:
+    with tx() as conn:
+        conn.execute("DELETE FROM project_excludes WHERE id=?", (exclude_id,))
 
 
 def _sha(*parts: Any) -> str:
