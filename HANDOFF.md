@@ -8080,3 +8080,53 @@ the sandbox's 180-second call ceiling and not of the test.
 in `skipped_low_relevance`; A2 `backfill_descriptions.py --limit 500` for the ~408 still without one; A3 the
 two environmental tests; C1 a fresh AD4B blind review against the new scores, which is the only way to know
 whether the 77% false-rejection rate actually moved.
+
+## E1 + E2: a live rate, and what the superseded version said — 2026-09-21
+
+Both of section E's items, neither needing the live database.
+
+**E2 — Wayback (`neurosearch/wayback.py`, and `works.superseded_text` / `works.rescue_link`).** `works.py`
+already knows when a document has been superseded — `ensure_version` flips the old version's status the moment
+a successor arrives, and `version_freshness` hands G6 a typed verdict. What it could never do is show what the
+superseded version SAID. A finding citing SOP 50 10 7 is not wrong, it is dated, and the page now serves 50 10 8.
+
+`superseded_text(source_id)` returns the last capture taken strictly BEFORE the first successor's effective
+date. **Strictly before, not nearest, and that is the whole design.** The archive's "closest" capture to an
+effective date is frequently the one just AFTER it — which is the new text, returned confidently as though it
+were the old. Silently answering with the successor's own words would be worse than answering nothing, because
+it reads like an answer. Every other failure mode — never archived, an outage, a rate limit, a `document`
+source whose URL is a local path that was never on the public web — returns None rather than raising: an
+archive outage is not a reason to call a finding unsupported. `rescue_link(url)` is the duller and far more
+common case, a 404'd citation to its nearest capture.
+
+Free, no key, no quota. It does not SAVE pages to the archive (that is a write to someone else's service and a
+separate decision) and it does not diff captures (`works.py` has its own change vocabulary; a second one here
+is exactly the drift the ratchets exist to catch). Not wired to a UI — the functions exist and are tested; a
+surface that shows "here is what it said then" is a separate, smaller piece of work.
+
+**E1 — FRED (`neurosearch/fred.py`).** Claims and Evidence Targets demand that a claim be sourced, and for a
+rate claim the only sourcing available was a video: the app could ground "7(a) is prime plus a spread" in
+someone saying so in 2023, and could ground "prime is X" in nothing at all. That is backwards — the policy is
+the durable half and the number is the perishable half.
+
+`prime()`, `observation(series, on=...)`, `rates([...])`, `max_rate(spread)`. Two deliberate refusals:
+
+- **FRED writes `.` for a day with no observation** — a weekend, a bank holiday. Read as a number that is 0.0,
+  and a prime rate of zero is not something anything downstream would catch. Every read walks backwards to the
+  most recent real value, and `observation(on=...)` walks backwards only, so the rate "in effect on" a date is
+  never a later one.
+- **It defines no SBA spread.** The allowable spread is SOP 50 10's, and SOPs get superseded — a constant in
+  this file would be a second, unversioned copy of a document `works.py` exists to version. `max_rate(spread,
+  spread_source=...)` takes it, shows the arithmetic, and says in the result whether the spread was sourced.
+  A test asserts the module contains no spread constant, so this cannot quietly regress.
+
+Key-gated exactly like `youtube_api`: without `NEUROSEARCH_FRED_API_KEY` nothing calls it and the app is
+unchanged. **Kyle needs a free key** (https://fredaccount.stlouisfed.org/apikeys, no card, about a minute) —
+the checklist's E1 entry has the exact `.env` line and the one-line check.
+
+**Tests:** `tests/test_e1_fred.py` (19) and `tests/test_e2_wayback.py` (25), plus `test_core`, `test_s60_field_map`,
+`test_s50_design_drift`, `test_k8_works`, `test_k9_community`, `test_m1_epub`, `test_s55_reservoir_rescan` and
+`test_chr1_conversation_delta` re-run green after the `works.py` and `config.py` changes.
+
+**What is left on the checklist is now only what needs the live database or Kyle's judgement:** A1, A2, A3, C1,
+C2, D1, D3 — plus the live channel check for B1, and a UI for E2 if it is wanted.

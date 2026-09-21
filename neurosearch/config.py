@@ -102,6 +102,9 @@ class Settings:
     # YouTube Data API v3 (optional): batches 50 videos per 1 quota unit against a 10,000/day free allowance,
     # where yt-dlp costs one paced request per video. Absent, everything falls back to yt-dlp unchanged.
     youtube_api_key: str | None = field(default_factory=lambda: _env("NEUROSEARCH_YOUTUBE_API_KEY"))
+    # FRED (optional, free key): prime and Treasury rates, so a rate claim can be grounded in today's number
+    # rather than in whatever a 2023 video said. Absent, `fred.available()` reports off and nothing calls it.
+    fred_api_key: str | None = field(default_factory=lambda: _env("NEUROSEARCH_FRED_API_KEY"))
     yt_delay: float = field(default_factory=lambda: float(_env("NEUROSEARCH_YT_DELAY", "4") or 4))
     yt_backoff_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_YT_BACKOFF_MINUTES", "20") or 20))
     # bulk defaults for channels/playlists: only videos newer than this many years, and at most this many

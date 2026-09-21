@@ -113,12 +113,39 @@ but it makes the index uniform. — *Claude Code*
 
 ## E. Optional, tied to existing features rather than to a platform
 
-**E1. FRED** (free key) for prime and Treasury rates. SBA 7(a) is prime-linked and Kyle's whole thesis turns on
-deal math, but a rate claim can currently only be grounded in a video from 2023. Claims and Evidence Targets
-already demand sourcing; this gives them a live number. — *Cowork*
+**E1. ~~FRED~~ CLIENT DONE 2026-09-21 — needs a free key before it does anything.** `neurosearch/fred.py`:
+`prime()`, `observation(series, on=...)`, `rates([...])`, `max_rate(spread)`. Key-gated exactly like
+`youtube_api` — without `NEUROSEARCH_FRED_API_KEY`, `available()` reports off and nothing calls it, so the app
+is unchanged until Kyle adds one.
 
-**E2. Wayback Machine** (free, no key) for `works.py`, which already marks documents superseded but cannot show
-what the superseded version said. Also recovers dead links in older findings. — *Cowork*
+Two things it deliberately does NOT do. It does not read FRED's `.` (a weekend, a bank holiday) as a number —
+that would make a prime rate of 0.0, which nothing downstream would catch; every read walks back to the most
+recent real value. And it does not know the SBA spread: that is SOP 50 10's, and SOPs get superseded, so a
+constant here would be a second unversioned copy of a document `works.py` exists to version. `max_rate(spread,
+spread_source=...)` takes it and says in the result where it came from. 19 tests. — *Cowork*
+
+**Kyle: the key.** Free, no card, about a minute — sign in at https://fredaccount.stlouisfed.org/apikeys,
+request an API key, then add the line to `.env` (git-ignored) exactly as the YouTube one was added:
+
+```
+NEUROSEARCH_FRED_API_KEY=your-key-here
+```
+
+Then, to check it: `.venv/bin/python -c "from neurosearch import fred; print(fred.available()); print(fred.prime())"`
+
+**E2. ~~Wayback Machine~~ DONE 2026-09-21.** `neurosearch/wayback.py` plus two functions in `works.py`:
+`superseded_text(source_id)` returns the last capture taken strictly BEFORE the successor's effective date —
+the text a dated finding was actually true of — and `rescue_link(url)` turns a 404'd citation into the nearest
+capture. No key, no quota, nothing to configure; it works now.
+
+The design point worth keeping: it uses `before()`, never `nearest()`. The archive's closest capture to a
+version's effective date is frequently the one just AFTER it — which is the NEW text, returned confidently as
+though it were the old. That is worse than returning nothing, because it reads like an answer. Every failure
+mode (never archived, outage, rate limit, a local uploaded copy that was never on the public web) returns None
+rather than raising, because an archive outage is not a reason to call a finding unsupported. 25 tests.
+
+Not wired to any UI yet — the functions exist and are tested; a surface that shows "here is what it said then"
+is a separate, smaller piece of work. — *Cowork*
 
 Explicitly NOT recommended after checking the data: the Podcast Index API. Free and it exposes publisher
 transcripts, but Kyle has **zero** podcast-platform sources — 1,471 of 1,616 are YouTube. Revisit only if that

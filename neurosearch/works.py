@@ -355,6 +355,72 @@ def version_freshness(source_id: str) -> dict[str, Any] | None:
             "change_note": next((n.get("change_note") for n in newer if n.get("change_note")), None)}
 
 
+# ---------------------------------------------------------------- what the superseded version said (E2)
+
+def superseded_text(source_id: str) -> dict[str, Any] | None:
+    """`version_freshness` can say a source's evidence is out of date. This says what it was evidence OF.
+
+    The app already knows an SOP 50 10 7 page now serves 50 10 8 -- but the finding quoting it is not wrong, it
+    is dated, and there has been no way to see the text it was true of. The last Wayback capture taken strictly
+    BEFORE the successor's effective date is that text. Returns None, never raises, when the lineage is fresh,
+    the version carries no usable URL, the successor has no effective date to cut on, or the archive has no
+    capture -- every one of those is an absence of evidence, and none of them is worth failing a caller over.
+
+    Deliberately returns the capture's URL and metadata, not its content: fetching and quoting the page is the
+    caller's decision and goes through the same `safe_fetch` boundary as any other page.
+    """
+    fresh = version_freshness(source_id)
+    if not fresh or fresh.get("relation") in (None, "none"):
+        return None
+    newer = newer_versions(fresh["version_id"])
+    # the FIRST successor is the one whose arrival ended this version's life; a later one is beside the point
+    cut = next((n.get("effective_date") or n.get("year") for n in newer if n.get("effective_date") or n.get("year")), None)
+    if not cut:
+        return None
+    url = _archivable_url(source_id, fresh["work_id"], fresh["version_id"])
+    if not url:
+        return None
+    from . import wayback
+    try:
+        cap = wayback.before(url, str(cut))
+    except wayback.WaybackUnavailable as e:
+        log.info("wayback lookup for %s skipped: %s", url, e)
+        return None
+    if not cap:
+        return None
+    return {"work_id": fresh["work_id"], "version_id": fresh["version_id"], "relation": fresh["relation"],
+            "superseded_by": newer[0]["label"], "effective_date": cut, "url": url, "capture": cap}
+
+
+def _archivable_url(source_id: str, work_id: str, version_id: str) -> str | None:
+    """The public URL most likely to have been captured: the version's own official manifestation first, then
+    the source's. A `document` platform source is an uploaded copy whose URL is local to this machine and has
+    never been on the public web, so it is skipped rather than looked up and missed."""
+    rows = [m for m in manifestations_of(work_id) if m.get("url")]
+    exact = [m for m in rows if m.get("version_id") == version_id and m.get("form") == "official"]
+    official = [m for m in rows if m.get("form") == "official"]
+    mine = [m for m in rows if m.get("source_id") == source_id]
+    for group in (exact, official, mine, rows):
+        for m in group:
+            u = str(m.get("url") or "")
+            if u.startswith(("http://", "https://")):
+                return u
+    return None
+
+
+def rescue_link(url: str, *, at: str | None = None) -> dict[str, Any] | None:
+    """A dead citation -> the nearest archived capture, or None. Never raises: a finding whose evidence moved is
+    worth keeping, and an archive outage is not a reason to decide otherwise."""
+    if not str(url or "").startswith(("http://", "https://")):
+        return None
+    from . import wayback
+    try:
+        return wayback.rescue(url, at=at)
+    except wayback.WaybackUnavailable as e:
+        log.info("wayback rescue for %s skipped: %s", url, e)
+        return None
+
+
 # ---------------------------------------------------------------- indexing sources and citations ($0)
 
 def _form_for(src: dict[str, Any], ident: dict[str, Any] | None = None) -> str:
