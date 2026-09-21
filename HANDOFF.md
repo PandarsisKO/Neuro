@@ -8458,3 +8458,35 @@ run could not have recovered.
    is a ceiling checked before each call (`rescore_candidates.py:141` and `:159`), not a target or a slice. The
    whole job costs $0.60 filtered, $2.12 unfiltered; neither reaches $3, so nothing is capped and nothing
    should be.
+
+## Focus review for findings — ergonomics only, and said so — 2026-09-21
+
+Kyle: *"I want the ability to also do keep vs lose on findings, we still need the normal functions we currently
+have as well, like bulk approve or deny, but I want a more pleasant way to review these as well. right now its
+just a huge wall of information."*
+
+This is D2's component on a new surface, built for a different reason than D2 was closed for. D2 asked whether
+a findings reviewer would TEACH the app anything; under Kyle's D1 answer it would not, and that is still true —
+a dismissed finding counts zero and `creator_yield` filters it out. Being pleasant to use turns out to be a
+sufficient reason on its own, so it is built and deliberately NOT sold as a training signal.
+
+**Everything that was there is still there.** The list, the filters, the sort, the status chips, bulk
+approve/dismiss and the low-value sweep are untouched — a test asserts each one. This is an additional door.
+
+**Three ways it could have quietly misled, each closed:**
+- Findings are scored 1-5 (importance), not 0-100 (relevance). `scClass`'s 60/30 thresholds would have painted
+  every finding red — the same class of bug as the pool showing `potential` under a label that said relevance.
+  `focusOpen` now takes a `scoreClass`, the source surfaces keep `scClass` by default, and the badge says
+  "importance, 1-5".
+- A finding's source rendered under the built-in label "creator" would be wrong in the literal sense, so
+  `focusOpen` now accepts a caller-supplied `facts` row; findings supply source / area / current status.
+- It walks the page ON SCREEN, filters included, and says so in the subtitle. Silently widening to all 17,193
+  findings would be a promise the interface cannot keep.
+
+Also: the supporting quote is rendered as a quote rather than as the small italic aside `note` uses — for a
+finding the quote is the evidence being judged, not a footnote about it. Keep files as `approved`, Lose as
+`dismissed`, both through the one existing `/api/notes/bulk-status` door; anything unjudged is left alone, and
+the panel says which verdict maps to which status rather than leaving Keep/Lose and Approve/Dismiss as two
+vocabularies for one action.
+
+**Tests:** `tests/test_s78_findings_focus.py` (16). Suite: **2,308 passed, 0 failed.**

@@ -1061,7 +1061,7 @@ globalThis.openSourceSuggestions = async function openSourceSuggestions(sid, sta
 }
 globalThis.clearFindingSource = function clearFindingSource() { FB.source = null; FB.offset = 0; loadWorkbench(); }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
-globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false };
+globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false, rows: [] };
 globalThis.FGRP = { collapsed: new Set() };   // remembers which source-groups the user closed by hand (title -> closed)
 // C1: DESIGN.md's Workbench-row rule caps a normal row at two visible badges; this row used to show up to
 // five (plan/chat/claim/stale/area). The three "where this got used" signals are really one fact — whether
@@ -1102,6 +1102,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (!FB.loaded) $('#notes').innerHTML = listState('loading', { label: 'Loading findings…' });
   let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
   FB.loaded = true;
+  FB.rows = r.findings || [];        // what focus review walks: exactly the page on screen, filters and all
   // area facet options (keep the current choice)
   const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
@@ -1272,6 +1273,58 @@ globalThis.splitFinding = function splitFinding(n) {
 // body, a wrapping badge/area/citation line, and a quote toggle. It's now two lines — title (truncating), then
 // body (truncating) with its badges and source trailing on the same line — with area, the full citation list and
 // the quote moved into a click-to-open detail strip instead of always being on screen.
+// Focus review for findings (Kyle, 2026-09-21: "right now it's just a huge wall of information").
+//
+// WHAT THIS IS AND IS NOT. On sources, one-at-a-time review exists because a deliberate Lose is a real signal
+// at full weight -- it feeds creator_verdict and changes what gets surfaced next. On FINDINGS it does not:
+// Kyle decided (D1, 2026-09-21) that a dismissed finding counts zero, and creator_yield filters
+// `COALESCE(status,'') <> 'dismissed'` accordingly. So this is ergonomics, nothing more, and it is not sold as
+// anything more: it is a better way to get through a backlog, not a way to teach the app. The bulk controls,
+// the list, the filters and the sweeps all stay exactly as they were -- this is an additional door, not a
+// replacement for one.
+//
+// It walks the page ON SCREEN, filters included, rather than re-querying for everything. Reviewing "the 100
+// findings I am looking at" is a promise the interface can keep; reviewing "all 17,193" is not, and silently
+// widening the set beyond what the filters say would be the same class of lie as the pool's truncated count.
+globalThis.fbFocus = function fbFocus() {
+  const rows = FB.rows || [];
+  if (!rows.length) { toast('Nothing to review here'); return; }
+  const impClass = v => (v >= 4 ? 'hi' : v >= 3 ? 'mid' : '');   // importance is 1-5, NOT the 0-100 relevance scale
+  focusOpen({
+    kind: 'findings',
+    title: 'Findings — one at a time',
+    subtitle: `${rows.length} on this page, in the order shown. Keep files it as approved, Lose as dismissed; `
+            + `anything you do not judge is left exactly as it is. Nothing is deleted either way.`,
+    scoreTitle: 'importance, 1-5', scoreWord: 'importance',
+    scoreClass: impClass,
+    items: rows.map(n => {
+      const c = (n.citations || [])[0] || {};
+      const { title, body } = splitFinding(n);
+      return {
+        id: n.id,
+        title,
+        description: body,
+        relevance: n.importance ?? null,
+        quote: c.snippet || '',
+        url: c.link || '',
+        note: c.title ? `from ${c.title}${c.timestamp ? ' @ ' + c.timestamp : ''}` : '',
+        facts: [
+          n.source_title ? ['source', n.source_title] : null,
+          n.area ? ['area', n.area] : null,
+          n.status ? ['now', n.status] : null,
+        ].filter(Boolean),
+      };
+    }),
+    onSubmit: async ({ keep, drop }) => {
+      // the same /api/notes/bulk-status every other status change goes through -- there is no second door
+      if (keep.length) await post('/api/notes/bulk-status', { note_ids: keep.map(Number), status: 'approved' });
+      if (drop.length) await post('/api/notes/bulk-status', { note_ids: drop.map(Number), status: 'dismissed' });
+      toast(`${keep.length} approved · ${drop.length} dismissed`);
+      loadWorkbench(false);
+    },
+  });
+}
+
 globalThis.findingCard = function findingCard(n, actions) {
   const c = (n.citations || [])[0];
   const { title, body } = splitFinding(n);

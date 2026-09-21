@@ -26,6 +26,10 @@ globalThis.focusOpen = function focusOpen(opts) {
     // is not a nicety here -- a score that claims to be something it isn't is the bug this whole line of work
     // has been about
     scoreTitle: opts.scoreTitle || 'score', scoreWord: opts.scoreWord || 'score',
+    // A surface whose score is not on the 0-100 relevance scale must say so. Findings carry importance 1-5,
+    // and scClass's 60/30 thresholds would paint every one of them red -- the same class of lie as the pool
+    // showing `potential` in the slot labelled relevance (fixed 2026-09-20).
+    scoreClass: opts.scoreClass || scClass,
     submitting: false,
     // scores are shown by default: this is work, not a blind measurement — but they anchor, so it toggles.
     // Storage can throw outright (private window, blocked site data), so the default must survive that.
@@ -97,10 +101,10 @@ globalThis.focusRender = function focusRender() {
     document.body.appendChild(layer);
   }
   const score = (it.relevance != null && F.showScores)
-    ? `<span class="fsc ${scClass(it.relevance)}" title="${esc(F.scoreTitle)}">${it.relevance}</span>` : '';
+    ? `<span class="fsc ${F.scoreClass(it.relevance)}" title="${esc(F.scoreTitle)}">${it.relevance}</span>` : '';
   const why = (it.relevance_why && F.showScores)
     ? `<div class="fwhy">${esc(F.scoreWord)}: ${esc(it.relevance_why)}</div>` : '';
-  const facts = [
+  const facts = it.facts || [
     it.creator ? ['creator', it.creator] : null,
     it.kind_label ? ['kind', it.kind_label] : null,
     it.duration ? ['length', fmt(it.duration)] : null,
@@ -125,6 +129,7 @@ globalThis.focusRender = function focusRender() {
       <div class="fx-facts">${facts.map(([k, v]) => `<span class="fx-f">${esc(k)} <b>${esc(v)}</b></span>`).join('')}</div>
       ${it.description ? `<div class="fx-desc">${esc(String(it.description).slice(0, 700))}</div>` : ''}
       ${why}
+      ${it.quote ? `<div class="fx-quote">“${esc(String(it.quote).slice(0, 600))}”</div>` : ''}
       ${it.note ? `<div class="fwhy">${esc(it.note)}</div>` : ''}
       ${it.access_gate ? `<div class="fx-gate">🔒 ${esc(it.access_gate === 'members_only' ? 'members-only — cannot be downloaded without your own channel membership' : it.access_gate)}</div>` : ''}
     </div>
