@@ -8224,3 +8224,47 @@ that `754d424` moved — the ranking prompt hash (`f38f9a9c` → `c33f6c4c`, 3 t
 off by exactly +11,598, which is one prompt change surfacing in two independent fixtures rather than two drifts.
 The sixth is `test_s50_design_drift` at 30 colour literals against a ceiling of 28. CLAUDE.md treats a frozen
 number as a decision, so re-freezing belongs to the change that moved it, not to this verification run.
+
+## I was wrong about both "environmental" failures — 2026-09-21
+
+A3 existed to test a claim I made twice: that `test_j3_fallback` and `test_l05_sample_findings` fail only in the
+Cowork VM and would pass on the Mac. The run came back and they failed there too. Neither was environmental.
+Recording the misdiagnosis as well as the fix, because the reasoning error is the more useful artifact: I
+labelled both from the module names and the shape of the environment without ever reading the assertion text.
+`test_l05` turned out to run entirely against an in-memory SQLite connection — it could not have been about the
+live database at any point, and one `pytest` invocation would have shown me that.
+
+**`test_j3_fallback` — mine, now fixed.** `release.py:444` carries a THIRD copy of the router-equivalence
+frozen total. Mission A's `reconsider_creator` chat tool moved `answer` from 200052 to 211650; on 2026-09-20 I
+re-froze the two copies in `test_core.py` and missed this one, so the suite went green while `release_check`
+kept failing against the old figure and returned FAIL with no sub-check named in the test output. That is the
+exact failure mode a release gate exists to prevent and must not cause. Both sites are now 211650
+(`release.py:444` and `tests/test_j3_fallback.py:200`), with the measurement recorded inline as `test_core`
+already does: removing the tool schema alone gives 204306 (-7344), removing its guidance block from
+`PROJECT_BLOCK` as well returns exactly 200052 (-4254), and call counts did not move. `test_j3_fallback` is 14
+passed.
+
+**`test_l05_sample_findings` — Codex's, deliberately NOT fixed by me.** `tools/sample_findings.py` is modified
+and uncommitted in Codex's working tree, and the change is right: `E5_COHORT`'s four Haiku entries now carry
+the dated `claude-haiku-4-5-20251001`, because that is what `project_notes` actually stores for API-resolved
+Haiku findings, and Codex's own comment records verifying 19 and 25 matching rows. `tests/test_l05_sample_findings.py`
+is unmodified and still asserts the bare alias at lines 34-35, so Codex's own fixture now builds rows the test
+rejects:
+
+```
+assert {v["model"] for v in key.values()} == {"claude-haiku-4-5", "claude-sonnet-5"}
+assert sum(v["model"] == "claude-haiku-4-5" for v in key.values()) == 20
+```
+
+Both need `claude-haiku-4-5-20251001`. I left it alone on purpose: finishing another agent's half-applied change
+is how two agents corrupt each other's work, and Codex will almost certainly update the test when it commits.
+It is a two-line change if Kyle would rather it were done now.
+
+**Suite after the `release.py` fix:** 2,277 passed, 1 failed — and that one is the Codex item above. The "two
+known environmental failures" that several entries above refer to were never two, and were never environmental.
+
+**Also corrected:** Claude Code's full-suite run this morning reported 8 failures and attributed the frozen-value
+drift to commit `754d424`. That run predated the commits: `754d424` CONTAINS the re-frozen `test_core.py`, and
+the design-drift ceiling it flagged (30 > 28) was resolved in the same commit by tokenising three hand-written
+scrim colours and lowering the ceiling to 27. Five of those eight failures no longer exist. Its later,
+narrower run agrees — only `j3` and `l05` remained, which is what sent me to look at them properly.
