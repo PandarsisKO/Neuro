@@ -34,7 +34,13 @@ from .config import int_env
 STATES = ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "user_dismissed", "duplicate", "acquired", "needs_membership")
 GATE_LABEL = {"members_only": "members-only — join the channel to make it ingestible", "premium": "YouTube Premium only",
               "needs_auth": "needs a signed-in account"}
-LOW_RELEVANCE = 50            # a ranked score below this is a "skipped for low relevance", not a "skipped by the limit"
+# 2026-09-21: 50 -> 45, on the C1 blind review (evals/ad4b-sample-after-fix-judged.json). Kyle judged 40
+# auto-rejected candidates blind; the 45-49 band came back 10 of 10 KEPT. That is a cutoff problem, not a
+# ranking problem -- the ranker ordered those items correctly and placed them just under a line drawn in the
+# wrong spot. 10/10 is p ~ 0.001 against a 50% true rate, the one strong cell in the table; every other band is
+# n=10 at roughly +/-15 points, which is why the cutoff moves to 45 and no further. 35-44 came back 30% on 570
+# candidates -- a real judgement call, deliberately not taken here.
+LOW_RELEVANCE = 45            # a ranked score below this is a "skipped for low relevance", not a "skipped by the limit"
 CONTENT_TYPE = {"youtube": "video", "instagram": "post", "podcast": "podcast", "web": "page", "media": "video", "document": "document", "book": "book"}
 FIRSTHAND_LANGUAGE = re.compile(r"\b(i (?:own|run|built|used|tried|learned)|my experience|we (?:own|run|built|used))\b", re.I)
 

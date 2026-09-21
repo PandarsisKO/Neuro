@@ -52,18 +52,24 @@ def _state(pid: str, cid: str) -> str:
 
 def test_trusted_creator_gets_borderline_items_back(fresh):
     pid = _project()
-    # 3 kept (so `decided` clears DISPOSITION_MIN_DECISIONS and pos > 0), plus skips on both sides of the line
+    # 3 kept (so `decided` clears DISPOSITION_MIN_DECISIONS and pos > 0), plus skips on both sides of the line.
+    # 2026-09-21: expressed in terms of the CONSTANTS rather than 48/38/37. This fixture was written against a
+    # cutoff of 50 and broke the day C1's blind review moved it to 45 -- it was testing the arithmetic of the
+    # day rather than the boundary rule, which is the thing that should never change. Now the cutoff can move
+    # again and this still asks the only question worth asking: does the edge hold exactly where the constants
+    # put it?
+    floor = cand.LOW_RELEVANCE - cand.DISPOSITION_MAX_ADJUST      # the lowest score the nudge can still rescue
     ids = _seed(pid, "Acquiring Minds", [
         ("keep1", 80, "acquired"), ("keep2", 75, "acquired"), ("keep3", 70, "acquired"),
-        ("near1", 48, "skipped_low_relevance"),      # within 12 of the 50 cutoff -> back
-        ("near2", 38, "skipped_low_relevance"),      # exactly at the threshold    -> back
-        ("far1", 37, "skipped_low_relevance"),       # one point under it          -> stays
-        ("far2", 5, "skipped_low_relevance"),        # clearly off-topic           -> stays
+        ("near1", cand.LOW_RELEVANCE - 1, "skipped_low_relevance"),   # just under the cutoff       -> back
+        ("near2", floor, "skipped_low_relevance"),                    # exactly at the threshold    -> back
+        ("far1", floor - 1, "skipped_low_relevance"),                 # one point under it          -> stays
+        ("far2", 5, "skipped_low_relevance"),                         # clearly off-topic           -> stays
     ])
     res = cand.reconsider_creator(pid, "Acquiring Minds")
     assert res["status"] == "moved"
     assert res["moved"] == 2, res
-    assert {c["relevance"] for c in res["candidates"]} == {48, 38}
+    assert {c["relevance"] for c in res["candidates"]} == {cand.LOW_RELEVANCE - 1, floor}
     assert _state(pid, ids["near1"]) == "available"
     assert _state(pid, ids["near2"]) == "available"
     assert _state(pid, ids["far1"]) == "skipped_low_relevance"    # ADD-ONLY: the cutoff still means something
@@ -74,7 +80,8 @@ def test_trusted_creator_gets_borderline_items_back(fresh):
 def test_creator_name_matches_case_insensitively_and_partially(fresh):
     pid = _project()
     _seed(pid, "Acquisitions Anonymous Podcast", [
-        ("k1", 90, "acquired"), ("k2", 85, "acquired"), ("k3", 80, "acquired"), ("s1", 45, "skipped_low_relevance")])
+        ("k1", 90, "acquired"), ("k2", 85, "acquired"), ("k3", 80, "acquired"),
+        ("s1", cand.LOW_RELEVANCE - 1, "skipped_low_relevance")])
     res = cand.reconsider_creator(pid, "acquisitions anonymous")     # how a person actually types it in chat
     assert res["status"] == "moved" and res["moved"] == 1
     assert res["matched_creator"] == "Acquisitions Anonymous Podcast"
