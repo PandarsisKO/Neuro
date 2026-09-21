@@ -1,0 +1,480 @@
+{
+  "generated_at": "2026-09-20T14:32:45-0700",
+  "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+  "summary": {
+    "n_sources_compared": 20,
+    "total_spend_usd": 0.0,
+    "structured": {
+      "parse_success_rate": 1.0,
+      "mean_findings_per_window": 5.9,
+      "mean_verified_quotes": 5.2
+    },
+    "legacy": {
+      "parse_success_rate": 1.0,
+      "mean_findings_per_window": 5.6,
+      "mean_verified_quotes": 4.8
+    }
+  },
+  "rows": [
+    {
+      "source_id": "19ba4531bef6485b8782c60aace115a2",
+      "title": "Build & Sell n8n AI Agents (8+ Hour Course, No Code)",
+      "platform": "youtube",
+      "duration_s": 30398.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 6,
+        "substance": 22,
+        "verified_quotes": 6,
+        "elapsed_s": 48.37
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 6,
+        "substance": 18,
+        "verified_quotes": 5,
+        "elapsed_s": 85.51,
+        "raw_len": 2548
+      }
+    },
+    {
+      "source_id": "aeb63a39b36740af8afc8e91b8feb902",
+      "title": "Chapter 01 \u00b7 3-Day Challenge \u203a Day 2 - Due Diligence Decoded",
+      "platform": "media",
+      "duration_s": 5947.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 13,
+        "substance": 78,
+        "verified_quotes": 13,
+        "elapsed_s": 45.23
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 10,
+        "substance": 82,
+        "verified_quotes": 9,
+        "elapsed_s": 48.29,
+        "raw_len": 6542
+      }
+    },
+    {
+      "source_id": "648190fa0eec47a68e7f886426b080a4",
+      "title": "Buy then Build",
+      "platform": "book",
+      "duration_s": null,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 11,
+        "substance": 72,
+        "verified_quotes": 10,
+        "elapsed_s": 41.79
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 10,
+        "substance": 92,
+        "verified_quotes": 10,
+        "elapsed_s": 36.35,
+        "raw_len": 5439
+      }
+    },
+    {
+      "source_id": "98198f1f711f45b886c65f4de9c5bea9",
+      "title": "Gio Kyle and Zach first coaching call",
+      "platform": "file",
+      "duration_s": 4105.5,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 12,
+        "substance": 87,
+        "verified_quotes": 12,
+        "elapsed_s": 64.71
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 12,
+        "substance": 82,
+        "verified_quotes": 11,
+        "elapsed_s": 108.51,
+        "raw_len": 6659
+      }
+    },
+    {
+      "source_id": "559438c56dbb4be1b1116f8da76698b2",
+      "title": "If I Wanted to Go From $0 to $100M, I\u2019d Do This [FULL GUIDE]",
+      "platform": "youtube",
+      "duration_s": 15942.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 5,
+        "substance": 18,
+        "verified_quotes": 4,
+        "elapsed_s": 33.43
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 9,
+        "substance": 25,
+        "verified_quotes": 6,
+        "elapsed_s": 32.21,
+        "raw_len": 4825
+      }
+    },
+    {
+      "source_id": "5cd92d68b3f247009131879078b4ab0e",
+      "title": "Chapter 01 \u00b7 3-Day Challenge \u203a Day 3 - The Funding Playbook",
+      "platform": "media",
+      "duration_s": 3870.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 11,
+        "substance": 88,
+        "verified_quotes": 4,
+        "elapsed_s": 66.68
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 11,
+        "substance": 87,
+        "verified_quotes": 9,
+        "elapsed_s": 47.36,
+        "raw_len": 7001
+      }
+    },
+    {
+      "source_id": "a7851e19d6c14902a33f55869b429ab6",
+      "title": "Kyle and Gio talk to Jack with Acquisition Ace",
+      "platform": "file",
+      "duration_s": 3912.1199951171875,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 10,
+        "substance": 83,
+        "verified_quotes": 10,
+        "elapsed_s": 66.73
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 13,
+        "substance": 78,
+        "verified_quotes": 11,
+        "elapsed_s": 63.54,
+        "raw_len": 6760
+      }
+    },
+    {
+      "source_id": "a5af020553a94ef997f18563d0ce3555",
+      "title": "CLAUDE CODE FULL COURSE 4 HOURS: Build & Sell (2026)",
+      "platform": "youtube",
+      "duration_s": 15043.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 0,
+        "verified_quotes": 0,
+        "elapsed_s": 11.3
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 3,
+        "substance": 8,
+        "verified_quotes": 3,
+        "elapsed_s": 20.57,
+        "raw_len": 1839
+      }
+    },
+    {
+      "source_id": "382f4de670c34009b664e5b2c38d2c85",
+      "title": "FULL 3 HOUR COURSE: Automate Your ENTIRE Business With Claude (2026)",
+      "platform": "youtube",
+      "duration_s": 11644.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 5,
+        "substance": 8,
+        "verified_quotes": 5,
+        "elapsed_s": 44.98
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 7,
+        "substance": 25,
+        "verified_quotes": 4,
+        "elapsed_s": 47.72,
+        "raw_len": 4871
+      }
+    },
+    {
+      "source_id": "2d4b41e7586f426fb9a6b34946a7fad6",
+      "title": "The Man That Makes Millionaires: Turn $0 to $10k With This Step By Step Formula! Alex Hormozi",
+      "platform": "youtube",
+      "duration_s": 11637.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 7,
+        "substance": 22,
+        "verified_quotes": 7,
+        "elapsed_s": 40.6
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 3,
+        "substance": 12,
+        "verified_quotes": 1,
+        "elapsed_s": 45.78,
+        "raw_len": 1802
+      }
+    },
+    {
+      "source_id": "5b21d14acfea40d0a40216e81a080e97",
+      "title": "Reid Hoffman, LinkedIn Founder: It\u2019s Time To Quit Your Job When You Feel This! Trump Will Punish Me!",
+      "platform": "youtube",
+      "duration_s": 10333.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 15,
+        "verified_quotes": 0,
+        "elapsed_s": 14.2
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 3,
+        "substance": 8,
+        "verified_quotes": 2,
+        "elapsed_s": 25.04,
+        "raw_len": 1667
+      }
+    },
+    {
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "title": "Mike Rowe: How To Make $10,000 Per Month In 90 Days - No Degree Required!",
+      "platform": "youtube",
+      "duration_s": 9978.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 5,
+        "verified_quotes": 0,
+        "elapsed_s": 25.45
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 3,
+        "verified_quotes": 0,
+        "elapsed_s": 31.52,
+        "raw_len": 549
+      }
+    },
+    {
+      "source_id": "4079e0a8f7194b29ac0df9f16f58dba8",
+      "title": "What is an LLC Explained | Benefits, How to start, Taxes, Grants, Business Credit, etc. - 101 Guide",
+      "platform": "youtube",
+      "duration_s": 8605.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 10,
+        "substance": 28,
+        "verified_quotes": 7,
+        "elapsed_s": 39.11
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 5,
+        "substance": 45,
+        "verified_quotes": 5,
+        "elapsed_s": 58.87,
+        "raw_len": 2826
+      }
+    },
+    {
+      "source_id": "c2e147408c66447aaf7e249b20d4d4e2",
+      "title": "The SIMPLE (& Proven) Way To Earn $100,000 From Nothing! | The Money Making Experts",
+      "platform": "youtube",
+      "duration_s": 8490.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 7,
+        "substance": 20,
+        "verified_quotes": 7,
+        "elapsed_s": 63.14
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 9,
+        "substance": 45,
+        "verified_quotes": 9,
+        "elapsed_s": 41.99,
+        "raw_len": 3984
+      }
+    },
+    {
+      "source_id": "8dd795f411634ad8b3f33ed6b6007057",
+      "title": "The Money Making Expert: The 7,11,4 Hack That Turns $1 Into $10K Per Month! Daniel Priestley",
+      "platform": "youtube",
+      "duration_s": 7952.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 8,
+        "verified_quotes": 0,
+        "elapsed_s": 22.72
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 2,
+        "verified_quotes": 0,
+        "elapsed_s": 20.84,
+        "raw_len": 514
+      }
+    },
+    {
+      "source_id": "16d9bde422624a5d99303c78e8407df6",
+      "title": "Passive Income Expert: How To Make $10k Per Month In 90 Days!",
+      "platform": "youtube",
+      "duration_s": 7903.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 3,
+        "substance": 12,
+        "verified_quotes": 1,
+        "elapsed_s": 34.62
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 10,
+        "verified_quotes": 0,
+        "elapsed_s": 42.55,
+        "raw_len": 595
+      }
+    },
+    {
+      "source_id": "464ce599ccda41f7b2aebc5d947f6b0d",
+      "title": "No.1 Money Saving Experts: Do Not Buy A House! Putting Money In A Bank Makes You Poorer!",
+      "platform": "youtube",
+      "duration_s": 7796.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 3,
+        "verified_quotes": 0,
+        "elapsed_s": 19.9
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 2,
+        "substance": 8,
+        "verified_quotes": 2,
+        "elapsed_s": 19.62,
+        "raw_len": 1253
+      }
+    },
+    {
+      "source_id": "4fd2021b9bc247a2a8f219300e1aa562",
+      "title": "Nischa Shah: They\u2019re Lying To You About Buying a House! My 652510 Rule Built $200K Passive Income!",
+      "platform": "youtube",
+      "duration_s": 7741.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 2,
+        "substance": 8,
+        "verified_quotes": 2,
+        "elapsed_s": 17.48
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 0,
+        "substance": 8,
+        "verified_quotes": 0,
+        "elapsed_s": 17.11,
+        "raw_len": 450
+      }
+    },
+    {
+      "source_id": "9667158ba5e54abb8e9fc24e9ffcc043",
+      "title": "The Savings Expert: Passive Income Is A Scam! Post-Traumatic Broke Syndrome Is Controlling Millions!",
+      "platform": "youtube",
+      "duration_s": 7629.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 6,
+        "substance": 12,
+        "verified_quotes": 6,
+        "elapsed_s": 34.39
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 3,
+        "substance": 12,
+        "verified_quotes": 3,
+        "elapsed_s": 24.92,
+        "raw_len": 1686
+      }
+    },
+    {
+      "source_id": "be118d5b1464412193da1d0226bab4e4",
+      "title": "What a $5.8M app is *really* worth \u2014 HoloDex, valued live (part II)",
+      "platform": "youtube",
+      "duration_s": 7260.0,
+      "structured": {
+        "ok": true,
+        "error": null,
+        "n_findings": 10,
+        "substance": 62,
+        "verified_quotes": 10,
+        "elapsed_s": 94.18
+      },
+      "legacy": {
+        "ok": true,
+        "error": null,
+        "n_findings": 6,
+        "substance": 18,
+        "verified_quotes": 6,
+        "elapsed_s": 51.27,
+        "raw_len": 3050
+      }
+    }
+  ]
+}

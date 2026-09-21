@@ -29,10 +29,17 @@ E5_COHORT = (
     ("1c309a3c978846ef8e9d2c14f53716c4", "claude-sonnet-5"),
     ("77311b566b8342018a61153036597475", "claude-sonnet-5"),
     ("8899039e74304275bffecc2396e150d1", "claude-sonnet-5"),
-    ("6d5f072cf3ca46d899b4b0f9e851444e", "claude-haiku-4-5"),
-    ("b76454d32f0441ac9d0901c8bb2687db", "claude-haiku-4-5"),
-    ("3b6b9cc84b334248b6d0fb34e01a0555", "claude-haiku-4-5"),
-    ("1bba2517c73a46308749bcdf3263ea4d", "claude-haiku-4-5"),
+    # 2026-09-20: every Haiku finding in project_notes is stamped with the dated model id it actually resolved
+    # to when called via the API ("claude-haiku-4-5-20251001"), not the bare alias -- Sonnet's local-provider
+    # findings happen to be stamped with the bare "claude-sonnet-5" alias instead, which is why only the Haiku
+    # half of this fixed cohort ever hit "0 modeled findings". Two of these four sources have since been
+    # reprocessed and now also carry some claude-sonnet-5-tagged and untagged findings from later runs; filtering
+    # on the exact dated string still isolates each source's original E5-era Haiku findings correctly (verified:
+    # 19 and 25 matching rows respectively, both well above the 5 needed).
+    ("6d5f072cf3ca46d899b4b0f9e851444e", "claude-haiku-4-5-20251001"),
+    ("b76454d32f0441ac9d0901c8bb2687db", "claude-haiku-4-5-20251001"),
+    ("3b6b9cc84b334248b6d0fb34e01a0555", "claude-haiku-4-5-20251001"),
+    ("1bba2517c73a46308749bcdf3263ea4d", "claude-haiku-4-5-20251001"),
 )
 
 

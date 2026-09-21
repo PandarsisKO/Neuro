@@ -31,8 +31,13 @@ def test_fixed_cohort_is_balanced_and_importance_stratified(conn):
     out = sf.build_sample(conn)
     key = out["_scoring_key"]
     assert out["n_items"] == 40 and out["n_sources"] == 8
-    assert {v["model"] for v in key.values()} == {"claude-haiku-4-5", "claude-sonnet-5"}
-    assert sum(v["model"] == "claude-haiku-4-5" for v in key.values()) == 20
+    # 2026-09-21: the dated id, not the bare alias. `project_notes` stamps API-resolved Haiku findings with the
+    # snapshot they actually resolved to ("claude-haiku-4-5-20251001"), while Sonnet's local-provider findings
+    # carry the bare "claude-sonnet-5" -- which is why only the Haiku half of this cohort ever hit "0 modeled
+    # findings". E5_COHORT was corrected to filter on the exact stored string; this is its test half, which was
+    # left behind, so the fixture built rows the assertion rejected.
+    assert {v["model"] for v in key.values()} == {"claude-haiku-4-5-20251001", "claude-sonnet-5"}
+    assert sum(v["model"] == "claude-haiku-4-5-20251001" for v in key.values()) == 20
     assert sum(v["model"] == "claude-sonnet-5" for v in key.values()) == 20
     assert {v["source_id"] for v in key.values()} == {source_id for source_id, _ in sf.E5_COHORT}
     selected = sorted(int(v["note_id"].rsplit("-", 1)[1]) for v in key.values() if v["source_id"] == sf.E5_COHORT[0][0])

@@ -49,11 +49,24 @@ def score(sample: dict[str, Any], cost_per_finding: dict[str, float]) -> dict[st
     return {"per_model": per_model, "incomplete": incomplete, "n_reviewed": sum(m["n"] for m in per_model.values())}
 
 
+def _resolve_model_key(alias: str, pm: dict[str, Any]) -> str | None:
+    """2026-09-20: `per_model` is keyed by whatever exact model string the provider actually stamped on the
+    finding (e.g. "claude-haiku-4-5-20251001", a dated snapshot id) -- not necessarily the bare alias a caller
+    passes in. An exact match wins; otherwise, if exactly one key starts with the alias, that's the same model
+    under its dated name. Ambiguous (more than one match) or no match at all -> None, so the caller reports
+    undecidable rather than silently picking the wrong one."""
+    if alias in pm:
+        return alias
+    matches = [k for k in pm if k.startswith(alias)]
+    return matches[0] if len(matches) == 1 else None
+
+
 def decide(scored: dict[str, Any], haiku: str, sonnet: str) -> dict[str, Any]:
     pm = scored["per_model"]
-    if haiku not in pm or sonnet not in pm:
-        return {"decision": "undecidable", "reason": f"need both {haiku} and {sonnet} in the reviewed sample; have {sorted(pm)}"}
-    h, s = pm[haiku], pm[sonnet]
+    haiku_key, sonnet_key = _resolve_model_key(haiku, pm), _resolve_model_key(sonnet, pm)
+    if haiku_key is None or sonnet_key is None:
+        return {"decision": "undecidable", "reason": f"need both {haiku} and {sonnet} (or a dated variant of each) in the reviewed sample; have {sorted(pm)}"}
+    h, s = pm[haiku_key], pm[sonnet_key]
     if h["cost_per_kept"] is None or s["cost_per_kept"] is None:
         return {"decision": "undecidable", "reason": "cost per kept finding unavailable for at least one model (no cost data, or zero kept)"}
     cheaper = h["cost_per_kept"] < s["cost_per_kept"]
