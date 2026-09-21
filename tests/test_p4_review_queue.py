@@ -140,8 +140,12 @@ def test_thousands_of_proposals_yield_a_short_queue_that_never_hides_disagreemen
     assert len(ids) == 60, "disagreement is never capped: all 60 shown, and the cap left no room for weak ones"
     assert all(i.startswith("d") for i in ids)
     assert ids[:5] == [f"d{i}" for i in range(5)], "high-impact tensions come first"
-    assert q["counts"]["by_reason"] == {"disagreement": 60, "plan_impact": 0, "evidence_weak": 0}
-    assert q["counts"]["not_shown"] == {"disagreement": 0, "plan_impact": 0, "evidence_weak": 1900}
+    # 2026-09-21: `evidence_dismissed` joined REASON_ORDER (a proposed Claim every one of whose supporting
+    # findings has been dismissed). None of this fixture's notes are dismissed, so it is correctly 0 on both
+    # sides — the counts are asserted whole on purpose, so a new reason has to be acknowledged here rather
+    # than appearing silently.
+    assert q["counts"]["by_reason"] == {"evidence_dismissed": 0, "disagreement": 60, "plan_impact": 0, "evidence_weak": 0}
+    assert q["counts"]["not_shown"] == {"evidence_dismissed": 0, "disagreement": 0, "plan_impact": 0, "evidence_weak": 1900}
     assert q["counts"]["hidden_total"] == 1900
 
     q2 = review_queue.build(pid, limit=100)

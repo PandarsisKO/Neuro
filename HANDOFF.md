@@ -8579,3 +8579,47 @@ text that already says it in words. Dropped rather than excused. The ratchet ear
 days.
 
 Suite: **2,367 passed, 0 failed.**
+
+## A dismissed finding left its Claim standing — 2026-09-21
+
+Kyle pushed on a caveat I had written into the suggested-findings panel: *"are we doing the best solution to
+prevent issues?"* We were not. I had described a risk and mitigated it with a sentence in a subtitle, which is
+the weakest possible fix — it puts the burden on the user to remember, mid-flow, while pressing K/L quickly.
+
+**Tracing it showed I had the risk BACKWARDS, which is worse.** I had written that losing a suggested finding
+"may weaken a Claim". It does not weaken it at all:
+
+- `claim_evidence` is keyed by **source**, not note.
+- `claims.assess` recomputes strength from those rows and filters only on `stale` — whether a source REVISION
+  moved.
+- Nothing anywhere consults a note's `status`.
+
+So dismissing a finding removed it from chat, from exports and from future harvesting, and left every Claim
+built on it standing at **unchanged strength, with no indication its evidence had been rejected**. `retire.py`
+models exactly this loss and counts `claims_losing_all_evidence` before acting — but only for sources LEAVING a
+project. The ordinary Dismiss button never had an equivalent, and never has since the feature existed.
+
+That is the worst shape this can take: the user acts, believes they have acted, and the conclusion drawn from
+the thing they rejected quietly survives.
+
+**The fix: a new review-queue reason, `evidence_dismissed`,** for a proposed Claim every one of whose
+supporting findings has been dismissed. It counts BOTH routes a note can back a Claim — `origin_note_id` and
+`claim_evidence_notes` — since either alone misses real cases. "Every one" rather than "any" is the defensible
+line and mirrors `retire.py`'s own `HAVING SUM(...) = 0`: one dismissal among three leaves a Claim supported.
+
+It leads `REASON_ORDER` and is **never capped**, alongside disagreement — a Claim resting on rejected evidence
+is not a get-to-it-later item, and hiding it behind a limit is how it stays invisible for another month. The
+pane shows it as a caution: *"every finding under it was dismissed"*.
+
+Triggered by the ordinary Dismiss button, not a special path — a test pins exactly that, since a fix that only
+worked from the new reviewer would be no fix at all.
+
+The suggested-pass subtitle now says what actually happens instead of the thing I got wrong.
+
+**Known limitation, recorded rather than silently accepted:** the queue only considers PROPOSED Claims, so an
+already-ACCEPTED Claim whose findings are later all dismissed still will not surface. That is a bigger change
+to the queue's contract and is Kyle's call.
+
+**Tests:** `test_s80_evidence_dismissed.py` (6). `test_p4_review_queue` asserts the reason counts whole, so the
+new reason had to be acknowledged there rather than appearing silently — which is the ratchet working.
+Suite: **2,375 passed, 0 failed.**

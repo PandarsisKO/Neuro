@@ -193,11 +193,13 @@ def test_it_shows_the_most_important_first_the_opposite_of_the_second_look():
     assert "sort: 'weakest'" in SECOND
 
 
-def test_it_warns_that_a_suggested_finding_may_already_back_a_claim():
-    """The thing that makes Lose here non-trivial: chat cannot cite a suggested finding, but claim harvesting
-    reads status IN ('approved','suggested'), so one may already stand behind a proposed Claim."""
+def test_it_says_what_actually_happens_to_a_claim_underneath():
+    """First written as "Lose may weaken a Claim", which was backwards: nothing consulted a note's status, so
+    a Lose changed the Claim not at all and left it standing on rejected evidence. S80 made that true instead
+    of merely warned about — the Claim is now routed back for a decision — and the wording follows the fix."""
     assert "already have become a proposed Claim" in SUGG
-    assert "from an unreviewed finding" in SUGG, "…and it points at where those Claims are visible"
+    assert "does not silently pull" in SUGG
+    assert "every finding under it was dismissed" in SUGG, "it names the flag the user will actually see"
 
 
 def test_it_uses_the_same_batch_and_the_same_opener():

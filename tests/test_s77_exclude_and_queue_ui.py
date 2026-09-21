@@ -119,7 +119,8 @@ def test_switching_projects_cannot_show_the_previous_queue():
 
 def test_the_cap_declares_what_it_hid_and_that_disagreement_is_never_capped():
     assert "not_shown" in QUEUE_FN and "hidden_total" in QUEUE_FN
-    assert "Disagreement is never capped" in QUEUE_FN
+    # 2026-09-21: `evidence_dismissed` joined disagreement as never-capped, and the sentence says both
+    assert "Disagreement and rejected evidence are never capped" in QUEUE_FN
 
 
 def test_the_reasons_are_shown_in_words_not_field_names():

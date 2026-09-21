@@ -290,9 +290,11 @@ globalThis.renderQueuePane = async function renderQueuePane() {
   const sums = (q.topic_summaries || []).map(t =>
     `<div class="kn"><span class="st developing">${t.n}</span><div><div>${esc(t.summary_text)}</div>
        <div class="why">${esc(t.topic || 'unspecified')}${t.basis && t.basis !== 'unspecified' ? ` · ${esc(t.basis)}` : ''} — a reading aid over the Claims below, which are unchanged and still listed individually</div></div></div>`).join('');
-  const REASON_WORDS = { disagreement: 'sources disagree', plan_impact: 'the Master Plan depends on it', evidence_weak: 'thin evidence' };
+  const REASON_WORDS = { evidence_dismissed: 'every finding under it was dismissed',
+                         disagreement: 'sources disagree', plan_impact: 'the Master Plan depends on it', evidence_weak: 'thin evidence' };
   const rows = shown.map(x => {
-    const why = (x.reasons || []).map(r => `<span class="tag">${esc(REASON_WORDS[r] || r)}</span>`).join(' ');
+    const why = (x.reasons || []).map(r =>
+      `<span class="tag${r === 'evidence_dismissed' ? ' status-warn' : ''}">${esc(REASON_WORDS[r] || r)}</span>`).join(' ');
     const tens = (x.tensions || []).filter(t => t.impact === 'high').length;
     // the provenance warning that had no surface: this Claim rests on a finding nobody ever ruled on
     const unreviewed = x.origin === 'finding_suggested'
@@ -309,7 +311,7 @@ globalThis.renderQueuePane = async function renderQueuePane() {
   // `not_shown` is the cap's own account of what it hid, by reason -- disagreement is never capped, so a
   // non-zero number here can only be plan_impact or evidence_weak.
   const hidden = c.hidden_total
-    ? `<div class="muted mt-2">${c.hidden_total} more below the cap (${Object.entries(c.not_shown || {}).filter(([, n]) => n).map(([r, n]) => `${n} ${REASON_WORDS[r] || r}`).join(' · ') || 'no reason recorded'}). Disagreement is never capped, so nothing contested is hidden here.</div>`
+    ? `<div class="muted mt-2">${c.hidden_total} more below the cap (${Object.entries(c.not_shown || {}).filter(([, n]) => n).map(([r, n]) => `${n} ${REASON_WORDS[r] || r}`).join(' · ') || 'no reason recorded'}). Disagreement and rejected evidence are never capped, so nothing contested and nothing standing on findings you dismissed is hidden here.</div>`
     : '';
   el.innerHTML =
     `<div class="muted">The few proposed Claims that actually need a person: sources disagree, the Master Plan depends on it, or the evidence is thin. ${c.shown} of ${c.proposed_total} proposed Claims.</div>
@@ -1333,9 +1335,10 @@ globalThis.fbReviewSuggested = async function fbReviewSuggested() {
   fbFocusOpen(rows, {
     title: 'Suggested findings — most important first',
     subtitle: `${rows.length} of ${r.total} waiting. A suggested finding cannot be cited in chat or exported `
-      + `until you keep it, but it CAN already have become a proposed Claim — so Lose here may weaken one `
-      + `(the Claims review queue marks those "from an unreviewed finding"). Keep files it as approved; Lose `
-      + `dismisses it, which is reversible. `
+      + `until you keep it, but it CAN already have become a proposed Claim. Losing it does not silently pull `
+      + `that Claim down — it sends the Claim to the Research review queue for you to decide, flagged `
+      + `"every finding under it was dismissed". Keep files it as approved; Lose dismisses it, and both are `
+      + `reversible. `
       + (r.total > rows.length ? `Press the button again for the next ${FOCUS_BATCH}.` : ''),
   });
 }

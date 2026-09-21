@@ -32,7 +32,16 @@ from typing import Any
 from . import db
 
 WEAK = ("weak", "unsupported")
-REASON_ORDER = ("disagreement", "plan_impact", "evidence_weak")
+# 2026-09-21: `evidence_dismissed` leads, because it is the only reason here that describes a Claim standing on
+# grounds its OWNER has already rejected -- the others describe a Claim that is merely hard to judge.
+#
+# The gap it closes: `claim_evidence` is keyed by SOURCE, and `claims.assess` filters only on whether a source
+# revision moved. Nothing anywhere consults a NOTE's status. So dismissing a finding removed it from chat, from
+# exports and from future harvesting -- and left every Claim built on it standing at unchanged strength, with
+# no indication its evidence had been rejected. `retire.py` models exactly this loss, but only for sources
+# LEAVING the project; the ordinary Dismiss button never had an equivalent. A rejected finding whose conclusion
+# quietly survives is the worst shape this can take, because the user believes they have acted.
+REASON_ORDER = ("evidence_dismissed", "disagreement", "plan_impact", "evidence_weak")
 SIGNALS_NOT_USED = ("novelty", "irreversibility", "provenance_quality", "source_independence", "freshness_sensitivity")
 
 
@@ -51,9 +60,26 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
             tensions_by_claim.setdefault(t["claim_id"], []).append(
                 {"id": t["id"], "kind": t["kind"], "impact": t.get("impact"), "description": t.get("description")})
 
-    note_ids_by_claim: dict[str, list[int]] = {}
+    # Which proposed Claims rest ONLY on findings the user has dismissed. "Only" is the defensible line and it
+    # mirrors retire.py's own `HAVING SUM(...) = 0`: one dismissed finding among three leaves a Claim supported,
+    # while all of them dismissed leaves it supported by nothing its owner still accepts. Both routes a note can
+    # back a Claim are counted -- `origin_note_id` (the finding it was harvested from) and `claim_evidence_notes`
+    # (findings later folded in as support) -- because either alone would miss real cases.
+    evidence_dismissed: set[str] = set()
     if ids:
         marks = ",".join("?" for _ in ids)
+        for r in conn.execute(
+                f"""SELECT cid, SUM(CASE WHEN n.status='dismissed' THEN 0 ELSE 1 END) alive, COUNT(*) total FROM (
+                        SELECT id AS cid, origin_note_id AS nid FROM project_claims
+                         WHERE id IN ({marks}) AND origin_note_id IS NOT NULL
+                        UNION
+                        SELECT claim_id AS cid, note_id AS nid FROM claim_evidence_notes WHERE claim_id IN ({marks})
+                    ) JOIN project_notes n ON n.id = nid GROUP BY cid""", [*ids, *ids]).fetchall():
+            if int(r["total"]) and not int(r["alive"]):
+                evidence_dismissed.add(r["cid"])
+
+    note_ids_by_claim: dict[str, list[int]] = {}
+    if ids:
         for r in conn.execute(f"SELECT claim_id, note_id FROM claim_evidence_notes WHERE claim_id IN ({marks}) ORDER BY note_id", ids).fetchall():
             note_ids_by_claim.setdefault(r["claim_id"], []).append(int(r["note_id"]))
         merged_into: dict[str, list[str]] = {}
@@ -69,6 +95,8 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
         cid = c["id"]
         imp = impact.get(cid, {})
         reasons = []
+        if cid in evidence_dismissed:
+            reasons.append("evidence_dismissed")
         if imp.get("disagreement"):
             reasons.append("disagreement")
         if imp.get("plan_impact") is True:
@@ -101,8 +129,11 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
         return (tier, 0 if high else 1, -len(x["members"]["note_ids"]), x["created_at"] or 0)
     candidates.sort(key=_key)
 
-    must_show = [x for x in candidates if "disagreement" in x["reasons"]]
-    capped_pool = [x for x in candidates if "disagreement" not in x["reasons"]]
+    # Never capped, for the same reason disagreement is not: a Claim resting on rejected evidence is not a
+    # "nice to get to" item, and hiding it behind a limit is how it stays invisible for another month.
+    UNCAPPED = ("disagreement", "evidence_dismissed")
+    must_show = [x for x in candidates if any(r in x["reasons"] for r in UNCAPPED)]
+    capped_pool = [x for x in candidates if not any(r in x["reasons"] for r in UNCAPPED)]
     room = max(0, limit - len(must_show))
     shown = must_show + capped_pool[:room]
     hidden = capped_pool[room:]
