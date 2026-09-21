@@ -85,6 +85,11 @@ You can shape the project as you talk:
 - set_source_priority: when the user says a source, author, channel or document is authoritative, top tier, the
   one to follow, or must be preferred, flag the matching sources so retrieval favours them from now on (tell the
   user which sources were flagged). Use it to unflag when they change their mind.
+- reconsider_creator: when the user says they want MORE from a creator, that a channel/podcast/author was
+  wrongly filtered out, or that they are missing that creator's material, call it with the creator name. It
+  undoes past automatic low-relevance skips for a creator this project has already kept work from. Say how many
+  came back and that they are in review to pick, not added. If it reports the creator is unknown or has nothing
+  kept yet, say so plainly -- do not imply something happened.
 What the user told us when setting up the project (treat as requirements, not suggestions):
 {steering}
 """
@@ -251,6 +256,8 @@ def _library_tools() -> list[dict[str, Any]]:
          "input_schema": {"type": "object", "properties": {"text": {"type": "string", "description": "the identifier or citation as written, e.g. 'SOP 50 10 8', 'IRS Publication 946', '26 U.S.C. § 280F'"}}, "required": ["text"]}},
         {"name": "search_seen_sources", "description": "Search the Candidate Index: sources Neuro Search has SEEN (listed from channels, feeds, sites) but NOT acquired. Use when the library lacks evidence for a gap, BEFORE suggesting a web search. Results are metadata only — they cannot be cited; tell the user which ones look worth acquiring (Sources → Library → Seen, not added).",
          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["query"]}},
+        {"name": "reconsider_creator", "description": "Bring back candidates this project AUTO-SKIPPED for low relevance from a creator the user says they want more of. The relevance score is one title/description judgment with no transcript, so a creator whose work this project has already kept can have borderline items sitting just under the cutoff. Use when the user says they want more from a channel, podcast, author or show, that one was wrongly filtered, or that they are missing that creator's material. Tell them the number it brought back. Nothing is added to the project: the items return to review for them to pick.",
+         "input_schema": {"type": "object", "properties": {"creator": {"type": "string", "description": "the creator/channel/podcast name as the user said it; matched case-insensitively against creators in this project"}}, "required": ["creator"]}},
     ]
 
 
@@ -339,6 +346,7 @@ TOOL_LABELS = {          # R1: what a tool round is actually doing, in the user'
     "search_library": "searching more of this project…",
     "search_global_library": "searching your whole library…",
     "search_seen_sources": "searching sources it has seen but not acquired…",
+    "reconsider_creator": "bringing back skipped items from that creator…",
     "search_global_candidates": "searching sources it has seen but not acquired…",
     "list_sources": "listing what this project contains…",
     "set_source_priority": "flagging priority sources…",
@@ -1033,6 +1041,30 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         if len(rows) > 80:
             lines.append(f"… and {len(rows) - 80} more — narrow the filter")
         return "\n".join(lines)
+    if name == "reconsider_creator":
+        from . import candidates as _cand
+        who = (inp.get("creator") or "").strip()
+        if not who:
+            return "no creator name given — ask the user which creator they mean"
+        res = _cand.reconsider_creator(project["id"], who)
+        actions.append({"type": "creator_reconsidered", "creator": who, "matched": res.get("matched_creator"),
+                        "status": res["status"], "moved": res["moved"]})
+        if res["status"] == "moved":
+            by_score = sorted(res["candidates"], key=lambda c: -(c["relevance"] or 0))
+            head = "; ".join(f"{c['title']} ({c['relevance']})" for c in by_score[:8] if c.get("title"))
+            return (f"brought {res['moved']} previously auto-skipped candidate(s) from {res['matched_creator']} back into "
+                    f"review (they scored at least {res['threshold']}, within reach of the {_cand.LOW_RELEVANCE} cutoff once "
+                    f"this project's history with that creator is counted). They are in Sources → Seen, not added — nothing "
+                    f"was added to the project. Examples: {head}")
+        if res["status"] == "nothing_left":
+            return (f"{res['matched_creator']} is already fully surfaced for this project — nothing of theirs is sitting in "
+                    f"the auto-skipped pile, so there was nothing to bring back")
+        if res["status"] == "untrusted":
+            return (f"{res['known_creator']} has been seen for this project but nothing of theirs has ever been kept, so there "
+                    f"is no history to justify overriding the relevance score. Nothing was changed. If the user wants their "
+                    f"material anyway, the way in is Sources → Seen, not added, or acquiring one directly")
+        return ("that creator is not in this project's candidate index at all, so nothing was changed. Creators this project "
+                "has actually kept work from: " + (", ".join(res.get("trusted_creators") or []) or "none yet"))
     if name == "set_source_priority":
         flt = (inp.get("filter") or "").strip()
         flag = bool(inp.get("priority", True))
