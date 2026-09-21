@@ -8402,3 +8402,28 @@ built. `fred.py` stays inert and costs nothing while it waits.
 
 **Open after this:** C2 (the AI-automation creators — the exclude UI now exists for it), the 35-44 band, and
 the third AD4B measurement once the re-score against the new brief has run.
+
+## A repo-damage near-miss of my own making — 2026-09-21
+
+Committing through the bridge mount leaves a lock file behind on **every** git write: git creates
+`<ref>.lock`, renames the real file into place, then cannot unlink the lock because the mount refuses deletes.
+Every commit this session added a few. By the time it surfaced there were **171 stale lock files and 196
+orphaned temp objects** in `.git`.
+
+It surfaced as warnings on a commit that otherwise succeeded, which is the dangerous shape — the commit lands,
+the warning scrolls past, and the litter accumulates silently. It had already broken git's background `gc`
+("failed to run reflog"), and `refs/heads/main.lock` existing meant the next operation needing that ref would
+have failed outright. Kyle's own git on macOS is unaffected; this is purely the mounted path.
+
+Repaired: stale locks moved aside first so the repo kept working, then `device_request_delete_permission` for
+this folder and the litter deleted — `.git` lock and `tmp_obj_*` files only, no source, no database. `git fsck
+--connectivity-only` is clean, all 168 refs resolve, `main` is intact, nothing was lost. Deletes now work for
+the rest of this session, so further commits stop littering.
+
+**Two empty commits (`3514c10`, `5d0d6f0`) are the write-path verifications and are deliberately left in
+history** rather than rebased away — the messages explain what happened, and rewriting shared history in a repo
+three agents touch to tidy two commits is the worse trade.
+
+**For anyone reading this later:** if a git command through the mount prints `unable to unlink ... Operation not
+permitted`, do not ignore it. Check `find .git -name '*.lock' | wc -l` and ask for delete permission before it
+accumulates.
