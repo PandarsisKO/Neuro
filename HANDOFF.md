@@ -8350,3 +8350,25 @@ the other two. Recommend deciding this AFTER the cutoff change, since that re-so
 free, reversible, and the best-supported change available; (2) revise the project brief to say the library
 wants operating/mindset/finance material, not only acquisition method, then re-score; (3) leave 35-44 alone for
 now — 570 items at ~30% is a real judgement call, not an obvious win; (4) C2.
+
+## Cutoff moved to 45, and the two missing surfaces built — 2026-09-21
+
+**Cutoff 50 -> 45 (`db851c2`).** C1's 45-49 band came back 10 of 10 kept — a cutoff problem, not a ranking
+problem. Global: every project and every future ingest, plus the creator-trust floor drops 38 -> 33. Not moved
+further: 35-44 is 30% across 570 candidates, a judgement call for Kyle rather than a supported change.
+`test_ad1`'s boundary fixture is re-expressed against the constants, since it broke on this change by testing
+the day's arithmetic rather than the rule.
+
+**Exclude list and review queue (`19d672a`).** Both had working backends and no way in. S75 is now a card in
+Project settings; L-51's queue, and S76's topic summaries inside it, are a Research tab. The summaries sit
+ABOVE the claims they summarise and every one is still listed below — a pane showing the summary INSTEAD of its
+members would be claim merging by accident. Queue is fetched on tab open, cleared on decision and on view load.
+
+**Suite: 2,295 passed, 0 failed.**
+
+**Blocked, and on whom.** Everything left needs the live database or Kyle:
+- the resurface run for the ~197 now-clearing candidates (one command, Claude Code)
+- the brief revision (Kyle's judgement about his own research, then a re-score)
+- the FRED key (account creation)
+- C2 / D1 / D2 / the 35-44 band (decisions)
+- D3 (`--state` verified to exist; `available` is the default, so `skipped_limit` and `acquired` need it named)
