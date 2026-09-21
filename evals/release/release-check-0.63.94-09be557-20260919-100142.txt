@@ -1,0 +1,39 @@
+Release check · app 0.63.94 @ 09be557 · 2026-09-19T10:01:42 · 268.7s
+  PASS  experimental flags off by default
+  PASS  repository hygiene and architecture boundaries
+  FAIL  Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity  — 43_foundation.py:64: AssertionError
+=============================== warnings summary ===============================
+tests/test_s44_frontend_integrity.py::test_external_stylesheet_is_linked_and_served
+  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-timeout]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-limit]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-not_installed]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-error]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-timeout]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-limit]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-not_installed]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-error]
+8 failed, 19 passed, 1 warning in 3.34s
+
+  FAIL  pytest: whole suite  — /test_r4_local_model.py::test_the_call_asks_for_the_contract_model_not_the_env_line
+FAILED tests/test_r4_local_model.py::test_doctor_names_every_task_a_global_override_is_overriding
+FAILED tests/test_r6_model_policy.py::test_reversible_means_the_consequences_are_undoable_not_that_the_call_is_cheap
+FAILED tests/test_s12_recall_precision.py::test_the_results_land_on_the_discovery_rows
+FAILED tests/test_s39_answering_model.py::test_the_probe_asks_about_the_model_the_task_will_run
+FAILED tests/test_s39_answering_model.py::test_the_router_probes_the_task_model
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-timeout]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-limit]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-not_installed]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-error]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-timeout]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-limit]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-not_installed]
+FAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-error]
+FAILED tests/test_s46_r4_durable_units.py::test_model_contract_change_invalidates_parent_and_units
+33 failed, 2019 passed, 1 warning in 262.26s (0:04:22)
+
+RELEASE CHECK FAIL

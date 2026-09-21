@@ -1,0 +1,29 @@
+Release check · app 0.63.94 @ 7fdcd2a · 2026-09-19T10:23:50 · 287.5s
+  PASS  experimental flags off by default
+  PASS  repository hygiene and architecture boundaries
+  PASS  Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity
+  FAIL  pytest: whole suite  — endpoint ________
+
+fresh = None
+
+    def test_review_cards_still_carry_relevance_from_their_own_endpoint(fresh):
+        """`relevance`/`relevance_why` left the list; the review card is their reader and has its own source."""
+        import inspect
+        src = inspect.getsource(db.proposed_sources)
+>       assert "relevance" in src
+E       AssertionError: assert 'relevance' in '    started went on running and called the progress hook afterwards, over the top of the terminal message. A\n'
+
+tests/test_s68_sources_list_diet.py:123: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/starlette/testclient.py:53
+  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_core.py::test_ask_tool_loop - AssertionError: assert set() ...
+FAILED tests/test_s12_recall_precision.py::test_the_results_land_on_the_discovery_rows
+FAILED tests/test_s68_sources_list_diet.py::test_review_cards_still_carry_relevance_from_their_own_endpoint
+3 failed, 2049 passed, 1 warning in 279.94s (0:04:39)
+
+RELEASE CHECK FAIL

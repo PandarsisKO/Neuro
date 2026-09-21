@@ -1,0 +1,70 @@
+{
+ "kind": "release-check",
+ "app_version": "0.63.94",
+ "git_sha": "09be557",
+ "timestamp": "2026-09-19T10:01:42",
+ "seconds": 268.7,
+ "checks": [
+  {
+   "check": "experimental flags off by default",
+   "result": "PASS",
+   "detail": "all off"
+  },
+  {
+   "check": "repository hygiene and architecture boundaries",
+   "result": "PASS",
+   "detail": "repo-check PASS"
+  },
+  {
+   "check": "Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity",
+   "result": "FAIL",
+   "detail": "43_foundation.py:64: AssertionError\n=============================== warnings summary ===============================\ntests/test_s44_frontend_integrity.py::test_external_stylesheet_is_linked_and_served\n  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-timeout]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-limit]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-not_installed]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-error]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-timeout]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-limit]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-not_installed]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-error]\n8 failed, 19 passed, 1 warning in 3.34s\n"
+  },
+  {
+   "check": "pytest: whole suite",
+   "result": "FAIL",
+   "detail": "/test_r4_local_model.py::test_the_call_asks_for_the_contract_model_not_the_env_line\nFAILED tests/test_r4_local_model.py::test_doctor_names_every_task_a_global_override_is_overriding\nFAILED tests/test_r6_model_policy.py::test_reversible_means_the_consequences_are_undoable_not_that_the_call_is_cheap\nFAILED tests/test_s12_recall_precision.py::test_the_results_land_on_the_discovery_rows\nFAILED tests/test_s39_answering_model.py::test_the_probe_asks_about_the_model_the_task_will_run\nFAILED tests/test_s39_answering_model.py::test_the_router_probes_the_task_model\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-timeout]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-limit]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-not_installed]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[True-error]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-timeout]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-limit]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-not_installed]\nFAILED tests/test_s43_foundation.py::test_local_failure_never_opens_paid_transport[False-error]\nFAILED tests/test_s46_r4_durable_units.py::test_model_contract_change_invalidates_parent_and_units\n33 failed, 2019 passed, 1 warning in 262.26s (0:04:22)\n"
+  }
+ ],
+ "verdict": "FAIL",
+ "warnings": 0,
+ "baselines": {},
+ "flags": {
+  "NEUROSEARCH_PLANNER_V3": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "not promoted"
+  },
+  "NEUROSEARCH_FINDINGS_PREFILTER": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "deferred (economics)"
+  },
+  "NEUROSEARCH_RETRIEVAL_RERANK": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "killed (measured live)"
+  },
+  "NEUROSEARCH_CHAT_TAIL_BREAKPOINT": {
+   "current": "0",
+   "safe_default": "0",
+   "ok": true,
+   "status": "off by decision"
+  },
+  "NEUROSEARCH_SCHEMA_COMPAT_FALLBACK": {
+   "current": "",
+   "safe_default": "",
+   "ok": true,
+   "status": "rollback hatch"
+  },
+  "NEUROSEARCH_FAKE_AI": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "test mode (never in production)"
+  }
+ }
+}

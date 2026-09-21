@@ -1,0 +1,70 @@
+{
+ "kind": "release-check",
+ "app_version": "0.63.94",
+ "git_sha": "7fdcd2a",
+ "timestamp": "2026-09-19T10:23:50",
+ "seconds": 287.5,
+ "checks": [
+  {
+   "check": "experimental flags off by default",
+   "result": "PASS",
+   "detail": "all off"
+  },
+  {
+   "check": "repository hygiene and architecture boundaries",
+   "result": "PASS",
+   "detail": "repo-check PASS"
+  },
+  {
+   "check": "Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity",
+   "result": "PASS",
+   "detail": "27 passed, 1 warning in 3.94s"
+  },
+  {
+   "check": "pytest: whole suite",
+   "result": "FAIL",
+   "detail": "endpoint ________\n\nfresh = None\n\n    def test_review_cards_still_carry_relevance_from_their_own_endpoint(fresh):\n        \"\"\"`relevance`/`relevance_why` left the list; the review card is their reader and has its own source.\"\"\"\n        import inspect\n        src = inspect.getsource(db.proposed_sources)\n>       assert \"relevance\" in src\nE       AssertionError: assert 'relevance' in '    started went on running and called the progress hook afterwards, over the top of the terminal message. A\\n'\n\ntests/test_s68_sources_list_diet.py:123: AssertionError\n=============================== warnings summary ===============================\n.venv/lib/python3.14/site-packages/starlette/testclient.py:53\n  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_core.py::test_ask_tool_loop - AssertionError: assert set() ...\nFAILED tests/test_s12_recall_precision.py::test_the_results_land_on_the_discovery_rows\nFAILED tests/test_s68_sources_list_diet.py::test_review_cards_still_carry_relevance_from_their_own_endpoint\n3 failed, 2049 passed, 1 warning in 279.94s (0:04:39)\n"
+  }
+ ],
+ "verdict": "FAIL",
+ "warnings": 0,
+ "baselines": {},
+ "flags": {
+  "NEUROSEARCH_PLANNER_V3": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "not promoted"
+  },
+  "NEUROSEARCH_FINDINGS_PREFILTER": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "deferred (economics)"
+  },
+  "NEUROSEARCH_RETRIEVAL_RERANK": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "killed (measured live)"
+  },
+  "NEUROSEARCH_CHAT_TAIL_BREAKPOINT": {
+   "current": "0",
+   "safe_default": "0",
+   "ok": true,
+   "status": "off by decision"
+  },
+  "NEUROSEARCH_SCHEMA_COMPAT_FALLBACK": {
+   "current": "",
+   "safe_default": "",
+   "ok": true,
+   "status": "rollback hatch"
+  },
+  "NEUROSEARCH_FAKE_AI": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "test mode (never in production)"
+  }
+ }
+}
