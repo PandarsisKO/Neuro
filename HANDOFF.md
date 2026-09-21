@@ -8658,3 +8658,35 @@ dismissals have already produced — that number decides how urgent the `assess`
 pass; (3) run the second look; (4) decide on the `assess` change.
 
 **Tests:** +5 (`test_s80`, `test_s77`). Suite: **2,380 passed, 0 failed.**
+
+## The root fixed: a dismissed finding is not support — 2026-09-21
+
+Kyle: *"if the root defect is in assess() — why are we not fixing that now?"* No good answer. The reasons I
+gave for deferring it were that plan steps might flip to "needs research" and chat might change what it says.
+If their evidence was rejected, that is the CORRECT state and the current one is wrong. I had dressed
+over-caution up as prudence, and he was right to call it.
+
+**`claims.assess`** now checks note-backed provenance — `origin_note_id` and `claim_evidence_notes`, either
+route — and when every finding under a Claim has been dismissed, assesses it as **unsupported** with a why that
+says so plainly: *"every finding this rested on has been dismissed (N of N) — the source passages still exist,
+but you rejected the reading of them that supported this Claim."* One dismissal among three leaves it
+supported (retire.py's line). Claims with no note provenance at all — origin chat or user — are untouched; "all
+of zero dismissed" does not read as true, and a test pins that.
+
+**`claims.stale_by_note`** is the twin of `stale_by_source`, which has existed since G5 for a source's REVISION
+moving. Nothing ever did the same for a finding's STATUS moving — that asymmetry is the whole defect in one
+line. It re-assesses every Claim the note backs.
+
+**The hook lives in `db.set_note_status`**, the one door, so it covers the drawer, the workbench, bulk, focus
+review and the sweeps, and a new caller cannot bypass it. Same shape as the source hook: fires only when a
+status ENTERS or LEAVES dismissed (approved → suggested touches no Claim), late import, wrapped so it can never
+break the write it follows. Reversible in fact and tested: restoring one finding brings the Claim back.
+
+**Existing dismissals.** `knowledge.refresh` opens with `claims.assess_project`, so the next research refresh
+recomputes every Claim in the project and applies this to whatever the 1,438 historical dismissals have
+already produced. No migration, no script, no live-DB step from here.
+
+**What stays from the previous two commits:** the queue reason and the bulk "Reject all" are still the right
+surface — `assess` makes the Claim honest, the queue puts it in front of him.
+
+**Tests:** +6 in `test_s80` (14 total). Suite: **2,386 passed, 0 failed.**

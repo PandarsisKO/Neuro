@@ -108,3 +108,73 @@ def test_an_accepted_claim_with_support_stays_out():
     db.connect().execute("UPDATE project_claims SET status='accepted' WHERE id=?", (cid,)); db.connect().commit()
     db.set_note_status(nids[0], "dismissed")            # one of two -- still supported
     assert _reasons(pid, cid) == []
+
+
+# ---------------------------------------------------------------- the root: assess() itself (2026-09-21)
+#
+# The queue reason above surfaces the problem. This is the fix underneath it: a Claim whose every supporting
+# finding has been dismissed is UNSUPPORTED, not merely flagged, so the Master Plan and chat stop leaning on it.
+# And it happens by itself when the status changes, through the one door, the way a moved source revision
+# already re-assesses its Claims.
+
+def _strength(cid):
+    return claims.get(cid)["strength"]
+
+
+def test_assess_treats_a_claim_on_dismissed_findings_as_unsupported():
+    pid, cid, nids = _setup(["dismissed", "dismissed"])
+    claims.assess(cid)
+    c = claims.get(cid)
+    assert c["strength"] == "unsupported"
+    assert "every finding this rested on has been dismissed" in (c["strength_why"] or "")
+
+
+def test_one_live_finding_keeps_the_claim_off_the_unsupported_floor():
+    pid, cid, nids = _setup(["dismissed", "approved"])
+    claims.assess(cid)
+    assert "every finding this rested on" not in (claims.get(cid)["strength_why"] or "")
+
+
+def test_a_claim_with_no_note_provenance_is_untouched():
+    """origin chat / user Claims have no findings under them; 'all of zero dismissed' must not read as true."""
+    p = db.create_project("p", "b")
+    c = claims.add_claim(p["id"], "a rule the user typed in", claim_type="empirical", origin="user", status="proposed")
+    claims.assess(c["id"])
+    assert "every finding this rested on" not in (claims.get(c["id"])["strength_why"] or "")
+
+
+def test_dismissing_through_the_normal_door_reassesses_by_itself():
+    """No refresh, no job, no button: set_note_status is the one door and the re-assessment rides on it."""
+    pid, cid, nids = _setup(["approved", "approved"])
+    claims.assess(cid)
+    before = claims.get(cid)["strength_why"] or ""
+    assert "every finding this rested on" not in before
+    for nid in nids:
+        db.set_note_status(nid, "dismissed")
+    assert "every finding this rested on" in (claims.get(cid)["strength_why"] or ""), \
+        "the hook must have run without anyone calling assess()"
+
+
+def test_restoring_a_finding_reverses_it():
+    """Reversible in fact, not only in the UI copy."""
+    pid, cid, nids = _setup(["approved", "approved"])
+    for nid in nids:
+        db.set_note_status(nid, "dismissed")
+    assert "every finding this rested on" in (claims.get(cid)["strength_why"] or "")
+    db.set_note_status(nids[0], "approved")
+    assert "every finding this rested on" not in (claims.get(cid)["strength_why"] or "")
+
+
+def test_a_status_change_that_does_not_cross_the_line_does_not_reassess():
+    """approved -> suggested touches no Claim; the hook fires only when 'dismissed' is entered or left."""
+    pid, cid, nids = _setup(["approved", "approved"])
+    calls = []
+    orig = claims.stale_by_note
+    claims.stale_by_note = lambda nid: calls.append(nid) or 0
+    try:
+        db.set_note_status(nids[0], "suggested")
+        assert calls == []
+        db.set_note_status(nids[0], "dismissed")
+        assert calls == [nids[0]]
+    finally:
+        claims.stale_by_note = orig

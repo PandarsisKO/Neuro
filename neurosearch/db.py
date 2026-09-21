@@ -4478,10 +4478,24 @@ def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:
     """The one door every status change goes through, so stamping `reviewed_at` here covers every path -- the
     drawer, the workbench, bulk, focus review and the sweeps -- and cannot be bypassed by adding a caller."""
     with tx() as conn:
+        before = conn.execute("SELECT status FROM project_notes WHERE id=?", (note_id,)).fetchone()
         conn.execute("UPDATE project_notes SET status=?, reviewed_at=?, "
                      "created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?",
                      (status, now(), status, now(), note_id))
-        return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
+        row = row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
+    # 2026-09-21: a status crossing the dismissed line re-assesses the Claims this finding backs -- the twin of
+    # the G5 source-revision hook above (`stale_by_source`). Same shape on purpose: only when it matters, a late
+    # import, and never able to break the write it follows.
+    was = (before["status"] if before else None) or "approved"
+    if row and (was == "dismissed") != (status == "dismissed"):
+        try:
+            if connect().execute("SELECT 1 FROM project_claims WHERE origin_note_id=? LIMIT 1", (note_id,)).fetchone() \
+                    or connect().execute("SELECT 1 FROM claim_evidence_notes WHERE note_id=? LIMIT 1", (note_id,)).fetchone():
+                from . import claims
+                claims.stale_by_note(note_id)
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger(__name__).warning("claim re-assessment hook skipped for note %s: %s", note_id, e)
+    return row
 
 
 def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, Any]], provenance: dict[str, Any] | None = None) -> int:

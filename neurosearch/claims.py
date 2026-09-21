@@ -700,6 +700,21 @@ def assess(claim_id: str) -> dict[str, Any] | None:
             e["stale"] = stale
     live_ev = [e for e in ev if not e.get("stale")]
     sup = [e for e in live_ev if e["relation"] in ("SUPPORTS", "EXPERIENTIAL")]
+    # 2026-09-21: a finding the user DISMISSED is not support. `claim_evidence` is keyed by source and the excerpt
+    # is still in the transcript, but the finding was the assertion that this excerpt supports this Claim, and the
+    # user rejected that assertion. Until now nothing here consulted a note's status, so a Claim kept full
+    # strength after every finding under it was dismissed -- and the Master Plan and chat kept leaning on it.
+    # The line is "every one", mirroring retire.py's `HAVING SUM(...) = 0`: one dismissal among three leaves a
+    # Claim supported. Claims with no note-backed provenance at all (origin chat / user) are untouched.
+    all_dismissed = False
+    prov = db.connect().execute(
+        """SELECT SUM(CASE WHEN n.status='dismissed' THEN 0 ELSE 1 END) alive, COUNT(*) total FROM (
+               SELECT origin_note_id AS nid FROM project_claims WHERE id=? AND origin_note_id IS NOT NULL
+               UNION SELECT note_id FROM claim_evidence_notes WHERE claim_id=?
+           ) JOIN project_notes n ON n.id = nid""", (claim_id, claim_id)).fetchone()
+    if prov and int(prov["total"] or 0) and not int(prov["alive"] or 0):
+        all_dismissed = True
+        sup = []
     con = [e for e in live_ev if e["relation"] == "CONTRADICTS"]
     auth = [e for e in sup if e.get("evidence_class") in ("authoritative", "historical")]
     indep_sources = {e["source_id"] for e in sup if e.get("independent")}
@@ -715,7 +730,11 @@ def assess(claim_id: str) -> dict[str, Any] | None:
                 ctype = better
                 with db.tx() as conn:
                     conn.execute("UPDATE project_claims SET claim_type=?, freshness_class=? WHERE id=? AND normalized=0", (ctype, guess_freshness(c["text"].split(" — ", 1)[-1], ctype, "authoritative"), claim_id))
-    if not sup:
+    if all_dismissed:
+        strength = "unsupported"
+        why.append(f"every finding this rested on has been dismissed ({int(prov['total'])} of {int(prov['total'])}) -- "
+                   "the source passages still exist, but you rejected the reading of them that supported this Claim")
+    elif not sup:
         strength = "unsupported"
         why.append("no supporting evidence" + (f"; {len(ev) - len(live_ev)} evidence row(s) stale after a source revision" if len(ev) != len(live_ev) else ""))
     elif ctype in GOVERNING_TYPES:
@@ -824,6 +843,20 @@ def assess_project(project_id: str) -> int:
         assess(r["id"])
         n += 1
     return n
+
+
+def stale_by_note(note_id: int) -> int:
+    """Called when a finding's status changes: re-assess every Claim it backs, by either route a note can back
+    one. The twin of `stale_by_source` -- that hook has existed since G5 for a source's REVISION moving; nothing
+    ever did the same for a finding's STATUS moving, which is why a dismissed finding's Claim stood unchanged."""
+    ids = {r["id"] for r in db.connect().execute(
+        "SELECT id FROM project_claims WHERE origin_note_id=? AND status!='rejected'", (note_id,))}
+    ids |= {r["claim_id"] for r in db.connect().execute(
+        "SELECT e.claim_id FROM claim_evidence_notes e JOIN project_claims c ON c.id=e.claim_id "
+        "WHERE e.note_id=? AND c.status!='rejected'", (note_id,))}
+    for cid in ids:
+        assess(cid)
+    return len(ids)
 
 
 def stale_by_source(source_id: str) -> int:
