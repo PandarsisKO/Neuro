@@ -8427,3 +8427,34 @@ three agents touch to tidy two commits is the worse trade.
 **For anyone reading this later:** if a git command through the mount prints `unable to unlink ... Operation not
 permitted`, do not ignore it. Check `find .git -name '*.lock' | wc -l` and ask for delete permission before it
 accumulates.
+
+## The re-score flag I got wrong — 2026-09-21
+
+The dry run for the post-brief re-score carried `--min-old-score 20`, which I supplied. It is wrong for THIS
+run, and the arithmetic says so exactly: the dry run's 2,381 candidates is C1's 20-34 (1,811) plus 35-44 (570)
+to the item. The flag excludes the entire 0-19 band — **6,076 candidates, the largest pool there is**.
+
+**Why it is wrong here specifically.** `--min-old-score 20` came from the 2026-09-20 spread sample, where the
+0-19 band cleared the cutoff on re-score only 6% of the time against 46% for 20+. That measurement was taken
+under the old prompt AND the old brief, and it is exactly what the brief change invalidates. C1 makes the point
+concretely: Kyle kept items scored **4, 10 and 18** — every one of them inside the band this flag skips — and
+the new brief was written to cover precisely that material (operating, delegation, mindset, finance literacy).
+Re-scoring everything EXCEPT the band the brief change was meant to rescue is the one shape this run must not
+take.
+
+Cost of fixing it: 8,457 candidates instead of 2,381, 106 calls instead of 30, **$2.12 instead of $0.60** —
+still inside `--budget 3`. C1's 30% keep rate in that band implies roughly 1,823 wanted items that the filtered
+run could not have recovered.
+
+**Claude Code raised two flags on the dry run; both are non-blocking, and one is stale.**
+
+1. *"rank-c33f6c4c is the prompt whose hash change is currently failing three frozen-value tests."* Not any
+   more — `754d424` re-baselined `test_core.py` to c33f6c4c and `212be82` fixed the third copy in `release.py`.
+   Re-run just now: 5 passed, 0 failed. Its information came from the morning's full-suite run against a
+   pre-commit tree. Its comparability point is also moot: every candidate in `skipped_low_relevance` was
+   ALREADY re-scored under c33f6c4c yesterday, so this run holds the prompt constant and varies the brief,
+   which is the intent.
+2. *"`--budget 3` doesn't appear to have capped anything."* Correct observation, correct behaviour. `--budget`
+   is a ceiling checked before each call (`rescore_candidates.py:141` and `:159`), not a target or a slice. The
+   whole job costs $0.60 filtered, $2.12 unfiltered; neither reaches $3, so nothing is capped and nothing
+   should be.
