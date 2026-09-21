@@ -210,7 +210,7 @@ def plan(project_id: str, *, limit: int | None = None, chunk_limit: int | None =
             "executor_task": EXECUTOR_TASK, "executor_model": c.model, "policy": policy,
             "eligible_for_local": eligible_for_local, "routing_note": routing_note,
             "count": selection["count"], "by_kind": selection["by_kind"], "items": items,
-            "note": "dry run only: no provider call was made; providers.route() decides real backend/health at call time (not yet wired)"}
+            "note": "dry run only: no provider call was made; providers.route() decides real backend/health at call time; t4.execute() is the wired path"}
 
 
 EXECUTE_VERSION = "t4-execute-v1"

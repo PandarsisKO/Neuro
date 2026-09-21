@@ -273,6 +273,9 @@ def test_the_launchers_refuse_a_held_port_and_say_what_to_do():
         assert "read -r -n 1 -s" in src, f"{name}: a double-clicked window must not close on its own error"
         # the pre-flight has to run BEFORE the server is launched, or it is decoration
         assert src.index("tcp:${PORT}") < src.index("neurosearch start"), f"{name}: pre-flight runs too late"
+    # 2026-09-21: `start` had silently drifted from `start.command` (no 0.63.92 self-heal, told the user to go
+    # double-click restart.command instead) while README pointed people at `./start`. One launcher, byte-identical.
+    assert (root / "start").read_text() == (root / "start.command").read_text(), "start must be a copy of start.command"
 
 
 def test_restart_command_frees_only_our_own_listener_and_asks_first():

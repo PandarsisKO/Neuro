@@ -913,7 +913,8 @@ def project_review_queue(project: str, limit: int = typer.Option(25, "--limit", 
         return
     c = q["counts"]
     typer.echo(f"{c['shown']} to review out of {c['proposed_total']} proposed "
-               f"(disagreement {c['by_reason']['disagreement']}, plan impact {c['by_reason']['plan_impact']}, "
+               f"(evidence dismissed {c['by_reason'].get('evidence_dismissed', 0)}, "
+               f"disagreement {c['by_reason']['disagreement']}, plan impact {c['by_reason']['plan_impact']}, "
                f"weak evidence {c['by_reason']['evidence_weak']}; hidden by the cap: {c['hidden_total']}, of which "
                f"weak evidence {c['not_shown']['evidence_weak']}, plan impact {c['not_shown']['plan_impact']})")
     for x in q["queue"]:

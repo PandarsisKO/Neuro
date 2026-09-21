@@ -112,7 +112,7 @@ HELD_MODEL = "claude-sonnet-5"       # where an `irreversible` task waits — th
                                      # also the newer model that won both live comparisons. A held task must not sit on
                                      # claude-sonnet-4-6: that is dearer ($3/$15 vs $2/$10) AND older, which is drift, not caution.
 RANK_MODEL = "claude-sonnet-5"       # rank.relevance production model (E2.1)
-FINDINGS_MODEL = "claude-sonnet-5"   # findings.extract production model (E2.2); every other task still follows settings.answer_model
+FINDINGS_MODEL = "claude-sonnet-5"   # findings.extract contract model (E2.2). PRODUCTION runs Haiku via NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT in .env (L-06/L-07, 2026-09-20). answer.* are pinned to HELD_MODEL; settings.answer_model feeds no contract.
 
 # 0.63.35 — MEASURED, not chosen. Was 240.0 since the contract was written, and the first server log
 # (2026-09-11, 45 minutes of real claims extraction on Kyle's machine) showed why that was too tight:
