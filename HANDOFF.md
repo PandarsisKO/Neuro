@@ -8268,3 +8268,38 @@ drift to commit `754d424`. That run predated the commits: `754d424` CONTAINS the
 the design-drift ceiling it flagged (30 > 28) was resolved in the same commit by tokenising three hand-written
 scrim colours and lowering the ceiling to 27. Five of those eight failures no longer exist. Its later,
 narrower run agrees — only `j3` and `l05` remained, which is what sent me to look at them properly.
+
+## Codex's work adopted, and two ways HEAD was quietly broken — 2026-09-21
+
+Codex is offline for the week, so its uncommitted working tree — the only copy of S75, S76, the scholar
+catalogue fix and the E5 cohort correction — was adopted and committed: `f99ab95`, `dfb16ca`, `8890879`,
+`970d17a`, `8fb5e7c`. Each commit names Codex as the author of the work and keeps its reasoning, because the
+reasoning is the part worth keeping; the scholar commit in particular records what Codex tried and rejected
+before landing the fix.
+
+**Two incoherences in HEAD came out of the adoption, and both were mine.** I have been staging commits by
+FILENAME rather than by change, and twice that split one change across the commit boundary:
+
+1. `754d424` committed `candidates.py` and `api.py` as whole files, sweeping in Codex's half-finished S75 code
+   that lived inside them — `candidates._excluded_by` and the three `/excludes` endpoints — while
+   `db.add_exclude` / `list_excludes` / `delete_exclude` stayed uncommitted. A clean checkout of HEAD would have
+   raised `AttributeError` the moment a pool was built.
+2. The same commit re-baselined the Tier 1 frozen `answer` total 200052 → 211650 and attributed the rise to
+   Mission A's `reconsider_creator` chat tool — but `qa.py`, which DEFINES that tool and carries the guidance
+   block costing the tokens, was never staged. A clean checkout would have built the prompt without the tool,
+   measured 200052 against a frozen 211650, and failed the router-equivalence gate.
+
+Both existed for the same reason and neither was detectable from this working tree, where every test passed
+because the missing halves were sitting on disk unstaged. **Verified by checking HEAD out into a separate
+worktree and running against it there** — 108 passed across S75/S76/L05/scholar/J3/pool, and the three frozen
+-total tests pass on a clean tree, which is the only place that check means anything.
+
+I also said more than once that Codex's work was untouched by my commits. That was true of the eight files I
+listed and false of `candidates.py` and `api.py`, where we had both edited and I committed the whole file.
+
+**Suite: 2,278 passed, 0 failed.** First fully green run — the last failure was `test_l05_sample_findings`,
+Codex's half-landed change, finished here.
+
+**Process change worth keeping:** stage by CHANGE, not by filename. `git add -p` or at minimum a
+`git diff --cached` read-through before every commit, and for anything touching a frozen value, a clean-worktree
+run rather than a working-tree one.
