@@ -25,3 +25,9 @@ data-audit/
 
 # scanner gate deps (npm ci --prefix tests/js)
 tests/js/node_modules/
+
+# Kyle's reference material and session scratch at the repo root — never tracked (2026-09-21 audit)
+INSPIRATION/
+SCREENSHOT AUDIT/
+Claude outputs/
+.*_livetest/
