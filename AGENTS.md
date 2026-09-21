@@ -1,5 +1,7 @@
 # Codex front door
 
+> **2026-09-21:** read order is `CLAUDE.md` → newest `STATE-OF-THE-APP-*.md` → the index at the TOP of `HANDOFF.md`, then its newest entries at the BOTTOM (append-only). Do not read all of HANDOFF; pre-09-18 history is in `docs/archive/`.
+
 This file is intentionally short. Do not duplicate Neuro Search architecture or process rules here.
 
 Before changing this repository, read in order:

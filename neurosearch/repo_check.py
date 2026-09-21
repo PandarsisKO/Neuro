@@ -23,12 +23,14 @@ class Finding:
 ROOT_FILES = {
     ".env.example", ".gitignore", "AGENTS.md", "AUDIT.md", "CLAUDE.md", "DESIGN-MISSION.md",
     "DESIGN.md", "DEVELOPMENT-OPERATING-SYSTEM.md", "Dockerfile", "EXTERNAL-AI-ACCESS-MISSION.md",
-    "FIELD-MAP-RUNG.md", "FOUNDATION-HANDOFF.md", "HANDOFF.md", "HARDENING.md", "PRODUCT-SCHEDULER.md",
+    "FIELD-MAP-RUNG.md", "HANDOFF.md", "HARDENING.md", "PRODUCT-SCHEDULER.md",
     "APPLE-DESIGN-REFERENCES.md",
-    "QA-STABILIZATION-MISSION.md", "QA-STABILIZATION-PROMPT.md", "QUALITY-CONTRACT.md", "README.md",
-    "EXECUTION-LADDER.md", "MORNING-BATCH.md", "PRODUCT-INTELLIGENCE-MISSION.md", "SCHEDULER.md", "SOURCE-CAPABILITY-RUNG.md", "SPEED-MISSION.md", "TRANSCRIPT-INTELLIGENCE-MISSION.md",
+    "QUALITY-CONTRACT.md", "README.md",
+    "EXECUTION-LADDER.md", "PRODUCT-INTELLIGENCE-MISSION.md", "SCHEDULER.md", "SOURCE-CAPABILITY-RUNG.md", "SPEED-MISSION.md", "TRANSCRIPT-INTELLIGENCE-MISSION.md",
     "VESTIGIAL-INVENTORY.md", "fly.toml", "pyproject.toml", "restart.command", "start", "start.command",
-    "run-findings-haiku-test.command", "run-haiku-comparison.command", "RUN THIS - Audit Instance.command",
+    "run-findings-haiku-test.command", "run-haiku-comparison.command",
+    # 2026-09-21 repo audit: FOUNDATION-HANDOFF, MORNING-BATCH, QA-STABILIZATION-PROMPT moved to docs/archive/;
+    # "RUN THIS - Audit Instance.command" deleted (it cd'd into a worktree pruned on 09-14).
 }
 DOCUMENTED_EXPERIMENTAL = {"neurosearch/planner_v3.py"}
 

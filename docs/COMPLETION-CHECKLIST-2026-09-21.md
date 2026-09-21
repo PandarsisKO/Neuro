@@ -10,7 +10,7 @@ shell and the live database, and some judgements are only Kyle's.
 
 ## A. Finish the run that is already in flight
 
-**A1. Promote the candidates a bug of mine stranded.** `--resurface` only moved items whose OLD score was under
+**A1. ~~Promote the candidates a bug of mine stranded.~~ DONE 2026-09-21 (resurface-only run: idempotent, 0 left).** `--resurface` only moved items whose OLD score was under
 the cutoff, so ~322 that were already lifted by an earlier slice never moved. Fixed in the tool; this collects
 them. Free, no model calls. — *Claude Code*
 
@@ -18,14 +18,14 @@ them. Free, no model calls. — *Claude Code*
 .venv/bin/python tools/rescore_candidates.py --project c752ed152ec942dd97b9a94c3f1b3b96 --resurface-only
 ```
 
-**A2. Top up descriptions for the ~408 candidates that arrived in `available` after the backfill.** ~9 quota
+**A2. ~~Top up descriptions~~ DONE 2026-09-21 (49 fetched, 0 new). Top up descriptions for the ~408 candidates that arrived in `available` after the backfill.** ~9 quota
 units of 10,000, seconds. — *Claude Code*
 
 ```
 .venv/bin/python tools/backfill_descriptions.py --project c752ed152ec942dd97b9a94c3f1b3b96 --limit 500
 ```
 
-**A3. Confirm two test failures are environmental, not real.** Both fail in the Cowork VM for reasons that look
+**A3. ~~Confirm two test failures are environmental, not real.~~ DONE 2026-09-21 — they were NOT environmental; both were real and are fixed (HANDOFF "I was wrong about both"). Suite 2,367 passed, 0 failed.** Both fail in the Cowork VM for reasons that look
 like the environment (`doctor` wants a configured provider; `sample_findings` uses `E5_COHORT`, source ids that
 exist only in the live database). If they pass on the Mac, the suite is clean. — *Claude Code*
 
@@ -55,7 +55,7 @@ YouTube, so behaviour is unchanged for anyone without a key. Needs tests and a l
 > Discover hands those straight to the ranker. 21 new tests (`test_ad8_*`, `test_ad9_*`); full suite 2,221 passed
 > in the sandbox with only the two known environmental failures.
 >
-> **Still owed:** the live check against one real channel, which needs a key and the Mac. — *Claude Code*
+> **~~Still owed:~~ DONE 2026-09-21:** live check on @AcquiringMinds returned 457 entries, 457 with descriptions (HANDOFF "Five-step verification run").
 >
 > ```
 > .venv/bin/python -c "from neurosearch import media; i,e = media.enumerate_entries('https://www.youtube.com/@AcquiringMinds'); print(len(e), 'entries;', sum(1 for x in e if x.get('description')), 'with descriptions')"
@@ -72,7 +72,7 @@ still double the spend against the same API key, which is the thing that actuall
 
 ## C. Prove the fix actually worked (the real closure)
 
-**C1. Re-run the AD4B blind review against the NEW scores.** The 77% that justified all of this was measured
+**C1. ~~Re-run the AD4B blind review against the NEW scores.~~ DONE 2026-09-21 — 22/40 kept (55 %) vs 77 % before; 45–49 band 10/10 → cutoff moved to 45 (`db851c2`). Still above the 25 % bar, so AD4B stays open (Kyle's call: close or third round).** The 77% that justified all of this was measured
 against the broken filter. Nothing yet measures the FIXED one from Kyle's side — the 0-19 band dropping from 6%
 to 0.3% shows noise stays down, but not whether the things now surfacing are things he wants. Same tool, same
 blind method, directly comparable number. ~20 minutes of Kyle's time, no model cost. — *Claude Code generates;
@@ -86,7 +86,7 @@ Then open `evals/ad4b-sample-after-fix.html`, judge all 30 blind, and run the sc
 **Pass:** the kept-rate falls well below 77% — the filter is no longer discarding things he wants. If it stays
 high, the prompt still is not matching his judgement and the band table says where.
 
-**C2. Decide the AI-automation creators.** Nick Puru, Nate Herk and Liam Ottley clear the cutoff on a
+**C2. ~~Decide the AI-automation creators.~~ DONE 2026-09-21 — Kyle: "yes exclude"; `Nate Herk | AI Automation` excluded as creator (id 10) via the API, 378 candidates left the pool; Puru/Ottley kept.** Nick Puru, Nate Herk and Liam Ottley clear the cutoff on a
 business-acquisition project because the prompt rewards "teaches transferable method" and their descriptions are
 dense with business language. Two levers: Lose them in focus review (creator_verdict drives them to −12 after
 three real rejections), or exclude them outright via `project_excludes` with `kind='creator'`, the mechanism
@@ -128,7 +128,7 @@ recent real value. And it does not know the SBA spread: that is SOP 50 10's, and
 constant here would be a second unversioned copy of a document `works.py` exists to version. `max_rate(spread,
 spread_source=...)` takes it and says in the result where it came from. 19 tests. — *Cowork*
 
-**BLOCKED 2026-09-21 — Kyle reports FRED is not available to him right now; revisit later.** The module stays
+**PARKED 2026-09-21 — Kyle: "FRED API doesn't really matter." Also note: nothing consumes `fred.py` yet even with a key.** The module stays
 inert and costs nothing while it waits. A keyless path exists in principle (`fredgraph.csv`, FRED's own public
 CSV download, same series ids, no key), but BOTH the Cowork sandbox and the device VM have `fred.stlouisfed.org`
 blocked by egress policy, so it could not be verified from here — and shipping unverified network code is the
@@ -169,7 +169,7 @@ changes.
 
 ---
 
-## Order
+## Order (historical — A, B1, C1 done; see the 2026-09-21 status marks above)
 
 A1 → A2 → A3 (minutes, finishes what is running) → **C1** (the measurement that says whether any of this
 worked) → B1 (stops the backlog returning) → everything else by whatever C1 reveals.

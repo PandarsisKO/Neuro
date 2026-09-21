@@ -1,5 +1,7 @@
 > PARKED UNTIL FOUNDATION CLOSEOUT — first major product mission afterward. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
 
+> **2026-09-21:** T1 is COMPLETE (0.63.56, `docs/T1-ADMISSION-2026-09-12.md`); T2–T6 were admitted separately through `docs/T*-ADMISSION-*.md`; the T2 `bge-m3` embedding-space migration is PARKED (no versioned migration gate). This is NOT the active program — `PRODUCT-INTELLIGENCE-MISSION.md` is (since 2026-09-14). The banner below is historical.
+
 # Transcript Intelligence & Research State — evaluation and ladder
 
 *Filed 2026-09-10 against Kyle's brief on two connected goals: better organisation of research state, and cheaper

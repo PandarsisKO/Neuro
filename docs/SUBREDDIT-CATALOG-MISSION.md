@@ -1,5 +1,7 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
+> **PARKED 2026-09-21 by Kyle** ("Reddit API doesn't really matter"). No agent picks this up until approved Reddit API credentials exist in `.env`. Code on `main` and the `codex/subreddit-*` branches stay as the record; the `/private/tmp` worktrees are disposable. Two candidates were named on 09-19 (`abdefaa` on `codex/subreddit-integrated`, `7191fdf` on `codex/subreddit-delivery`); reconcile which is newer BEFORE resuming, if ever.
+
 **Current implementation pointer (2026-09-19):** shared main is intentionally not runtime-delivered.
 Continue from `codex/subreddit-integrated` (runtime `abdefaa`, evidence checkpoint `c842861`,
 `/private/tmp/neuro-repair-powMDK/integrated-worktree`)

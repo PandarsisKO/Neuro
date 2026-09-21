@@ -1,5 +1,9 @@
 # EXECUTION LADDER — Product Intelligence Mission
 
+**Status ticks — 2026-09-21 (repo audit):** every `[x]`/`[k-done]`/`[parked]` marker dated 2026-09-21 below was set from
+evidence recorded in `HANDOFF.md` on 2026-09-20/21, not from intent. Items Kyle parked on 2026-09-21 (L-21, L-40,
+L-60, L-61, FM1-gate→FM3, the subreddit track) are marked `[parked]` and listed in `PRODUCT-SCHEDULER.md` PARKED.
+
 **Current execution routing — 2026-09-19:** the active cross-feature mission and ordered ladder are
 [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md), starting at CE0. This file retains
 the canonical Product Intelligence gate definitions and history; it is not a competing NOW queue. Its historical
@@ -20,9 +24,9 @@ this file is the ordered runbook for what is admitted, plus the parked tail so n
    Skip items whose lane is `kyle` -- report them, never do them.
 3. Mark it `[~] <lane> <date>` before starting; `[x] <sha>` when the gate passes; `[!] <why>` if blocked.
    Never skip the gate. Never mark `[x]` on intent.
-4. Validate before every commit: focused tests → the wider set the item names → `python -m pytest tests -q` in
-   chunks with `NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=` blanked (until L-03 lands) → `repo-check`.
-   Known-failure baseline is 14 (2026-09-14); zero NEW failures is the bar. Compare names, not counts.
+4. Validate before every commit: focused tests → the wider set the item names → `python -m pytest tests -q`
+   (L-03 landed 2026-09-15, so no `.env` blanking is needed) → `repo-check`.
+   Known-failure baseline is **0** since 2026-09-21 (2,367 passed, 0 failed; HANDOFF 09-21). Any failure is new.
 5. Two commits per item minimum: code, then the docs/checkpoint. Append a dated checkpoint to `HANDOFF.md`
    (what, evidence, sha, next). Commit messages end with the session attribution.
 6. Cost: state the dollar estimate before any metered call; `--paid`/`api_requested` is never a default; local
@@ -42,7 +46,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked ·
 
 ## Stage 0 — Tonight and standing prerequisites
 
-### L-00 `[k]` Rebuild the 409 stale carrying-weight sources overnight, $0 — lane: kyle
+### L-00 `[k]` (no disposition recorded; the 2026-09-20 real nightly rebuilt 107+1 stale sources, so the count is unknown — re-derive from Health before acting) Rebuild the 409 stale carrying-weight sources overnight, $0 — lane: kyle
 Updated 2026-09-15: the scheduler (L-20) and its UI (L-40) now exist, so this is one click. Rulings §4 still
 apply: never promise "2 AM". Tonight's honest path:
 - Findings → review panel → "Accept 389 as still usable" (instant, free).
@@ -53,7 +57,7 @@ apply: never promise "2 AM". Tonight's honest path:
   + "Rebuild · $0" now.)
 Gate: morning Findings panel shows the 409 current; `usage` shows $0 for them.
 
-### L-01 `[k]` `.zshrc` dead `deno/env` line — lane: kyle · 5 seconds
+### L-01 `[k]` (cosmetic; never recorded as done) `.zshrc` dead `deno/env` line — lane: kyle · 5 seconds
 `sed -i '' '/Aerop-Ops-Pro.*deno\/env/s/^/# /' ~/.zshrc`
 
 ---
@@ -179,15 +183,15 @@ E5 sources (4 Sonnet / 4 Haiku, ids in docs/T4-ADMISSION-2026-09-14.md), an exac
 Mac to `evals/p53-sample-<date>.json`. Review rubric: accurate to source (y/n), worth keeping (y/n), one-line
 why-not. Gate: script + rubric committed; Kyle can complete it in ≤ 20 minutes.
 
-### L-06 `[k]` P5.3 Kyle reviews the sample — lane: kyle · ~20 min · needs: L-05
+### L-06 `[x] 2026-09-20 — Kyle judged 40/40 on `evals/p53-sample-2026-09-20.json` (HANDOFF "L-06/L-07 answered")` P5.3 Kyle reviews the sample — lane: kyle · ~20 min · needs: L-05
 Real judgments, not batch. Writes answers into the JSON the script produced.
 
-### L-07 `[ ]` P5.3 decision — lane: claude · tier: sonnet · needs: L-06 · $0 — prepped 19dc1a7: `tools/decide_kept_rate.py --sample evals/p53-sample-<date>.json` is the whole computation
+### L-07 `[x] 2026-09-20 — Haiku confirmed as findings default: 100 %/100 % kept, $0.0006 vs $0.0014 per kept finding (HANDOFF "L-06/L-07 answered")` P5.3 decision — lane: claude · tier: sonnet · needs: L-06 · $0 — prepped 19dc1a7: `tools/decide_kept_rate.py --sample evals/p53-sample-<date>.json` is the whole computation
 Compute kept-rate per model, cost per KEPT finding (cost data already in the admission doc). Rule (T4 plan E5):
 Haiku stays only if cost-per-kept is lower AND kept-rate within 10 points of Sonnet. Otherwise revert the `.env`
 line and say so. Gate: written decision in the admission doc + HANDOFF; `.env` matches the decision.
 
-### L-08 `[~] claude 2026-09-15` P5.1 brief-text relevance backtest -- tooling ready, needs a Mac run + decision — lane: claude · tier: sonnet · needs: — · ~$0.03 (embeddings)
+### L-08 `[x] 2026-09-20 — run on the Mac; Spearman 0.999/1.0, no case to switch the ranking basis (HANDOFF "Item 4 closed")` P5.1 brief-text relevance backtest — lane: claude · tier: sonnet · needs: — · ~$0.03 (embeddings)
 `embeddings.embed_query(project["brief"])` cached in `kv` by brief revision; `t4.source_relevance()` candidate =
 max(centroid-sim, brief-sim). Re-run the 20-source backtest from docs/T4-ADMISSION-2026-09-14.md (needs the
 embedding provider → a `tools/` script Kyle runs, or a backup copy in the session workspace). Switch the ranking
@@ -214,7 +218,7 @@ still-in-flight source produce no duplicate job (`assess()` itself excludes sour
 `create_job`'s existing dedupe); not_before gates claiming and survives a restart (manually verified beyond the
 5-test suite). Full suite: 1504 passed; `repo-check: PASS`.
 
-### L-21 `[~] claude 2026-09-15 -- code+tests done at 7b5e5cc, blocked on Kyle's physical test` macOS power
+### L-21 `[parked] 2026-09-21 — Kyle: sleep/wake tests don't matter now; code+tests done at 7b5e5cc` macOS power
 assertion, measured not assumed — needs: L-20
 `neurosearch/power_assertion.py` built and tested: holds `caffeinate -s` for exactly as long as active/near-future
 scheduled work exists, wired into `jobs.start_workers()`/`stop_workers()`, reported by `doctor`, honestly
@@ -231,7 +235,7 @@ measured-reality gate.
 
 ## Stage 4 — P2 E7 Nightly Refinery backend (lane: claude, reassigned 2026-09-15 -- see Stage 1 header; tier: sonnet) — needs: L-20
 
-### L-30 `[~] claude 2026-09-15 -- code+tests done at 6f48da3, blocked on Kyle's real night` nightly envelope
+### L-30 `[x] 2026-09-20 — real night run by Kyle at 15:02 (`--budget 2 --research-refresh-budget 1`), HANDOFF "Real nightly run closes L-30/L-31/L-41 and CR7"` nightly envelope
 `neurosearch/nightly.py` built and tested: `settings.t4_nightly_budget` (default 0 = off) + `settings.t4_nightly_hour`
 gate `due()`; `run()` calls `db.preflight_autonomous()` first (L-10, refuses and records rather than proceeding on
 a dirty DB), then per active project (most-recently-active first) `t4.execute(pid, budget_usd=remaining, dry_run=False,
@@ -248,7 +252,7 @@ To run it: `neurosearch nightly run --budget 2` (prints the authorized amount an
 the CLI), leave the worker running, then `neurosearch nightly report` the next morning -- see
 `docs/KYLE-GATES-2026-09-15.md`. Gate remains open until Kyle runs it and confirms the ledger reconciles -- code-complete, not gate-complete.
 
-### L-31 `[~] claude 2026-09-15 -- code+tests done at 175e856, blocked on a real L-30 night` Project Delta v0 (data only) — needs: L-30
+### L-31 `[x] 2026-09-20 — passed on the same real night as L-30` Project Delta v0 (data only) — needs: L-30
 `neurosearch/delta.py` built and tested: `for_envelope(envelope_id) -> dict` reads the envelope's own kv record
 (today, only `nightly.run()`'s `"nightly-{date}"` shape) and, per touched project, counts sources read, findings
 suggested, sources stopped by the substance probe, revision-at-run per touched source, new tensions, and spend --
@@ -271,7 +275,7 @@ JSON -- no further code is needed (see `docs/KYLE-GATES-2026-09-15.md`).
 
 ## Stage 5 — P1B "Tonight" UI (Claude lane, tier: sonnet) — needs: L-20 (done) AND Codex's frontend split (landed 2026-09-13 at `7480352`; `neurosearch/web/js/*` + `styles.css`)
 
-### L-40 `[~] claude 2026-09-15 -- code+tests done at ed87c06 (0.63.91), gate = Kyle uses it once` Now / Tonight / Overnight batch on the stale-rebuild action
+### L-40 `[parked] 2026-09-21 — code+tests done at ed87c06 (0.63.91); Kyle's one-use observation parked with the other sleep/wake gates` Now / Tonight / Overnight batch on the stale-rebuild action
 Progressive disclosure; pending state visible; cancellable; the host-honesty copy from L-20; on return the
 panel says what was scheduled, whether it ran, what happened, cost, attention needed. Gate (rulings §3 P1B).
 Shipped: each triage tier keeps one primary ("Rebuild · price" = now) plus a "When…" disclosure (now on the API /
@@ -288,7 +292,7 @@ in the morning -- is the outcome clear without opening the jobs console? (`docs/
 
 ## Stage 6 — P3 Morning Report v1 (Claude lane, tier: sonnet) — needs: L-31
 
-### L-41 `[~] claude 2026-09-15 -- code+tests done at 16169e3, blocked on Kyle reading a real one` report v1, honest about P4 not existing (rulings §7)
+### L-41 `[k] code+tests done at 16169e3; the 2026-09-20 night produced a real report — gate is Kyle reading it once (`neurosearch nightly report`) and saying whether it explained the night` report v1, honest about P4 not existing (rulings §7)
 `neurosearch/report.py` built and tested: `for_envelope(envelope_id) -> dict` assembles `delta.for_envelope()`'s
 data with `staleness.triage()`'s tiers (marked explicitly provisional); `render_text(report) -> str` renders the
 mission doc's own primary hierarchy (what changed, max emphasis → why it matters → what needs me → what Neuro
@@ -313,7 +317,7 @@ real night: `neurosearch nightly report` the morning after L-30's run (CLI added
 `impact.for_claim(claim_id) -> {disagreement: from research_tensions, plan_impact: claim cited by plan_items,
 value: high|some|unknown}`. Unknown when neither is provable. No LLM score. Gate: deterministic tests.
 
-### L-51 `[~] claude 2026-09-15 -- code+tests done at 3ea00da, gate needs Kyle's real project` exception queue — needs: L-50 **2026-09-16 real run**: executed against the real "buying businesses" project (982 sources) via a same-day
+### L-51 `[x] 2026-09-20 — passed on real data, Kyle's verdict recorded (HANDOFF "L-51 closed on real data"); web surface built 09-21 as the Research tab (`19d672a`)` exception queue — needs: L-50 **2026-09-16 real run**: executed against the real "buying businesses" project (982 sources) via a same-day
 backup snapshot (never the live DB directly -- CLAUDE.md rule #1): `25 to review out of 15589 proposed
 (disagreement 6, plan impact 0, weak evidence 25; hidden by the cap: 14949)`. Real result, not a fixture --
 awaiting Kyle's answer to the gate's 3 questions (short enough? does each line say why? is the disagreement he
@@ -330,7 +334,7 @@ is never dropped, `counts.not_shown` reports exactly what was hidden by reason. 
 `repo-check: PASS`. Gate needs Kyle's real project: `neurosearch project review-queue <project>` -- is the list
 short, does every line justify itself, and is the disagreement you know about in it? (`docs/KYLE-GATES-2026-09-15.md`)
 
-### L-52 `[~] claude 2026-09-15 -- built behind a flag at d7d37ce; the flag IS the gate` Morning Report v2: "What needs me?" — needs: L-51
+### L-52 `[x] 2026-09-20 — flag turned on after L-51 passed; the review-queue UI it was waiting for landed 09-21 (`19d672a`)` Morning Report v2: "What needs me?" — needs: L-51
 `settings.morning_report_needs_me` (`NEUROSEARCH_MORNING_REPORT_NEEDS_ME`, default off) fills each project's
 "Needs you" from `review_queue.build(pid, limit=5)`, each item with its reason; never the banned phrasing (tested).
 Off = v1 byte-identical. Flip to 1 ONLY after L-51's gate passes on Kyle's real project (rulings §7).
@@ -338,7 +342,7 @@ Off = v1 byte-identical. Flip to 1 ONLY after L-51's gate passes on Kyle's real 
 ---
 
 ## Stage 8 — P6 T5/T6 operationalization (tier: sonnet) — needs: L-50
-### L-60 `[~] claude 2026-09-15 -- code+tests done at fee162c, gate needs a real night with --t5-budget` T5 triggers: high-impact contradiction / weak consensus on a decision / strong sources disagree /
+### L-60 `[parked] 2026-09-21 — code+tests done at fee162c; the `--t5-budget` night is parked with the other overnight observations` T5 triggers: high-impact contradiction / weak consensus on a decision / strong sources disagree /
 plan-critical uncertainty → `t5.adjudicate` produces a PROPOSED resolution (never canonical). Budgeted per night.
 `t5.escalation_candidates(decision_aware=True)` adds `weak_consensus_on_decision` and `plan_critical_uncertainty`
 (any-impact WEAK_CONSENSUS / CONTRADICTION-NOVEL on a Claim the current plan cites -- L-50's real `plan_impact`,
@@ -350,7 +354,7 @@ CLI: `neurosearch nightly run --budget 2 --t5-budget 1`. 8 tests + 1 CLI test; a
 unchanged. Full suite 1557, `repo-check: PASS`. Gate (P6: "appears because it changes what the user should know
 or do"): one real night with `--t5-budget` on Kyle's project, then read the adjudication verdicts in the Morning
 Report / Findings review and judge whether they were worth their line (`docs/KYLE-GATES-2026-09-15.md`).
-### L-61 `[~] claude 2026-09-15 -- code+tests done at a541e5a, gate = Kyle judges the line on a real night` T6 surfacing only where it changes a decision: expired assumption, constant drifted, plan depends
+### L-61 `[parked] 2026-09-21 — code+tests done at a541e5a; parked with L-60` T6 surfacing only where it changes a decision: expired assumption, constant drifted, plan depends
 on unmeasured assumption. No dashboard.
 `neurosearch/t6.py` (read-only): reads which mechanisms the night's envelope record PROVES fired and intersects
 with the ledger's new `exercised_by` tags. Surfaces only: unresolvable constants (code moved -- always, first),
@@ -364,7 +368,7 @@ negatives pinned as hard as the positives. Not built and not pretended: automati
 what you'd check? Nothing extra to run: it appears at the bottom of `neurosearch nightly report` when earned.
 
 ## Stage 9 — P7 Structured Delta experiment (Claude lane, T4 owner) — needs: L-07
-### L-70 `[ ]` ~20 varied long-form sources; Arm A findings vs Arm B structured prototype; written measured
+### L-70 `[ ]` (UNBLOCKED 2026-09-20: L-07 closed; needs Kyle's $ yes on `tools/p7_estimate.py`) ~20 varied long-form sources; Arm A findings vs Arm B structured prototype; written measured
 decision BEFORE any persistence. `kyle-decides` on the $ estimate (state it first) -- prepped d9468c0: `tools/p7_estimate.py --project <name>` states it ($0, Arm B labelled as an assumption).
 
 ## Stages 10–15 — the acceleration plan (mission §12, 2026-09-15). Dependencies are REAL, not feature-family order.
@@ -439,7 +443,7 @@ consequential. Gate: fixture scenario A and C from mission §12 pass; no `set_st
 A third bounded work source in `nightly.run()` under its own explicit cap (like T5's); "nothing changed" is a
 successful outcome recorded on the envelope. Gate: envelope test; no need refreshed twice in a night.
 
-### CR7 `[k]` real-project gate — needs: CR6. **Kyle action**: let the nightly worker run once, unattended, on a real project (same path L-00 already uses for the stale-source rebuild). Next morning, check the Morning Report / Findings panel for CR6's envelope line ("N Claim(s) refreshed" or an honest "nothing changed" — both count as a pass) and tell Claude what it showed. Never faked, never simulated with a fixture -- this gate is specifically "did it happen for real." **2026-09-16 readiness-pass correction**: `nightly run` requires its own separate `--research-refresh-budget` flag or CR6/CR7 never runs at all (`neurosearch nightly run --budget 2 --research-refresh-budget 1`), and the plain-text Morning Report stays silent about CR6 either way this run had it off or it had nothing due -- check `nightly report --json`'s `research_refresh` key instead: `null` means the flag was never passed, a dict means it ran. Full copy-paste steps in `docs/KYLE-GATES-2026-09-15.md` under "CR7".
+### CR7 `[x] 2026-09-20 — passed on Kyle's real nightly run (56 refreshes requested; HANDOFF "Real nightly run closes … CR7")` real-project gate — needs: CR6. **Kyle action**: let the nightly worker run once, unattended, on a real project (same path L-00 already uses for the stale-source rebuild). Next morning, check the Morning Report / Findings panel for CR6's envelope line ("N Claim(s) refreshed" or an honest "nothing changed" — both count as a pass) and tell Claude what it showed. Never faked, never simulated with a fixture -- this gate is specifically "did it happen for real." **2026-09-16 readiness-pass correction**: `nightly run` requires its own separate `--research-refresh-budget` flag or CR6/CR7 never runs at all (`neurosearch nightly run --budget 2 --research-refresh-budget 1`), and the plain-text Morning Report stays silent about CR6 either way this run had it off or it had nothing due -- check `nightly report --json`'s `research_refresh` key instead: `null` means the flag was never passed, a dict means it ran. Full copy-paste steps in `docs/KYLE-GATES-2026-09-15.md` under "CR7".
 
 ### CR8a `[x] 4f14113` monitoring-classification storage — DONE (Kyle's product decision, 2026-09-16)
 The missing piece between NEW CANDIDATE (a Candidate Index row CR3/CR4 can now produce) -> JUSTIFIED RESEARCH
@@ -637,7 +641,7 @@ rows stay `applied_plan_id: null` even after a later apply, older NULL-column ro
 `POST /api/plan-updates/{id}` route round-trips full provenance. `planner.build_plan` faked directly (not via
 `monkeypatch.undo`) — $0, no provider/model call.
 
-### LP6 `[k]` real evidence-change demo — needs: LP3. **2026-09-16 checked, no trigger yet**: `plan_updates` table is empty in the same-day backup snapshot across
+### LP6 `[k]` (2026-09-21: the 09-20 nightly requested 56 refreshes; nobody has re-checked `plan_updates` since — Claude Code, one query on the Mac) real evidence-change demo — needs: LP3. **2026-09-16 checked, no trigger yet**: `plan_updates` table is empty in the same-day backup snapshot across
 all 3 real projects -- no plan-impacting Claim change has happened yet. Correctly left waiting for its real
 trigger, per the mission's explicit instruction not to manufacture one. **Kyle action**: the next time CR5/CR6's nightly refresh actually changes a Claim's status on a real project (strengthened / weakened / contradicted -- CR7 is where this is first observed), tell Claude the Claim id. Claude verifies the resulting `plan_updates` row alone reconstructs "your plan changed in one place" (previous state, resulting state, reason, claim linkage, system vs user provenance) with no other lookup needed.
 
@@ -686,7 +690,7 @@ only (candidate decisions with an honest denominator, downstream finding/Claim/t
 provenance, review burden, project-scoped novel creators), with an evidence-sufficiency guard (no_usage /
 thin_sample / usable_sample) that keeps the verdict descriptive and refuses confidence on a thin sample. No
 schema, no persisted batch telemetry, no reversal of AD3's "exploratory is not persisted" decision. Gate: tests.
-### AD4B `[k]` true static vs adaptive comparison — needs: real usage. **2026-09-16: usable_sample reached for real on both active projects** (via a same-day backup snapshot,
+### AD4B `[k]` (2026-09-21: two blind rounds done — 77 % → 55 % kept vs a 25 % bar; cutoff moved 50→45 on the band table; Kyle 2026-09-21: "load up one more blind for me" — round 3 is Claude Code's to generate after the post-brief re-score) true static vs adaptive comparison — needs: real usage. **2026-09-16: usable_sample reached for real on both active projects** (via a same-day backup snapshot,
 read-only): "buying businesses" project — 10,100 genuine decisions, 8% capture rate, 92.5% rejection rate;
 "web app design" project — 3,650 genuine decisions, 10% capture rate, 89.9% rejection rate. Real estate project
 still `no_usage`. Awaiting Kyle's judgment on the two usable_sample verdicts: do these numbers leave genuine
@@ -722,7 +726,7 @@ surfaces everything needed to judge a real run WITHOUT `--json`: per-seed fetch 
 counters spelled out, an explicit `sufficient_for_underrepresented_conclusion` line, and each field area's full
 metrics plus `representative_references` (title, DOI when it has one, mention count). 25 -> 32 tests. Full suite
 1870 passed (2 consecutive clean runs); repo-check PASS; release-check PASS at `f13ca97`.
-### FM1-gate `[k]` real-world validation — needs: a real project with a genuine review/scholarly seed AND live **2026-09-16 real attempt**: ran against all 3 of Kyle's real projects (via a same-day backup snapshot, read-
+### FM1-gate `[parked] 2026-09-21 — network is no longer the blocker (Crossref/OpenAlex 200 since 09-19); no project has a DOI-bearing Work to seed it; parked until one exists` real-world validation — needs: a real project with a genuine review/scholarly seed AND live **2026-09-16 real attempt**: ran against all 3 of Kyle's real projects (via a same-day backup snapshot, read-
 only). None has a naturally DOI-bearing seed work (expected -- his projects are video/podcast/practitioner
 content, not academic literature). Tried `--fetch-seeds` to search Crossref explicitly: blocked at the DNS
 level from this session's execution environment (`fetch blocked (dns) at hop 0 for api.crossref.org` --
@@ -748,8 +752,8 @@ manufacture an `underrepresented` claim -- check the "sufficient reference metad
 Record the verdict here, especially (F): if F is NO, record why and FM2 stays stopped; if F is YES, FM2 may be
 considered for admission, but is never implemented automatically from that alone. Do not expand clustering
 sophistication or add a second data source (OpenAlex, headings) speculatively before this evidence exists.
-### FM2 `[ ]` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — READY AFTER FM1-gate.
-### FM3 `[ ]` routing through `knowledge.pursue` / `where_to_look` — READY AFTER FM2.
+### FM2 `[parked] 2026-09-21` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — READY AFTER FM1-gate.
+### FM3 `[parked] 2026-09-21` routing through `knowledge.pursue` / `where_to_look` — READY AFTER FM2.
 
 ### Stage 9 (unchanged) — P7 Structured Delta: EXPERIMENT ONLY (L-70), needs L-07 + Kyle's $ yes. Must not block
 Stages 10–14 unless a real dependency is found.

@@ -2377,3 +2377,37 @@ two harness failures. Fake Tier 1 and repo-check passed separately. The FAIL art
 `evals/release/release-check-0.63.94-9bc7962-20260919-104849.json`. This is a test-repair checkpoint, not feature
 acceptance or a release. S68's earlier source-inspection failure did not reproduce in frozen runs and is not
 proven to be order-dependent; prior concurrent source changes make its old result unsuitable as a baseline.
+
+
+## Frozen-value and decision records that were missing from this file — 2026-09-21 (repo audit)
+
+`CLAUDE.md` says every frozen-value change is recorded here. These were not; the reasoning lived only in code
+comments and HANDOFF entries. Recorded now so the verdict table above is not the only place a future agent looks.
+
+- **Chat/answer frozen totals (Tier 1 router-equivalence gate).** `answer` task input total 200,052 → **211,650**
+  (grand 266,271 → **277,869**) and `CHAT_ARM_INPUT_TOTAL` 213,112 → **224,716**, re-frozen 2026-09-20/21 for
+  Mission A's `reconsider_creator` chat tool. Measured, not inferred: removing the tool schema alone gives
+  204,306 (−7,344); additionally removing its guidance block from `qa.PROJECT_BLOCK` returns exactly 200,052
+  (−4,254); call counts unchanged at 34. Real cost: ~341 input tokens per chat call (~5.8 %). Three sites carry the
+  number — `tests/test_core.py` (two), `release.py:444` — and the third was missed for a day, during which
+  `release-check` failed silently while pytest was green. Rule: a frozen value has as many copies as `grep` finds,
+  and a clean-worktree run is the only proof. Kyle has not yet judged the 5.8 % acceptable or not (open).
+- **Ranking prompt hash** `f38f9a9c` → **`c33f6c4c`** (2026-09-20: prompt rewritten to judge what a video teaches;
+  snippet 220 → 400 chars). Drift NOT accompanied by a deliberate prompt edit is still a bug.
+- **`candidates.LOW_RELEVANCE` 50 → 45** (`db851c2`, 2026-09-21). Evidence: AD4B blind review C1, 45–49 band kept
+  10/10 (p ≈ 0.001 against a 50 % true rate); 35–44 kept 3/10 (n=10, ±15 pts) so the cutoff stopped there. Global
+  effect on every project and future ingest; creator-trust floor moved 38 → 33 with it. `test_ad1`'s boundary
+  fixture is expressed against the constants. Moving further is Kyle's call, not a supported change.
+- **`findings.extract` production model = `claude-haiku-4-5`**, via `NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT` in
+  `.env` (decided 2026-09-14 on the E5 cohort; confirmed 2026-09-20 by L-06/L-07: 40/40 blind, Haiku 100 %/100 %
+  kept, $0.0006 vs Sonnet 5 $0.0014 per kept finding). `contracts.FINDINGS_MODEL` still says Sonnet 5 so the
+  E2.2 measurement stays the contract's own reason; the production override is a `user:` decision recorded in
+  `.env.example`. Row E of the verdict table is therefore "contract Sonnet 5, production Haiku".
+- **AD4B blind review** (tools `ad4b_blind_sample.py` / `ad4b_score.py`): 2026-09-20 first sample 77 % kept
+  (30 judged, 45–49 band empty); 2026-09-21 after the ranker fix 55 % (40 judged, 10 per band). Bar fixed before
+  either run: 25 %. Population-weighted, ~38 % of what the filter rejects is material Kyle would keep. Open.
+- **Elapsed deletion triggers, not yet acted on:** `planner_v3.py` ("delete if not revisited within two product
+  releases" — many have passed), `rerank.py` ("can go"), `NEUROSEARCH_CHAT_TAIL_BREAKPOINT` ("delete if still off
+  after the next cost review"). Kyle asked 2026-09-21 for a delete decision; awaiting his word.
+- **UI is no longer a single file** (rows above that say so are historical): `web/index.html` + `web/js/*.js`
+  (11 modules) + `styles.css`, no build step, since the 2026-09-13 frontend split.

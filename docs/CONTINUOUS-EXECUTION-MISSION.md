@@ -1,5 +1,7 @@
 # Continuous execution — finish acceptance, then Chat Refresh
 
+> **2026-09-21 status (repo audit):** Codex is offline this week and its uncommitted tree was adopted into `main` on 09-21 — do not restart SUB-R1 from a `codex/*` branch. The subreddit track (CE10, SUB-R1–R9) is PARKED by Kyle (no Reddit API access; see `PRODUCT-SCHEDULER.md` PARKED). CE9's remaining research-feature decisions L-51→L-52 and CR7 closed 09-20. Still open here: CE2 live 401/403 recovery, CE4 which extension build Chrome has loaded + the release ritual, CS7 first document import, CHR3 paid acceptance (Kyle's spend decision). Current execution authority is `PRODUCT-SCHEDULER.md` NOW (2026-09-21).
+
 Status: ACTIVE — the CHR3 evidence-boundary repair is delivered after a follow-up audit; continue with supported
 live acceptance gates and Kyle decisions.
 Updated: 2026-09-19. Owner: executing agent, currently Codex.

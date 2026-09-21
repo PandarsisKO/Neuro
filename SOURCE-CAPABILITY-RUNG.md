@@ -1,5 +1,7 @@
 > PARTIALLY SHIPPED IDEA — remaining scope PARKED. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
 
+> **2026-09-21:** partly SHIPPED — `candidates.where_to_look` and `candidates.creator_yield` exist (0.58.3, SC0/SC0b/SC3 in `EXECUTION-LADDER.md`). The "Not built" text below is historical.
+
 # The source-capability rung — remembering where to look
 
 Filed 2026-09-10, from Kyle, immediately after FIELD-MAP-RUNG.md. Not built. The two are halves of the same

@@ -33,7 +33,7 @@ neurosearch ingest "https://www.youtube.com/playlist?list=..."     # a playlist
 neurosearch ingest "https://www.youtube.com/@somechannel" -t sales  # a whole channel, tagged
 neurosearch ask "what do they say about pricing objections?"
 neurosearch export --segments   # master sheet CSV with one row per timestamped chunk
-./start   # or: neurosearch start (auto-restarts on updates) · neurosearch serve (plain)               # web app at http://localhost:8000
+./start   # same as double-clicking start.command (frees a stuck port, then `neurosearch start`) · neurosearch serve (plain)   # web app at http://localhost:8000
 ```
 
 Prove it works before you trust it: `neurosearch eval` runs the frozen Golden Project through the whole pipeline
@@ -203,7 +203,7 @@ a chat message, Discover's "+ Channel", or the new-project form. (The CLI keeps 
 
 ### Only recent videos (whole channels)
 
-Channels and playlists default to **videos from the last 2 years, at most 150** (`NEUROSEARCH_SINCE_YEARS`,
+Channels and playlists default to **videos from the last 2 years, at most 20 (`NEUROSEARCH_MAX_VIDEOS`)** (`NEUROSEARCH_SINCE_YEARS`,
 `NEUROSEARCH_MAX_VIDEOS`; both adjustable per pull in Sources → Link). Older videos are marked *skipped* rather
 than transcribed, and because a channel's Videos tab is newest-first, the first too-old video cancels the rest of
 that channel's queue so no time or money is spent finding out the remaining 400 are older still.
@@ -238,7 +238,7 @@ Current tool contracts live in `neurosearch/mcp_server.py` and are covered by th
 - **Search** is hybrid: SQLite FTS5 (BM25, porter stemming) plus OpenAI `text-embedding-3-small` cosine
   similarity, fused with reciprocal rank fusion, capped at 4 chunks per source so one long video can't crowd
   out the rest. Without an OpenAI key it falls back to keyword search only.
-- **Answers** come from Claude (`claude-sonnet-4-6` by default) with the top 14 chunks as numbered excerpts;
+- **Answers** come from Claude (`claude-sonnet-5`, pinned in `contracts.py` as `HELD_MODEL`; `NEUROSEARCH_ANSWER_MODEL` does not select it) with the top 14 chunks as numbered excerpts;
   the `[n]` markers in its answer are mapped back to source + timestamp. With web search on, Claude's built-in
   web search tool is enabled and web sources are listed separately.
 
@@ -273,13 +273,14 @@ extension/       Chromium extension: scans a logged-in course page and sends les
   api.py         FastAPI: REST, web UI, MCP mount, auth
   mcp_server.py  MCP tools
   cli.py         `neurosearch` command
-  web/           single-page web app
+  web/           web app: index.html + js/*.js (11 modules) + styles.css, no build step
 tests/           offline tests (pytest)
 ```
 
 ## Product direction
 
 `PRODUCT-SCHEDULER.md` is the only current queue. Historical roadmap lists and mission documents are evidence,
-not assignments. Foundation closeout is complete and Transcript Intelligence is the active program; R9(c) is explicitly
-deferred with a numeric revisit trigger, and T1's measurement slice is active. See the newest State-of-the-App and
+not assignments. Foundation closeout is complete. The active program since 2026-09-14 is `PRODUCT-INTELLIGENCE-MISSION.md`
+(Continuous Research, Living Master Plan, Adaptive Discovery); Transcript Intelligence T1 is complete (0.63.56) and
+its T2 migration is parked. `PRODUCT-SCHEDULER.md` NOW/PARKED is the live queue. See the newest State-of-the-App and
 `docs/T1-ADMISSION-2026-09-12.md`.

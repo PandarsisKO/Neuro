@@ -1,5 +1,7 @@
 # L-21 — macOS power assertion: what's measured, what's assumed, what's left
 
+> **PARKED 2026-09-21 by Kyle** ("sleep/wake tests don't really matter"). Code and tests are done; the physical lid test is not scheduled. Re-open on a real overnight failure.
+
 ## What this code does
 
 `neurosearch/power_assertion.py` holds a `caffeinate -s` system-sleep assertion for exactly as long as there is

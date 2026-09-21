@@ -1,5 +1,7 @@
 > PARKED IDEA. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
 
+> **2026-09-21:** this idea record is partly SHIPPED — FM0 (`0da834b`) and FM1 (`87ba57b`, `neurosearch project field-map`) exist. FM1-gate/FM2/FM3 are PARKED: no project has a DOI-bearing Work to seed the map. The "Not built" text below is historical.
+
 # The field-map rung — "I don't know what I don't know"
 
 Filed 2026-09-10, from Kyle, right after 0.57.0 shipped. Not built. This is the note that says why it is worth

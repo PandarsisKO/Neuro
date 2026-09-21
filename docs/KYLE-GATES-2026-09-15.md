@@ -1,5 +1,7 @@
 # The open gates — exactly what to run, nothing more
 
+> **2026-09-21 status (repo audit):** this file is a 2026-09-15 snapshot and was never ticked. Since then: L-30/L-31/CR7 PASSED on Kyle's real nightly run (09-20); L-06/L-07 answered (Haiku stays); L-08 run (no basis switch); L-51 passed on real data and its UI shipped 09-21; Send Screenshot cases 4–7 all passed 09-17→19; the Course Scanner popup tests passed 09-19; L-21/L-40/L-60/L-61 and FM1-gate are PARKED by Kyle. Still genuinely open: L-41 (read one Morning Report), CR8b-gate, AD4B's close-or-third-round call, CS7's first real document import, L-70's $ estimate. Live status: `EXECUTION-LADDER.md` markers and `PRODUCT-SCHEDULER.md` NOW.
+
 Every rung below is code-complete and tested; each gate is a real-world measurement only you can take (or a
 short live-browser pass for the two extension missions at the bottom). Everything is copy-paste. Nothing here
 spends money except the lines that say so.

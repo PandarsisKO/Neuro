@@ -1,5 +1,7 @@
 # NEURO SEARCH DEVELOPMENT OPERATING SYSTEM
 
+> **Override recorded 2026-09-21 (repo audit):** §1's program list (Speed/QA, then Transcript Intelligence; Research/Discover expansion parked) was superseded on 2026-09-14 when Kyle adopted `PRODUCT-INTELLIGENCE-MISSION.md` as the active program; the Continuous Research and Discovery-relevance work of 09-15→09-21 is that program, not a violation of §1. Everything else in this file stands.
+
 This document governs how Neuro Search development is prioritized, interrupted, tested, resumed and delivered.
 
 It exists to solve four connected problems:
