@@ -265,7 +265,9 @@ def enumerate_search(query: str, limit: int = 30) -> tuple[dict[str, Any], list[
     if not entries and lg.last():
         raise RuntimeError(lg.last())
     info = {"id": f"search:{query.lower()}", "title": f"YouTube search: {query}", "url": f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"}
-    return info, entries
+    # same flat-extraction blind spot as enumerate_entries -- and Discover hands these listings straight to the
+    # relevance ranker, so a search result with no description is a video judged on its title alone
+    return info, _enrich_youtube(entries)
 
 
 ACCESS_GATES = {"subscriber_only": "members_only", "premium_only": "premium", "needs_auth": "needs_auth"}
@@ -327,7 +329,55 @@ def enumerate_entries(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                     "view_count": e.get("view_count"),
                     "access_gate": access_gate_of(e),
                 })
-    return info, entries
+    return info, _enrich_youtube(entries) if _is_youtube(url) else entries
+
+
+# how many of a listing's entries get the API enrichment below. `relevance.POOL` (400) is the most any single
+# ingest ever RANKS, so enriching past that buys nothing today; the headroom is for a caller that widens the
+# pool later. 2 quota units per 50 entries -> 24 units at this ceiling, against a 10,000 unit day.
+ENRICH_MAX = 600
+
+
+def _enrich_youtube(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fill the fields `extract_flat="in_playlist"` structurally cannot carry -- description above all, but also
+    publish date and a captions-exist flag -- from the YouTube Data API, 50 videos per quota unit.
+
+    WHY IT IS AN ENRICHMENT AND NOT A REPLACEMENT PATH. Listing a channel through `playlistItems` would also
+    carry descriptions, but a channel's uploads playlist omits members-only videos, so the app would silently
+    stop seeing the gated content `access_gate_of` exists to surface, and it has no equivalent of the Shorts tab
+    scan above. Enriching leaves every one of those behaviours exactly as it was and only ADDS fields -- which
+    means the no-key path is the current path, unchanged, rather than a degraded one.
+
+    Never raises and never drops an entry: the listing is the answer, and the API is a bonus on top of it. A
+    missing key, spent quota, or an outage leaves `entries` precisely as it found them.
+    """
+    if not entries:
+        return entries
+    try:
+        from . import youtube_api as yt
+        if not yt.available().get("ready"):
+            return entries
+        head = entries[:ENRICH_MAX]
+        full = yt.videos([e["id"] for e in head if e.get("id")])
+        if not full:
+            return entries
+        filled = 0
+        for e in head:
+            f = full.get(e.get("id") or "")
+            if not f:
+                continue
+            if f.get("description") and not e.get("description"):
+                e["description"] = f["description"]
+                filled += 1
+            for k in ("duration", "view_count", "published_at", "has_captions", "creator"):
+                if e.get(k) in (None, "") and f.get(k) is not None:
+                    e[k] = f[k]
+        log.info("youtube api: enriched %d/%d listing entries (%d descriptions), %s",
+                 len(full), len(head), filled, yt.quota_spent())
+        _note(f"filled in {filled} video descriptions from the YouTube API")
+    except Exception as ex:  # noqa: BLE001 -- enrichment is never allowed to fail an enumeration
+        log.info("youtube api enrichment skipped: %s", ex)
+    return entries
 
 
 def _flatten(res: dict[str, Any]) -> list[dict[str, Any]]:

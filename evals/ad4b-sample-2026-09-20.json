@@ -1,0 +1,682 @@
+{
+  "generated_at": "2026-09-20T16:34:16-0700",
+  "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+  "question": "For each item: would you want this in the project? Judge ONLY from what is shown \u2014 title, creator, description, length, date. That is all the relevance ranker saw. Set review.keep to true or false and add one line in review.why. Do not scroll to _scoring_key until you are done.",
+  "population": {
+    "total_rejected_and_scored": 9286,
+    "by_band": {
+      "0-19": 8345,
+      "20-34": 843,
+      "35-44": 98
+    }
+  },
+  "sampling": {
+    "per_band": 10,
+    "seed": 44,
+    "sampled": 30
+  },
+  "review_these": [
+    {
+      "item": 1,
+      "title": "How to Survive & Get Rich in the 2026 Recession",
+      "creator": "Dan Martell",
+      "description": "",
+      "length": "10m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 2,
+      "title": "Inside a $3.4M Rodeo Supply Business",
+      "creator": "Acquisitions Anonymous Podcast",
+      "description": "",
+      "length": "30m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 3,
+      "title": "Buying his first business for an 8 figure deal",
+      "creator": "Jonathan Jay",
+      "description": "",
+      "length": "14m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 4,
+      "title": "Roofing + Florida = Path to $100m | Matt Jackson Interview",
+      "creator": "Acquiring Minds",
+      "description": "",
+      "length": "87m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 5,
+      "title": "How to Scale Through Acquisition: Organizational Design & M&A Strategy with Matt Person",
+      "creator": "Jaryd Krause - Buying Online Businesses",
+      "description": "",
+      "length": "48m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 6,
+      "title": "Claude just changed tax season forever",
+      "creator": "Nick Puru | AI Automation",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 7,
+      "title": "Buying an Insolvent Business - An interview with Rob Goddard",
+      "creator": "Jonathan Jay",
+      "description": "",
+      "length": "16m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 8,
+      "title": "22 Year-Old Starts a $50K/Month Mobile Car Detailing Business",
+      "creator": "UpFlip",
+      "description": "",
+      "length": "37m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 9,
+      "title": "8 Figure Exit, 19M Users, Zero Ads, All Content - Here's The Playbook with Seph Fontane Pennock",
+      "creator": "Jaryd Krause - Buying Online Businesses",
+      "description": "",
+      "length": "46m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 10,
+      "title": "Break The Cycle Of Overthinking With This Strategy #shorts",
+      "creator": "Action Academy",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 11,
+      "title": "My Children Are A Financial Blessing Not a Burden\u2026",
+      "creator": "Legacy Investing Show",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 12,
+      "title": "How I\u2019d Structure $250K Income in 2026!",
+      "creator": "Legacy Investing Show",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 13,
+      "title": "Buy a Business in 2025 and Never Look Back... Start Here!",
+      "creator": "Jonathan Jay",
+      "description": "",
+      "length": "5m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 14,
+      "title": "Would You Pay $16M for a Crypto News Site?",
+      "creator": "Acquisitions Anonymous Podcast",
+      "description": "",
+      "length": "32m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 15,
+      "title": "Bricklayer to Blue-Collar Empire | Justin Escajeda Interview",
+      "creator": "Acquiring Minds",
+      "description": "",
+      "length": "87m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 16,
+      "title": "How Carey Smith Made $500 Million Through Selling Fans",
+      "creator": "Action Academy",
+      "description": "",
+      "length": "53m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 17,
+      "title": "The most dystopian app ever made\u2026",
+      "creator": "Fireship",
+      "description": "",
+      "length": "4m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 18,
+      "title": "The new Claude Code desktop app, redesigned for parallel agents",
+      "creator": "Claude",
+      "description": "",
+      "length": "0m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 19,
+      "title": "Start Hiring More People And You Will Get Tax Benefits",
+      "creator": "Action Academy",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 20,
+      "title": "Why Every Business Owner Should Think Like a Forensic Accountant with Clay Kniepmann",
+      "creator": "Anders Virtual CFO",
+      "description": "",
+      "length": "35m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 21,
+      "title": "It\u2019s easier than you think to change your life\u2026",
+      "creator": "Cory Weigel",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 22,
+      "title": "the only skill you need to build a $1M company\u2026",
+      "creator": "Dan Martell",
+      "description": "",
+      "length": "15m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 23,
+      "title": "Intro to Cash Flow Statements | Direct Method",
+      "creator": "Accounting Stuff",
+      "description": "",
+      "length": "12m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 24,
+      "title": "The Advisor Who Digs Into Your Deal Before You Sign Anything",
+      "creator": "Acquisition Lab",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 25,
+      "title": "$2M Startup, 3 Hours of Sleep, 1 Total Meltdown",
+      "creator": "Nick Huber - Sweaty Startup",
+      "description": "",
+      "length": "4m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 26,
+      "title": "Claude Skills 2.0: Make Your AI Agent Do Any Task Perfectly",
+      "creator": "Nick Puru | AI Automation",
+      "description": "",
+      "length": "21m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 27,
+      "title": "Could You Buy a Funeral Business? Jonathan Jay 2025",
+      "creator": "Jonathan Jay",
+      "description": "",
+      "length": "45m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 28,
+      "title": "This Is How You Actually Build Wealth",
+      "creator": "Nick Huber - Sweaty Startup",
+      "description": "",
+      "length": "4m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 29,
+      "title": "What should we do with them?",
+      "creator": "Cory Weigel",
+      "description": "",
+      "length": null,
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    },
+    {
+      "item": 30,
+      "title": "Selling $100,000 per Day of Dog Training | Garth Fasano Interview",
+      "creator": "Acquiring Minds",
+      "description": "",
+      "length": "97m",
+      "published": null,
+      "kind": "video",
+      "review": {
+        "keep": null,
+        "why": ""
+      }
+    }
+  ],
+  "_scoring_key": [
+    {
+      "item": 1,
+      "candidate_id": "c11fbe5cc860473d996f1faecbc7a4ef",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "recession wealth survival, tangential",
+      "url": "https://www.youtube.com/watch?v=nfzfzwaxCnc",
+      "creator": "Dan Martell"
+    },
+    {
+      "item": 2,
+      "candidate_id": "8798c761e46e4f0da91d801a6d3b0cb5",
+      "score": 15,
+      "band": "0-19",
+      "model_said": "Rodeo supply, physical",
+      "url": "https://www.youtube.com/watch?v=Prd9w7z7tGg",
+      "creator": "Acquisitions Anonymous Podcast"
+    },
+    {
+      "item": 3,
+      "candidate_id": "f3185babbb114639a84fc8fde34e5a6b",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Large 8-figure deal, size mismatch",
+      "url": "https://www.youtube.com/watch?v=5hfWDTBCyu4",
+      "creator": "Jonathan Jay"
+    },
+    {
+      "item": 4,
+      "candidate_id": "2d4c393eeac849a2bcc8a0eeb9dd36a7",
+      "score": 22,
+      "band": "20-34",
+      "model_said": "Roofing, physical labor not remote",
+      "url": "https://www.youtube.com/watch?v=zifseOOektM",
+      "creator": "Acquiring Minds"
+    },
+    {
+      "item": 5,
+      "candidate_id": "104b044cc8084d4b8971d0230e78a24f",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Corporate M&A org design, less applicable",
+      "url": "https://www.youtube.com/watch?v=VeGeUXqOmBU",
+      "creator": "Jaryd Krause - Buying Online Businesses"
+    },
+    {
+      "item": 6,
+      "candidate_id": "437fba07514147688a37cd3d07324ef9",
+      "score": 30,
+      "band": "20-34",
+      "model_said": "Tax season AI, tangential tax angle",
+      "url": "https://www.youtube.com/shorts/Pk6r4vQUlMQ",
+      "creator": "Nick Puru | AI Automation"
+    },
+    {
+      "item": 7,
+      "candidate_id": "292911d0105549f1a4ebf6f432e3d30f",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Insolvent business niche interview",
+      "url": "https://www.youtube.com/watch?v=NAtWAEghCeE",
+      "creator": "Jonathan Jay"
+    },
+    {
+      "item": 8,
+      "candidate_id": "cfdc891c7e5040f5b8ae5eeae768e29b",
+      "score": 10,
+      "band": "0-19",
+      "model_said": "Detailing startup, not acquisition",
+      "url": "https://www.youtube.com/watch?v=3jIWyxNjtpU",
+      "creator": "UpFlip"
+    },
+    {
+      "item": 9,
+      "candidate_id": "069260d618fe49e1a614f17359efbd4d",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Exit story, not buyer focused",
+      "url": "https://www.youtube.com/watch?v=FMOUVBVpemk",
+      "creator": "Jaryd Krause - Buying Online Businesses"
+    },
+    {
+      "item": 10,
+      "candidate_id": "b431a2d266774c6e841a51af2804667e",
+      "score": 2,
+      "band": "0-19",
+      "model_said": "Overthinking, unrelated",
+      "url": "https://www.youtube.com/shorts/KPmsUK4tf30",
+      "creator": "Action Academy"
+    },
+    {
+      "item": 11,
+      "candidate_id": "a1f960861cbe47e9a4c318a09997b4a3",
+      "score": 5,
+      "band": "0-19",
+      "model_said": "Children financial blessing, irrelevant",
+      "url": "https://www.youtube.com/shorts/OQH4Vn_EadQ",
+      "creator": "Legacy Investing Show"
+    },
+    {
+      "item": 12,
+      "candidate_id": "f402dd13f0b74703ba92f499a789466e",
+      "score": 25,
+      "band": "20-34",
+      "model_said": "Income structuring, generic tax content",
+      "url": "https://www.youtube.com/shorts/R4B8gNCqHTM",
+      "creator": "Legacy Investing Show"
+    },
+    {
+      "item": 13,
+      "candidate_id": "fc9d7a6190304a059484bf06fc52b8ac",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Generic 2025 teaser clip",
+      "url": "https://www.youtube.com/watch?v=pIkc7mL2Gyw",
+      "creator": "Jonathan Jay"
+    },
+    {
+      "item": 14,
+      "candidate_id": "0c79a763c1c54685a740bc39b9129aa0",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Digital media site, remote-operable",
+      "url": "https://www.youtube.com/watch?v=gIUj0XgHuM4",
+      "creator": "Acquisitions Anonymous Podcast"
+    },
+    {
+      "item": 15,
+      "candidate_id": "6e55e25204dd40248f79a935cd2e5861",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Trades roll-up not remote",
+      "url": "https://www.youtube.com/watch?v=kE5BcVdDEFg",
+      "creator": "Acquiring Minds"
+    },
+    {
+      "item": 16,
+      "candidate_id": "3fca10615a29410e9b1ceee59b751fab",
+      "score": 18,
+      "band": "0-19",
+      "model_said": "Built manufacturing business, not acquired",
+      "url": "https://www.youtube.com/watch?v=yqjaaU6Sll4",
+      "creator": "Action Academy"
+    },
+    {
+      "item": 17,
+      "candidate_id": "67076d1ac3184bf8ab43a58a819090ec",
+      "score": 0,
+      "band": "0-19",
+      "model_said": "App culture commentary, irrelevant",
+      "url": "https://www.youtube.com/watch?v=zvbTDUSz8Cc",
+      "creator": "Fireship"
+    },
+    {
+      "item": 18,
+      "candidate_id": "dd155354fbf34dadba33ff3fb31727a5",
+      "score": 1,
+      "band": "0-19",
+      "model_said": "Desktop app redesign feature",
+      "url": "https://www.youtube.com/watch?v=rWaQSQEm_aY",
+      "creator": "Claude"
+    },
+    {
+      "item": 19,
+      "candidate_id": "f9c6a762374244d1a1308ab99e32c80b",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Hiring tax benefits, relevant to tax strategy",
+      "url": "https://www.youtube.com/shorts/9QhPXQ_mDts",
+      "creator": "Action Academy"
+    },
+    {
+      "item": 20,
+      "candidate_id": "935a37d47b064d6dbd3c22439ac91ce4",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "Forensic accountant lens, due diligence adjacent",
+      "url": "https://www.youtube.com/watch?v=Jjm5UpIXNCw",
+      "creator": "Anders Virtual CFO"
+    },
+    {
+      "item": 21,
+      "candidate_id": "04528359f1e74a4eae592f3c042d8984",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "Vague motivational maybe acquisition ease",
+      "url": "https://www.youtube.com/shorts/pWQuFfLE3iA",
+      "creator": "Cory Weigel"
+    },
+    {
+      "item": 22,
+      "candidate_id": "c982ff428f0047acab3cfa00905e3244",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "Business building skill, tangential",
+      "url": "https://www.youtube.com/watch?v=XzHgfDRxi0g",
+      "creator": "Dan Martell"
+    },
+    {
+      "item": 23,
+      "candidate_id": "beed8d523acc44c4aa85cf93db6eecef",
+      "score": 20,
+      "band": "20-34",
+      "model_said": "Cash flow statement intro, minor relevance",
+      "url": "https://www.youtube.com/watch?v=Xy-yDw0gsgc",
+      "creator": "Accounting Stuff"
+    },
+    {
+      "item": 24,
+      "candidate_id": "56e0fa7b9ec54b6c94c93206331bec8a",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Advisor intro, likely short clip",
+      "url": "https://www.youtube.com/shorts/QBorQVWaSI0",
+      "creator": "Acquisition Lab"
+    },
+    {
+      "item": 25,
+      "candidate_id": "b4bcb580b9dc40d2be3bf37cfdf2d296",
+      "score": 12,
+      "band": "0-19",
+      "model_said": "Founder burnout story, tangential",
+      "url": "https://www.youtube.com/watch?v=aTYdEo9KFSM",
+      "creator": "Nick Huber - Sweaty Startup"
+    },
+    {
+      "item": 26,
+      "candidate_id": "6edcb6fc86bf401d9d397999b9c0e29e",
+      "score": 10,
+      "band": "0-19",
+      "model_said": "AI task automation tool, tangential",
+      "url": "https://www.youtube.com/watch?v=4J_Xf_SogBk",
+      "creator": "Nick Puru | AI Automation"
+    },
+    {
+      "item": 27,
+      "candidate_id": "8938155d917b4b87899488bcfdc5e724",
+      "score": 35,
+      "band": "35-44",
+      "model_said": "Niche funeral business exploration, tangential",
+      "url": "https://www.youtube.com/watch?v=RunvVYuiqB0",
+      "creator": "Jonathan Jay"
+    },
+    {
+      "item": 28,
+      "candidate_id": "55510fc98b8340bbb29dbbab519688a6",
+      "score": 25,
+      "band": "20-34",
+      "model_said": "Wealth building generic claim",
+      "url": "https://www.youtube.com/watch?v=KdH0B11kPmU",
+      "creator": "Nick Huber - Sweaty Startup"
+    },
+    {
+      "item": 29,
+      "candidate_id": "2f3f042fb7684d3eb33c79b14f11ddd4",
+      "score": 3,
+      "band": "0-19",
+      "model_said": "Vague clickbait title",
+      "url": "https://www.youtube.com/shorts/5WYxxju4pkg",
+      "creator": "Cory Weigel"
+    },
+    {
+      "item": 30,
+      "candidate_id": "df8cd4d230184b66ac1f0a8beabe9256",
+      "score": 32,
+      "band": "20-34",
+      "model_said": "Dog training niche, high revenue but physical",
+      "url": "https://www.youtube.com/watch?v=wnnD8Cszzaw",
+      "creator": "Acquiring Minds"
+    }
+  ]
+}

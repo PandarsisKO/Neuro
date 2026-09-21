@@ -50,7 +50,7 @@ globalThis.loadReviews = async function loadReviews(quiet) {
       ${meta.counts ? `<div class="muted" style="margin-top:2px">🗂 ${(meta.counts.already_in_project || 0) + (meta.counts.already_in_library || 0) + (meta.counts.new || 0)} found · <b>${meta.counts.already_in_library || 0}</b> already in your library (reused, not re-downloaded) · <b>${meta.counts.already_in_project || 0}</b> already in this project · <b>${meta.counts.new || 0}</b> new — the estimate below covers only new work</div>` : ''}
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
       <div class="row mt-1">${rankLine}</div>
-      <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
+      <div class="row" style="margin-top:6px"><button class="small" onclick="rvFocus('${c.id}')" title="Go through these one at a time. A skip here is recorded as YOUR judgement, which is what teaches the ranker — bulk-approving this list teaches it almost nothing.">◉ Review one at a time</button><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
       <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' hidden' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.access_gate ? `<span class="tag status-warn" title="${s.access_gate === 'members_only' ? 'Members-only: YouTube will not let this download without your own channel membership, so it is listed last and not selected' : s.access_gate === 'premium' ? 'YouTube Premium only' : 'Needs sign-in'}">${s.access_gate === 'members_only' ? '🔒 members only' : s.access_gate === 'premium' ? '🔒 premium' : '🔒 sign-in'}</span>` : ''}${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
@@ -89,6 +89,30 @@ globalThis.rvStart = async function rvStart(id, btn) {
     toast('Could not start: ' + (e.message || e), 'err');
     if (btn) { btn.disabled = false; btn.textContent = '▶ Start ingesting selected'; }
   }
+}
+globalThis.rvFocus = function rvFocus(id) {
+  // The gated ones can never be ingested, so they are not judgements worth asking for.
+  const rows = (rvData[id] || []).filter(s => !s.access_gate);
+  const card = (rvData[id] || []).length;
+  focusOpen({
+    kind: 'review',
+    title: 'Review one at a time',
+    scoreWord: 'ranker',
+    scoreTitle: "the relevance ranker's score, judged from the title and description only — no transcript",
+    subtitle: `${rows.length} to judge${card > rows.length ? ` · ${card - rows.length} gated one(s) left out — they cannot be downloaded` : ''}. Keeping queues the download; losing it records that YOU rejected it, which is what teaches the ranker.`,
+    items: rows.map(s => ({
+      id: s.id, title: s.title || s.url, url: s.url, creator: s.channel || s.creator,
+      duration: s.duration, published_at: s.published_at, description: s.description,
+      relevance: s.relevance, relevance_why: s.relevance_why, access_gate: s.access_gate,
+      kind_label: s.platform,
+    })),
+    onSubmit: async ({ keep, drop }) => {
+      const r = await post(`/api/collections/${id}/approve`, { source_ids: keep, dismissed_ids: drop });
+      toast(`▶ ${r.started} queued${r.dismissed ? ` · ${r.dismissed} recorded as your own "no"` : ''}`);
+      delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; globalThis.rvSig = null;
+      loadReviews(); loadJobs(); loadSources();
+    },
+  });
 }
 globalThis.rvDiscard = async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; delete rvAutoApplied[id]; globalThis.rvSig = null; loadReviews(); }
 // Grouping (PRODUCT-ORGANIZATION.md #1): every source already carries a "channel" — a YouTube channel, a subreddit
@@ -433,20 +457,25 @@ globalThis.runCalc = async function runCalc(id) {
   } catch (e) { $('#calcMsg').textContent = 'error: ' + e.message; }
 }
 // S5: the known-but-uncaptured pool — skipped (pre-cutoff) sources + Candidate Index rows, ranked by a $0 potential scan
-globalThis.POOL = { total: null, rank: 'fit', kind: 'all' };
+globalThis.POOL = { total: null, rank: 'fit', kind: 'all', state: null };
 globalThis.loadPool = async function loadPool() {
   const p = new URLSearchParams({ rank_by: POOL.rank, kind: POOL.kind, limit: 150 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
+  if (POOL.state) p.set('state', POOL.state);
   let r; try { r = await api(`/api/projects/${state.project.id}/pool?` + p); } catch (e) { $('#srcList').innerHTML = '<div class="muted">could not load the pool</div>'; return; }
   POOL.total = r.total;
   const c = r.counts;
   $('#srcCount').innerHTML = `${r.total} known, not captured <span class="muted">· ${c.skipped} skipped at the date cutoff · ${c.candidates} seen while exploring · <b>${c.worth_a_look}</b> worth a look · ${c.fits_a_question} fit an open question</span>` +
+    ` <button class="small" onclick="poolFocus()" title="Go through the pool one at a time — including anything resurfaced back into review. Each decision is recorded as your own.">◉ Review one at a time</button>` +
     (c.worth_a_look ? ` <button class="small primary" onclick="captureManyPool()" title="Captures every item at or above 'worth a look' (potential ≥ 40) in your current rank/show filter — same as clicking Capture on each one">Capture the ${c.worth_a_look} that fit</button>` : '');
   $('#srcFilterNote').textContent = '';
   const pot = v => `<span class="fi" title="potential ${v}/100 — a $0 scan of the title and description against your open questions, weak areas and the project's own words">${'●'.repeat(Math.round(v / 20))}<span class="dim">${'●'.repeat(5 - Math.round(v / 20))}</span></span>`;
   $('#srcList').innerHTML = `<div class="row" style="gap:6px;margin:4px 0 10px;font-size:12.5px"><span class="muted">${esc(r.explain)}</span></div>
     <div class="row" style="gap:6px;margin-bottom:8px;font-size:12.5px"><span class="muted">Rank by:</span>
       ${[['fit', 'fits my open questions'], ['relevance', 'review score'], ['creator', 'same creator as a priority source'], ['newest', 'newest']].map(([k, l]) => `<span class="chipf ${POOL.rank === k ? 'on' : ''}" onclick="POOL.rank='${k}';loadPool()">${l}</span>`).join('')}
-      <span class="muted" style="margin-left:10px">Show:</span>${[['all', 'all'], ['skipped', 'skipped at cutoff'], ['candidates', 'seen while exploring']].map(([k, l]) => `<span class="chipf ${POOL.kind === k ? 'on' : ''}" onclick="POOL.kind='${k}';loadPool()">${l}</span>`).join('')}</div>` +
+      <span class="muted" style="margin-left:10px">Show:</span>${[['all', 'all'], ['skipped', 'skipped at cutoff'], ['candidates', 'seen while exploring']].map(([k, l]) => `<span class="chipf ${POOL.kind === k && !POOL.state ? 'on' : ''}" onclick="POOL.state=null;POOL.kind='${k}';loadPool()">${l}</span>`).join('')}` +
+      // `skipped_limit` means "good enough, but outside the number you picked in review" — never a judgement
+      // about the item. Nobody has ever looked at these, which is different from having rejected them.
+      (c.never_judged ? `<span class="chipf ${POOL.state === 'skipped_limit' ? 'on' : ''}" title="Scored ABOVE the relevance cutoff, then dropped only because they fell outside the number you picked in that review. Nobody has ever judged these." onclick="POOL.state='skipped_limit';POOL.kind='all';loadPool()">never judged <b>${c.never_judged}</b></span>` : '') + `</div>` +
     (r.items.map(i => `<div class="src"><div class="ico">${i.kind === 'skipped' ? '⏭' : '👁'}</div><div class="grow min-w-0">
       <div class="t">${pot(i.potential)} ${i.url && i.url.startsWith('http') ? `<a href="${esc(i.url)}" target="_blank">${esc(i.title)}</a>` : esc(i.title)}${i.same_creator_as_priority ? ' <span class="tag" title="same creator as one of your ★ priority sources">★ creator</span>' : ''}</div>
       <div class="muted">${esc(i.creator || i.platform)} ${i.published_at ? '· ' + esc(i.published_at) : ''} ${i.duration ? '· ' + fmt(i.duration) : ''} · <span title="how Neuro Search knows about it">${esc(i.why_known)}</span></div>
@@ -458,6 +487,53 @@ globalThis.loadPool = async function loadPool() {
 globalThis.poolAct = async function poolAct(a, title) {
   if (a.method === 'DELETE') await del(a.endpoint, a.body || {}); else await post(a.endpoint, a.body || {});
   toast(a.label === 'Not for this project' ? 'dismissed' : `⏵ capturing${title ? ' — ' + title.slice(0, 40) : ''}`); POOL.total = null; loadPool(); loadJobs();
+}
+globalThis.poolFocus = async function poolFocus() {
+  // The pool rows already carry their own capture/dismiss endpoints (api_pool -> candidates.pool), so focus
+  // review resolves each one through exactly the path clicking the row's buttons would — never a parallel one.
+  const p = new URLSearchParams({ rank_by: POOL.rank, kind: POOL.kind, limit: 600 });
+  if ($('#srcQ').value) p.set('q', $('#srcQ').value);
+  if (POOL.state) p.set('state', POOL.state);
+  let r; try { r = await api(`/api/projects/${state.project.id}/pool?` + p); }
+  catch (e) { toast('could not load the pool', 'err'); return; }
+  focusOpen({
+    kind: 'pool',
+    title: POOL.state === 'skipped_limit' ? 'Never judged — one at a time' : 'Pool — one at a time',
+    scoreWord: 'why it surfaced',
+    scoreTitle: 'potential: a $0 scan of the title and description against your open questions and weak areas — NOT the review relevance score',
+    // `api_pool` clamps limit to 500, so a larger set arrives truncated. Say so rather than letting a finished
+    // pass look like a finished pile — and the rest DO come back, because deciding on these moves them out of
+    // this state, so reopening shows what is left.
+    subtitle: (POOL.state === 'skipped_limit'
+      ? `${r.items.length}${r.total > r.items.length ? ` of ${r.total}` : ''} that scored above the cutoff and were dropped only for falling outside the number you picked in review — never judged by anyone. `
+      : `${r.items.length}${r.total > r.items.length ? ` of ${r.total}` : ''} known but not captured, ranked by ${POOL.rank}. `)
+      + 'Keeping captures it through the normal ingest path; losing it dismisses it for this project.'
+      + (r.total > r.items.length ? ` Reopen after applying these for the remaining ${r.total - r.items.length}.` : ''),
+    items: r.items.map(i => ({
+      id: i.id, title: i.title, url: i.url, creator: i.creator || i.platform,
+      duration: i.duration, published_at: i.published_at, relevance: i.potential,
+      relevance_why: i.why && i.why.length ? i.why.join(' · ') : null,
+      note: i.fits ? `fits an open question: ${i.fits}` : (i.why_known || null),
+      kind_label: i.kind === 'skipped' ? 'skipped at cutoff' : 'seen while exploring',
+      _act: i.actions,
+    })),
+    onSubmit: async ({ keep, drop }) => {
+      const byId = {}; r.items.forEach(i => byId[i.id] = i.actions);
+      let captured = 0, dismissed = 0, failed = 0;
+      for (const id of keep) {
+        const a = byId[id] && byId[id].capture; if (!a) continue;
+        try { a.method === 'DELETE' ? await del(a.endpoint, a.body || {}) : await post(a.endpoint, a.body || {}); captured++; }
+        catch (e) { failed++; }
+      }
+      for (const id of drop) {
+        const a = byId[id] && byId[id].dismiss; if (!a) continue;
+        try { a.method === 'DELETE' ? await del(a.endpoint, a.body || {}) : await post(a.endpoint, a.body || {}); dismissed++; }
+        catch (e) { failed++; }
+      }
+      toast(`⏵ ${captured} capturing · ${dismissed} dismissed${failed ? ` · ${failed} failed` : ''}`);
+      POOL.total = null; loadPool(); loadJobs();
+    },
+  });
 }
 globalThis.captureManyPool = async function captureManyPool() {
   if (!confirm(`Capture every item at or above 'worth a look' in the current filter (rank: ${POOL.rank}, show: ${POOL.kind})? Each one goes through the same path as clicking Capture by hand — attached instantly if you already own it, otherwise queued as a normal ingest.`)) return;

@@ -223,8 +223,18 @@ def ingest_url(
     return {"kind": kind, "identity": res.state, **result}
 
 
-def approve_proposed(collection_id: str, source_ids: list[str] | None = None) -> dict[str, Any]:
-    """Start ingesting the chosen proposed sources of a collection; drop the rest of the proposals."""
+def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
+                     dismissed_ids: list[str] | None = None) -> dict[str, Any]:
+    """Start ingesting the chosen proposed sources of a collection; drop the rest of the proposals.
+
+    `dismissed_ids` (2026-09-20, focus review) are proposals the person looked at ONE AT A TIME and rejected on
+    purpose. They are recorded as `user_dismissed` -- a real preference signal -- instead of being swept into the
+    automatic `skipped_low_relevance` / `skipped_limit` classification the rest of the unchosen rows get.
+
+    This distinction is the whole point. Bulk-approving a review card says almost nothing about the rows left
+    unticked: the person never looked at them, so filing those as a relevance judgment (which is what
+    `skipped_low_relevance` is, and what `creator_disposition` half-counts as a negative) attributes an opinion
+    to them they never formed. A deliberate per-item skip IS that opinion, and is worth full weight."""
     import json as _json
     meta = {}
     try:
@@ -243,8 +253,50 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None) ->
         rel = {r["id"]: (r.get("relevance"), r.get("relevance_why")) for r in rows}
         _cand.mark_by_source(pid, [r["id"] for r in rows if r["id"] in chosen], "acquired", "selected in review", rel)
         gated = [r for r in rows if r["id"] not in chosen and r.get("access_gate")]
-        low = [r["id"] for r in rows if r["id"] not in chosen and r.get("relevance") is not None and r["relevance"] < _cand.LOW_RELEVANCE and not r.get("access_gate")]
-        rest = [r["id"] for r in rows if r["id"] not in chosen and r["id"] not in low and not r.get("access_gate")]
+        # deliberate, one-at-a-time rejections: the person's own verdict, never the ranker's
+        deliberate = {r["id"] for r in rows if r["id"] in set(dismissed_ids or ()) and r["id"] not in chosen
+                      and not r.get("access_gate")}
+        _cand.mark_by_source(pid, sorted(deliberate), "user_dismissed", "you reviewed this one and skipped it", rel)
+        # 2026-09-20 (Kyle): the relevance score behind LOW_RELEVANCE is a single title/description snippet
+        # judgment, no transcript, no history -- and it is a hard cliff (score 49 shown, 40 silently discarded,
+        # same as a total stranger's title). Checked against a real project: a whole podcast on-thesis for the
+        # project (Acquisitions Anonymous) had 360 of 381 episodes auto-skipped this way, many scoring just a few
+        # points under the line, despite 21 of its episodes already being kept.
+        #
+        # `creator_disposition()`'s `adjust` looked like the right existing signal to reuse here, but it isn't:
+        # its negative side counts `skipped_low_relevance` itself as "this project rejected it" -- true when a
+        # person reviews item by item, false for Kyle's actual workflow (bulk-approve the picked rows, never
+        # individually reject the rest). For Acquisitions Anonymous specifically that made `adjust` come out
+        # NEGATIVE (360 old skips outweighing 21 real keeps), which would have given this exact creator zero
+        # rescue -- the fix would have missed its own motivating case. Caught by hand-checking the numbers before
+        # trusting them (see this session's transcript), not by a test.
+        #
+        # The fix used only the positive half at first (`pos > 0` earned a flat boost) because at that point
+        # Kyle's every skip WAS bulk-approve residue, so no trustworthy negative signal existed to read.
+        #
+        # 2026-09-20, later the same day: focus review now submits deliberate rejections as `user_dismissed`,
+        # which IS a real per-item verdict, and Kyle asked the obvious question -- "are we helping train the app
+        # in any meaningful way by doing this?" Tracing it, his Keeps fed three consumers and his Loses fed
+        # essentially none on the surfaces he uses: the negative half of `creator_disposition` is read only by
+        # `candidates.rerank`, which runs only inside `next_batch`, which only the CLI and raw API reach.
+        #
+        # So the adjustment is now symmetric, and comes from `creator_verdict` -- explicit decisions ONLY
+        # (acquired / user_dismissed), never `skipped_low_relevance`, which is exactly the conflation that caused
+        # the original sign error. A creator this project keeps rejecting stops having its borderline items
+        # rescued, by the same bounded amount that a kept creator earns.
+        undecided_unchosen = [r for r in rows if r["id"] not in chosen and r["id"] not in deliberate
+                              and not r.get("access_gate") and r.get("relevance") is not None]
+        creator_map = _cand.creators_for([(r.get("platform"), r.get("external_id")) for r in undecided_unchosen])
+        verdict = _cand.creator_verdict(pid)
+
+        def _adjusted_relevance(r: dict[str, Any]) -> int:
+            creator = creator_map.get((r.get("platform"), r.get("external_id")))
+            adj = int(verdict.get(creator, {}).get("adjust", 0)) if creator else 0
+            return int(r["relevance"]) + adj
+
+        low = [r["id"] for r in undecided_unchosen if _adjusted_relevance(r) < _cand.LOW_RELEVANCE]
+        rest = [r["id"] for r in rows if r["id"] not in chosen and r["id"] not in low
+                and r["id"] not in deliberate and not r.get("access_gate")]
         _cand.mark_by_source(pid, low, "skipped_low_relevance", "ranked below the relevance cutoff in review", rel)
         _cand.mark_by_source(pid, rest, "skipped_limit", "outside the number selected in review", rel)
         for g in gated:                                            # remembered with its relevance; never ingestible as things stand
@@ -265,7 +317,8 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None) ->
             db.delete_source(r["id"])
             dropped += 1
     db.kv_set(f"review:{collection_id}", None)
-    return {"collection_id": collection_id, "started": started, "dropped": dropped}
+    return {"collection_id": collection_id, "started": started, "dropped": dropped,
+            "dismissed": len(set(dismissed_ids or ()) - set(chosen))}
 
 
 def _cutoff_date(years: float | None) -> str | None:

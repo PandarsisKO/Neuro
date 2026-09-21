@@ -166,7 +166,7 @@ def _base() -> dict[str, InferenceContract]:
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="prefilter-v1",
                           notes="conservative rejection filter before findings.extract; any failure → uncertain (fail open); off unless NEUROSEARCH_FINDINGS_PREFILTER=1"),
         # migrated E2.1 (0.18.0-e2.2): 4.6-vs-5 comparison on the frozen ranking fixture passed — thinking explicitly off,
-        # same prompt (rank-f38f9a9c), same output budget; baseline + comparison artifacts kept under evals/
+        # same prompt (rank-c33f6c4c, rewritten 2026-09-20), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("rank.relevance", "anthropic", RANK_MODEL, local_capable=True, thinking="disabled", max_output_tokens=6000, max_output_ceiling=9000, batch_allowed=True, schema="rank-v2",
                           reversible=False, tier_reason="irreversible", gate="schema rank-v2",
                           notes="Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"),

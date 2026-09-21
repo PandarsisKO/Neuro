@@ -25,12 +25,30 @@ BATCHES_PER_RUN = 2    # 0.55.1 — then the job hands its worker back (jobs.Yie
 
 SYSTEM = """You are a research triage assistant scoring a list of videos for relevance BEFORE they are downloaded.
 You only see each video's title, a snippet of its description, its length and view count — judge from that.
+The description is often missing entirely; then the title is all there is, and a thin title is a reason to score
+in the middle, not a reason to reject.
 
-Score every video 0-100 for how likely it is to contain material useful for THIS project:
-- 85-100: squarely on the project's questions; likely full of usable specifics
-- 60-84: relevant angle or adjacent topic; probably worth the download
-- 30-59: tangential; might contain a nugget
-- 0-29: off-topic, promotional, reaction/vlog filler, or a duplicate of a better-looking item
+Score every video 0-100 for how likely it is to TEACH THIS PERSON SOMETHING THEY CAN USE.
+
+CRITICAL — what you are judging. The project brief describes the OUTCOME this person wants: the kind of business
+they intend to buy, their budget, their constraints, what they rule out. That is their buy-box. It is NOT a filter
+on which content is useful to them. A video about a business they would never buy can be the most useful thing
+they watch all week, because what transfers is the METHOD: how a deal was found, valued, financed, structured,
+negotiated, diligenced or operated.
+
+So never score a video low because the business IN it fails the brief's criteria. "Wrong industry", "not remote",
+"too big", "physical rather than online", "they built it instead of buying it", "size mismatch" are NOT reasons to
+reject, as long as the video still carries usable method, real numbers or first-hand experience.
+
+Score on what it teaches:
+- 85-100: concrete method, real numbers or first-hand experience on exactly what this person is doing
+- 60-84: solid transferable method or experience, even when the business, industry or deal size differs
+- 30-59: some usable substance mixed with filler, or a real topic covered thinly
+- 0-29: genuinely nothing to learn — pure promotion, reaction/vlog filler, a near-duplicate of a better item, or a
+  subject with no bearing on this project at all
+
+The brief's constraints are a TIEBREAK, never a veto: between two videos of equal instructional value, prefer the
+one closer to this person's own situation. A constraint mismatch alone never pushes an instructive video below 60.
 Prefer depth over breadth: a 40-minute deep dive on the exact question beats a 3-minute clip.
 Penalise obvious clickbait/sales pitches and near-duplicate titles (score the best one, mark the rest lower).
 
@@ -97,8 +115,49 @@ def input_hash(project: dict[str, Any] | str, s: dict[str, Any]) -> str:
     """What the ranking actually judged: title, description snippet, length (to the minute), the brief, the prompt and
     the output schema. View count is deliberately left out — it changes on every metadata refresh and should not
     make a ranking stale."""
-    return db._sha("relevance", s.get("title"), (s.get("description") or "")[:220], int((s.get("duration") or 0) // 60), db.brief_revision(project), prompt_version(),
+    return db._sha("relevance", s.get("title"), clean_description(s.get("description"))[:DESC_CHARS],
+                   int((s.get("duration") or 0) // 60), db.brief_revision(project), prompt_version(),
                    schema_version() or "text")
+
+
+DESC_CHARS = 400          # was 220, raised once descriptions actually existed to read (2026-09-20)
+
+_URL_RE = re.compile(r"https?://\S+")
+_CTA_RE = re.compile(r"\b(subscribe|newsletter|free training|join my|book a call|link (below|in bio)|"
+                     r"follow me|my course|coupon|promo code|sponsored|affiliate|patreon|merch|"
+                     r"dm me|apply (now|here)|sign up)\b", re.I)
+
+
+def clean_description(d: str | None) -> str:
+    """Strip a YouTube description's funnel so the snippet carries the video's actual subject.
+
+    Measured on Kyle's project the day descriptions first existed: median description 1,883 chars, but the first
+    220 -- all the ranker ever saw -- were promo for 25% of them. A real example, verbatim, and all of it inside
+    the old window: "Learn How to Acquire Your First Boring Business: https://bit.ly/... Join My FREE Daily
+    Newsletter: https://bit.ly/... In this video,". Two calls to action and two shortlinks before the first word
+    about the content. Backfilling descriptions and then feeding the model THAT would have bought very little.
+
+    Conservative on purpose: a line is dropped only when it is essentially a bare link, or a SHORT call to action
+    (a long sentence that happens to contain the word "subscribe" is kept). URLs are stripped from lines that
+    survive, because the ranker has no use for an address and every character of the window is contested."""
+    out: list[str] = []
+    for line in (d or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        bare = _URL_RE.sub("", line).strip()
+        if _URL_RE.search(line) and len(bare) < 25:      # the line was a link with a short label
+            continue
+        # "Learn How to Acquire Your First Boring Business: <url>" survives every rule above -- it is long, and
+        # it is a call to action phrased as a benefit, which no keyword list catches. But a line that carried a
+        # URL and whose remaining text ends in a colon or dash IS a label for that link, whatever it says.
+        if _URL_RE.search(line) and bare.rstrip().endswith((":", "-", "\u2014", "\u2013", "|", "\u27a1\ufe0f")):
+            continue
+        if _CTA_RE.search(line) and len(bare) < 120:     # a short plug, not a sentence about the video
+            continue
+        if bare:
+            out.append(bare)
+    return re.sub(r"\s+", " ", " ".join(out)).strip()
 
 
 def _line(i: int, s: dict[str, Any]) -> str:
@@ -108,9 +167,9 @@ def _line(i: int, s: dict[str, Any]) -> str:
         bits.append(f"({m} min)" if m else "(<1 min)")
     if s.get("view_count"):
         bits.append(f"{int(s['view_count']):,} views")
-    d = (s.get("description") or "").strip().replace("\n", " ")
+    d = clean_description(s.get("description"))
     if d:
-        bits.append("— " + d[:220])
+        bits.append("— " + d[:DESC_CHARS])
     return " ".join(bits)
 
 
@@ -137,7 +196,15 @@ def _pool(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[s
 
 
 def _head(project: dict[str, Any], want: int | None) -> str:
+    # 2026-09-20: the steering block is shared with every other prompt and is written as the person's OWN
+    # requirements ("must be operable remotely", "SDE at least $350k", "laundromats are rejected"). Handed to a
+    # ranker unlabelled, that reads as a checklist each video's subject must satisfy — and it was being applied
+    # that way: a blind review of 30 rejected candidates found Kyle would have kept 23 of them, with the model's
+    # own reasons being "not remote", "size mismatch", "physical not online". Those are facts about a business,
+    # not about whether a video teaches anything. The line below says which one it is, at the point of injection.
     return (f"PROJECT: {project['name']}\n{db.project_steering(project)}\n"
+            "The block above is this person's SITUATION and BUY-BOX — what they are trying to end up with. Judge each\n"
+            "video on what it would TEACH them, not on whether the business it features fits those criteria.\n"
             + (f"We only need about the best {want} videos.\n" if want else ""))
 
 

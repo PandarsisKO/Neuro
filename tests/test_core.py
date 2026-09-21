@@ -19,7 +19,11 @@ from neurosearch import chunking, db, ingest, jobs, media  # noqa: E402
 from neurosearch.api import app  # noqa: E402
 
 H = {"Authorization": "Bearer t0k"}
-CHAT_ARM_INPUT_TOTAL = 213112   # frozen: plain + cache read + cache write of the 34-question chat arm (re-frozen 0.60.0: the no-opening-praise rule; 0.32.0: data-not-instructions + corrected-post rules; 0.31.0: + resolve_work tool; 0.30.3: concise-answer rule; 0.29.0: + research_state/propose_claim tools + research state line; 0.28.0: + search_global_library; 0.27.0: + search_seen_sources; 0.24.1: library tools + inventory)
+# 2026-09-20: 213112 -> 224716 for the `reconsider_creator` chat tool (Mission A). Measured: the tool
+# schema accounts for ~7.3k of the rise and its guidance block in qa.PROJECT_BLOCK for the rest; with
+# both removed the figure returns exactly to its old value. Call counts are unchanged at 34, which is
+# what separates a deliberate prompt change from the drift this constant exists to catch.
+CHAT_ARM_INPUT_TOTAL = 224716   # frozen: plain + cache read + cache write of the 34-question chat arm (re-frozen 0.60.0: the no-opening-praise rule; 0.32.0: data-not-instructions + corrected-post rules; 0.31.0: + resolve_work tool; 0.30.3: concise-answer rule; 0.29.0: + research_state/propose_claim tools + research state line; 0.28.0: + search_global_library; 0.27.0: + search_seen_sources; 0.24.1: library tools + inventory)
 
 
 # `client` (the one app instance for the whole test session) lives in tests/conftest.py
@@ -1494,9 +1498,14 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     # the TOTAL input (plain + cache read + cache write) — invariant under cache layout; the cache split is measured
     # separately by `neurosearch eval --cache-layout` and asserted in test_cache_layout_measurement_and_savings.
     tot = lambda t: t["input_tokens"] + t["cache_read"] + t["cache_write"]  # noqa: E731
-    assert v["answer"]["calls"] == 34 and tot(v["answer"]) == 200052 and v["findings"]["calls"] == 9 and tot(v["findings"]) == 30297
+    # 2026-09-20: `answer` re-baselined 200052 -> 211650 (grand 266271 -> 277869) for the `reconsider_creator`
+    # chat tool (Mission A). Measured, not assumed: removing the tool schema alone gives 204306 (-7344) and
+    # removing its guidance block from PROJECT_BLOCK as well gives back exactly 200052 (-4254). Call counts did
+    # not move, which is what distinguishes an intentional prompt change from the router drift this gate exists
+    # to catch. Cost of the feature: ~341 more input tokens on every chat call, about 5.8%.
+    assert v["answer"]["calls"] == 34 and tot(v["answer"]) == 211650 and v["findings"]["calls"] == 9 and tot(v["findings"]) == 30297
     assert v["plan"]["calls"] == 2 and tot(v["plan"]) == 11026 and v["plan"]["cache_read"] == 4412
-    assert sum(tot(t) for t in v.values()) == 266271
+    assert sum(tot(t) for t in v.values()) == 277869
     assert v["answer"]["cache_read"] > 0                                     # the stable chat prefix is reused across questions
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
     assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
@@ -1632,7 +1641,12 @@ def test_ranking_eval_runs_rank_relevance_under_contract(isolated_db, monkeypatc
     assert rep["canonical_requests"] == 1 and rep["canonical_input_tokens"] == int(rep["volume"]["input_tokens"] * 1.3)   # fake tokenizer: Claude 5 family counts ×1.3
     assert rep["invocations"] == {"logical": 1, "attempts": 1, "by_state": {"completed": 1}, "outcome_unknown": 0}
     assert rep["contract"]["model"] == "claude-sonnet-5" and rep["contract"]["thinking"] == "disabled" and rep["contract"]["max_output_tokens"] == 6000
-    assert rep["prompt_version"] == "f38f9a9c"          # the frozen ranking prompt (E2 must not change it)
+    # 2026-09-20: the ranking prompt was rewritten (it was screening each video's BUSINESS against Kyle's
+    # buy-box instead of judging what the video teaches — a blind review of 30 rejected candidates found he
+    # would have kept 23), and the description snippet widened 220 -> 400 with funnel links stripped. So the
+    # frozen version moves f38f9a9c -> c33f6c4c BY INTENT. The freeze still does its job: any drift NOT
+    # accompanied by a deliberate prompt edit is still a bug.
+    assert rep["prompt_version"] == "c33f6c4c"          # the frozen ranking prompt (E2 must not change it)
     assert len(rep["ordering"]) == 79 and rep["ordering"][0]["pos"] == 1
     text = evals.format_ranking_report(rep)
     assert "Precision@10" in text and "per 100 candidates" in text and "returned fake-claude" in text
@@ -1663,7 +1677,7 @@ def test_ranking_compare_one_command(isolated_db, monkeypatch, tmp_path):
     cmp = evals.run_ranking_compare(live=False, out_dir=out, progress=lambda m: None)
     b, c = cmp["baseline"], cmp["candidate"]
     assert (b["configured_model"], c["configured_model"]) == ("claude-sonnet-4-6", "claude-sonnet-5")
-    assert b["contract"]["thinking"] == c["contract"]["thinking"] == "disabled" and b["prompt_version"] == c["prompt_version"] == "f38f9a9c"
+    assert b["contract"]["thinking"] == c["contract"]["thinking"] == "disabled" and b["prompt_version"] == c["prompt_version"] == "c33f6c4c"
     assert {k: v for k, v in b["contract"].items() if k != "model"} == {k: v for k, v in c["contract"].items() if k != "model"}   # only the model differs
     assert b["ordering"] == c["ordering"]                     # same fake, same fixture → identical ordering
     assert c["canonical_input_tokens"] == int(b["canonical_input_tokens"] * 1.3)   # tokenizer delta path exercised
@@ -1716,7 +1730,7 @@ def test_ranking_verdict_rules():
                 c[k] = vv
         assert evals.ranking_verdict(base, c)["verdict"] == "FAIL", patch
     assert evals.model_matches("claude-sonnet-5", "claude-sonnet-5-20260601") and not evals.model_matches("claude-sonnet-5", "claude-sonnet-4-6-20260210")
-    cmp = {"tier": "live", "app_version": "x", "git_sha": "y", "baseline": base | {"candidates": 79, "fixture_version": 1, "prompt_version": "f38f9a9c"}, "candidate": cand,
+    cmp = {"tier": "live", "app_version": "x", "git_sha": "y", "baseline": base | {"candidates": 79, "fixture_version": 1, "prompt_version": "c33f6c4c"}, "candidate": cand,
            "rows": evals._side_by_side(base, cand), "verdict": evals.ranking_verdict(base, cand), "files": []}
     txt = evals.format_comparison(cmp)
     assert "tokenizer delta" in txt and "+30.0%" in txt and "(decision gate)" in txt and "(supporting)" in txt
@@ -1751,7 +1765,7 @@ def test_migrated_contracts_are_sonnet_5_thinking_disabled(monkeypatch):
     for t in ("discover.quick", "planner.update"):                                                                            # F3: structured
         assert "output_config" in C.request_params(C.contract(t)) and C.contract(t).schema in ("discovery-v2", "plan-update-v2"), t
     assert C.contract("discover.verify").schema is None                                                                      # citations ⟂ output_config.format
-    assert relevance.prompt_version() == "rank-f38f9a9c" and findings.prompt_version() == "findings-18b5db69"
+    assert relevance.prompt_version() == "rank-c33f6c4c" and findings.prompt_version() == "findings-18b5db69"
 
 
 def test_findings_compare_one_command(isolated_db, monkeypatch, tmp_path):

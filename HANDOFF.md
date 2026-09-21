@@ -7011,3 +7011,1072 @@ the candidate source. The complete pytest run exercised **2,088** tests: **2,082
 the six remaining failures were only missing tracked historical SQLite fixtures caused by the verifier's broad
 `*.db` exclusion, and those six migration tests passed immediately after the fixtures were restored. No live DB,
 provider, browser session, cookie, or import action was used.
+
+## L-51 answered — Kyle's review-queue verdict, and a real gap surfaced (2026-09-20)
+
+Kyle reviewed the real 25-item review queue for "buying businesses" (via API, no UI exists for this yet —
+recorded separately as a UI gap). His answers: 25 is a manageable length; every row's "why flagged" reason made
+sense. On the disagreement check: items 1-9 are all separate weak, single-source claims about business
+valuation multiples (ranges from 2x to 7x depending on source) — Kyle doesn't consider that spread a real
+"disagreement" worth flagging item-by-item; he'd find it more useful if the app synthesized one merged
+average/overlap range across those 9 sources instead of listing 9 near-duplicate weak claims.
+
+**Recorded as a genuine product gap, not built today:** `review_queue.py` currently has no path from "9
+single-source claims about the same numeric quantity" to "one synthesized range claim with 9 sources of
+support." This would need claim-level numeric-range merging/normalization, not just prettier display — the 9
+claims differ in scope (owner-involvement tier, revenue tier, SDE vs. cash-flow basis) so a naive average would
+misrepresent the sources. Worth a scoped design pass later; not scheduled against any current rung.
+
+**Also recorded:** the review-queue endpoint (`/api/projects/{id}/claims/review-queue`) has no web UI —
+Codex built the API/CLI path but never wired a page or panel to it. Kyle currently can only see this list
+through Claude pulling it via the API directly. This is a real gap for L-52 (which assumes the queue is
+user-visible in-app) and should get a page before `NEUROSEARCH_MORNING_REPORT_NEEDS_ME=1` is turned on for
+real, ongoing use — not just for this one-time review.
+
+## Both Kyle-gated items shipped: claim synthesis (S76) + Discovery exclude list (S75) (2026-09-20)
+
+Following on from the L-51 entry above, Kyle confirmed both fixes at once: "ok lets get both items fixed at the
+same time." Both are live on the running app (edited in place, server auto-reloaded via uvicorn's
+`reload_includes`), covered by new tests, and verified against real live data through the app's own API (never
+by opening `data/neurosearch.db` directly).
+
+**Immediate, free, reversible step done first:** the 9 laundromat-related sources already in "buying
+businesses" were removed from that project via the app's own API. Nothing was deleted from the app's library —
+only the project relationship.
+
+**S75 — Discovery exclude list.** New `project_excludes` table (`db.py`: `add_exclude`, `list_excludes`,
+`delete_exclude`), a `_excluded_by()` check wired into `candidates.pool()` (and therefore `next_batch()`, which
+calls `pool()` internally) so a match on title/why-text (kind=`keyword`) or exact creator (kind=`creator`) is
+filtered out before a candidate is ever surfaced, and three endpoints (`GET/POST /api/projects/{id}/excludes`,
+`DELETE /api/excludes/{id}`). 8 tests in `tests/test_s75_discovery_excludes.py`. Seeded live on "buying
+businesses" with 9 entries: keywords "laundromat", "accounting", "bookkeeping", and creators Laundromat
+Resource, Anders Virtual CFO, Jason On Firms, Jason On Firms Podcast, Wilber Longenbaugh, Accounting for growth
+— these repeat what Kyle had already told the app twice via `project_facts` (kind=`rejected`), which nothing in
+Discovery ever read. Verified live: `GET /api/projects/{id}/pool?kind=candidates&limit=500` on the real project
+returns zero matching titles/creators after seeding. Reversible any time via the delete endpoint.
+
+**S76 — claim/topic synthesis.** New `neurosearch/claim_synthesis.py`: deterministic, $0, regex-based "Nx" /
+"N-Mx" multiple extraction from claim text, grouped by (claim `topic`, detected valuation *basis* — SDE /
+EBITDA / cash flow / revenue / profit / unspecified) so claims measuring genuinely different things are never
+blended into one number (this is explicitly NOT claim merging — see `claims.py`'s narrow `merge_into`, same
+proposition/same scope only). Groups of 3+ get a `summary_text` like "5 sources give ranges of 2x-6x SDE — most
+cluster around 2.5x-3x SDE (5 of 5)", using a swept "densest interval" (the sub-range the most sources actually
+overlap on) rather than a naive average. `review_queue.build()` now returns a `topic_summaries` key computed
+from `shown` — the same claims actually visible in that queue view, not the whole project's proposed-claims
+backlog — because "buying businesses" alone has ~16,000 proposed claims historically, and an earlier pass that
+summarized the full backlog produced 50 noisy groups instead of the couple Kyle was actually looking at.
+`extract_range()` also rejects any value above `MAX_PLAUSIBLE_MULTIPLE = 30` (a plain "Nx" mention far past that
+is essentially never a valuation multiple — it's some other kind of "Nx" claim caught by the same regex, e.g.
+"grew 400x") so an outlier can't widen or join a group's range. 12 tests in
+`tests/test_s76_claim_synthesis.py`. Verified live: `GET /api/projects/{id}/claims/review-queue?limit=25` on
+the real "buying businesses" project now returns 2 tight summaries (5 sources / 3 sources, both SDE, both in
+the 2-6x band) sitting above the 25 individual claims, instead of the 50-group / 400x-outlier result from the
+first pass.
+
+Both bundled and run against the full pytest suite in an isolated copy (not the live app): **2,119 passed**, the
+same 4 failures + 1 error as every prior run in this session — all four are pre-existing gaps in missing
+`start`/`start.command`/`restart.command` shell-launcher fixtures unrelated to any of these changes (confirmed
+by diffing against a run before these edits). No regressions attributable to S75 or S76.
+
+**Still open:** no web UI exists for the review queue (recorded in the entry above) — `topic_summaries` is only
+reachable via the API/CLI right now, same as the rest of that queue. Kyle's other two open items from the
+original 17 (Morning Report setting, Adaptive Discovery satisfaction, blind-review terminal permission) are
+still unanswered and not addressed by this entry.
+
+## L-06/L-07 answered — Haiku confirmed as findings default (2026-09-20)
+
+Item 3's blind 40-item review (L-05/L-06) ran end to end. Two real bugs surfaced and were fixed along the way,
+both the same class: `project_notes.model` stores whatever exact model string the provider actually returned
+(e.g. `claude-haiku-4-5-20251001`, a dated snapshot id) rather than the bare alias, but two tools compared
+against the bare alias and got zero matches.
+
+- `tools/sample_findings.py`: `E5_COHORT`'s four Haiku entries used the bare alias `claude-haiku-4-5`, so the
+  sample generator refused with "0 modeled findings; need 5" even though the sources have 19-60 approved Haiku
+  findings each. Fixed by updating the cohort's stored strings to the dated id actually in use. Verified live via
+  the app's own API before touching anything: no data was lost, two of the four Haiku sources also picked up
+  some Sonnet-tagged and untagged findings from later reprocessing, but filtering on the exact dated string
+  still isolates each source's original E5-era Haiku findings correctly.
+- `tools/decide_kept_rate.py`: `decide()` compared the same bare alias against `per_model`'s keys (which come
+  straight from the corrected `_scoring_key`) and returned "undecidable" despite `scored.per_model` having
+  complete numbers for both models. Fixed with a small `_resolve_model_key()` helper — exact match first, then
+  a unique-prefix match — so it survives the next dated model rename too, not just this one. Verified against
+  Kyle's real printed numbers before he re-ran it.
+
+Kyle reviewed all 40 items himself ("I don't see anything egregious in the findings") and confirmed accurate=yes,
+keep=yes on every one — both models scored 100% kept, 100% accurate on this sample. Cost per kept finding:
+Haiku $0.0006, Sonnet $0.0014 (2.3x). **Decision: keep Haiku as the findings default** (cheaper per kept finding,
+and well within the 10-point kept-rate tolerance — actually tied). No `.env` change needed; Haiku was already
+the configured default (`NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-haiku-4-5`) and stays.
+
+Also done this session: item 1's "Needs you" Morning Report setting was turned on in `.env`
+(`NEUROSEARCH_MORNING_REPORT_NEEDS_ME=1`) and Kyle restarted the app via `restart.command` to pick it up.
+
+**Still open:** item 2's Discovery "same familiar topics" experiment (Kyle approved, not yet run — up next).
+Items 4 (source-ranking test) and 15 (structured-output experiment estimate) were both blocked on item 3's
+tooling working; that block is now clear.
+
+## Item 2's Discovery "familiar topics" experiment — run and reported (2026-09-20)
+
+Kyle's ask: "I am not sure if it keeps showing the same things." Ran the proposed diagnostic against
+"buying businesses" via the app's own read-only API (candidates + claims endpoints, never the database file
+directly): for each of the 816 sources Discovery has acquired into this project, checked whether the topic(s)
+its claims fall under were already well-covered (3+ claims on that topic before this source arrived) or
+genuinely new ground.
+
+Result: of 427 acquired sources with traceable topic-tagged claims (the other 389 either haven't had claims
+extracted yet or their evidence link wasn't captured in the claim's first 8 evidence entries -- a real caveat,
+noted to Kyle), 236 (55%) reinforced an already-well-covered topic and 191 (45%) opened new ground. Top
+repeated topics: business, due diligence, acquisition, deal, deal financing, target selection, operational,
+deal sourcing, business growth tactics, financing, cash, value.
+
+No trend over time could be shown: every one of the 816 acquired candidates' timestamps (both `first_seen_at`
+and `state_at`) fall within 2026-09-07 to 2026-09-20 -- the project's Discovery activity is only 13 days old,
+so there isn't enough history yet for a "getting better or worse" comparison. Purely diagnostic; nothing about
+Discovery's ranking or picking logic was changed.
+
+## Items 17, 12, 4 — cleanup done, Field Map checked (nothing to run), ranking test handed to Kyle (2026-09-20)
+
+Kyle approved all three in one go ("lets do 17, 12 and 4 ($.10)").
+
+- **Item 17 (paywalled-source cleanup):** Kyle clicked "Delete 17 members-only" himself in the Sources UI after
+  my own browser-automation attempts to click it kept timing out (not a blocking dialog -- just an unreliable
+  click through the Chrome extension this session). Verified after: Sources total dropped from 1611 to 1593,
+  no more Failed filter chip. Done.
+- **Item 12 (Field Map):** checked whether any of Kyle's 3 projects has a DOI-bearing scholarly seed, via the
+  app's own read-only API only (`/api/works?project_id=`, `/api/projects/{id}/candidates`) -- never the DB file.
+  Zero DOI-bearing Works across all 3 projects (16/0/1 total works, 0 with a doi identifier), and zero
+  `platform=crossref` candidates in the sampled pages either. This library is entirely video/podcast/web content,
+  no academic literature -- Field Map (`neurosearch/field_map.py`, CLI-only via `project field-map`) has nothing
+  to seed with and genuinely doesn't apply right now. Reported to Kyle as a dead end, not run.
+- **Item 4 (source-ranking test):** the actual tool is `tools/relevance_backtest.py` (Spearman correlation +
+  top-5 reorder count between the current claim-centroid ranking basis and a candidate brief-text-embedding
+  basis). Same `_refuse_bridge_mount()` self-guard as item 3's tooling, and needs a reachable OPENAI_API_KEY only
+  present on Kyle's Mac -- can't be run through the sandbox bridge. Gave Kyle the exact one-line command for all
+  3 projects; waiting on his output to report back whether switching the ranking basis looks worth it.
+
+**Still open:** item 2 is fully closed now (see prior entry). Items 5-10, 13-17 status unchanged from the
+decision doc. Item 4's actual result is pending Kyle's Terminal run.
+
+## Item 4's first run: found a real gap (chunk-space attestation never gets called) (2026-09-20)
+
+Kyle's first run of `tools/relevance_backtest.py` returned `centroid_unavailable` / `chunk_space_unattested` for
+all 3 projects, 0 measured. Root cause: `t4.source_relevance()` (and T1's own coverage functions) require a
+"chunk space attestation" row (`t1.attest_chunk_space()` / `t1.get_chunk_space_attestation()`) recording the
+embedding provider/model/dimensions actually in use, keyed to the exact current `embedding_revision` and chunk
+count -- but nothing in the app calls `attest_chunk_space` automatically anywhere (grepped the whole repo:
+only test files call it). So this has probably never been attested in the live app, or went stale the moment
+any chunk was added/removed/re-embedded since a manual attestation years back -- e.g. my own item-17 delete of
+17 sources this same session would have invalidated it if it existed.
+
+Called `POST /api/transcript/corpus-attestation` through the app's own API (never the DB file) with
+`provider=openai, model=text-embedding-3-small, dimensions=1536` (config's `NEUROSEARCH_EMBEDDING_MODEL`
+default; no dimensions override anywhere in the repo, so this is OpenAI's native output size for that model,
+not a guess I made up blind). Result: `verified: true`, 43,318 chunk vectors, 0 bad_dimensions, revision 235.
+Asked Kyle to immediately re-run the backtest command before the revision can drift again.
+
+**Worth flagging as its own follow-up later** (not decided, not built): either wire `attest_chunk_space` to run
+automatically after a chunk-embedding batch, or add a CLI/admin button for it -- right now any T4/T1
+relevance-based feature silently reports "unavailable" forever unless someone manually POSTs this exact
+undocumented endpoint. Did not fix this myself this session -- out of scope for item 4, flagging only.
+
+## Item 4 closed: no case to switch the source-ranking basis (2026-09-20)
+
+Kyle re-ran `tools/relevance_backtest.py` right after the attestation fix above; this time it measured for real.
+All 3 projects: Spearman correlation between the current claim-centroid ranking and the candidate brief-text-
+embedding ranking was 0.999 ("buying businesses", 1,106 sources) and a flat 1.0 for the other two (316 and 65
+sources). Zero top-5 sources reordered in any project. Tool's own verdict: "no clear case to switch from the
+current basis on this data." Cost ~3 cents as estimated, within Kyle's approved $0.10 cap.
+
+**Decision: keep the current source-ranking basis. No change.** Item 4 closed.
+
+## Item 15 closed: structured output confirmed slightly better, no change needed (2026-09-20)
+
+`tools/structured_output_experiment.py` (new, non-destructive -- never calls findings.materialize(), writes
+only its own --out report + real usage ledger rows under distinct "findings_experiment_*" kinds) ran against 20
+real varied-platform sources (book/file/media/youtube) in "buying businesses", first window of each, both
+extraction methods head to head. Result: structured (current default) 5.9 mean findings/source, 88% with a
+quote independently verified against the transcript; legacy (freeform, "emergency fallback only" per its own
+docstring) 5.6 mean findings/source, 86% verified. Both methods parsed successfully 100% of the time -- legacy
+never actually failed to parse in this sample, contrary to what its "emergency fallback only" framing implies.
+Cost: $0.00 -- both calls happened to route through Kyle's Claude subscription (transport=local, L1's
+`local_is_free()` path) rather than metered API credit, well under his approved $10 cap.
+
+**Decision: keep the current structured-output default. Real, consistent edge for structured (more findings,
+higher verified-quote rate), but small -- not a case for urgent action, just confirmation the default is right.**
+Item 15 closed.
+
+## Item 11 in progress: real automatic-source test kicked off (2026-09-20)
+
+Kyle settled one of the two open questions himself mid-session ("the $13,800 Ace Plus cost is pure marketing,
+no legal basis") -- recorded as a project note and the evidence target (3163b44c...) closed via
+`POST /api/targets/{id}/status {status: closed_by_user}`, both through the app's own API, never the DB file.
+
+Used the OTHER real open question instead for item 11's actual test: target 31fc0466d43b47a5993493ef53efbe2c,
+"Buyer needs in-office presence, some remote flexibility" (a CPA-licensing-adjacent question with no qualifying
+local evidence -- project_evidence found 8 loosely related hits, global_library 0, candidate_index 12, none
+authoritative). Called `POST /api/targets/{id}/pursue {external: true}` through the app's own API. Walked the
+real escalation ladder: project evidence -> global library -> candidate index -> Crossref catalogue (8 papers,
+all irrelevant by title -- expected per the code's own comment, since this "proves it's not a literature
+question" before falling through) -> real external Discover job (id 30cb264dda0147e9b4714587b4ae28bb, mode
+web_first), which was still running as of this entry. Will judge the picked source(s) against item 11's own
+criteria (real question? sensible pick? explained why? actually useful?) once it finishes and report to Kyle.
+
+## Item 11 closed: automatic research source tested, mostly good, one real gap flagged (2026-09-20)
+
+Discover job 30cb264dda0147e9b4714587b4ae28bb finished: 16 candidates added (proposals only -- nothing
+auto-ingested into real sources; "the project boundary is crossed only by an explicit Add", per
+knowledge.pursue()'s own docstring).
+
+- The Crossref catalogue step (6 of the 16) was pure noise for this question: 4 duplicate "Office furniture.
+  Office work chair" standards records, a 1914 patent-office history article, and a PACFISH fisheries remote-
+  sensing paper. None relevant. This is EXPECTED per the code's own comment (the catalogue step exists to prove
+  a question "is not a literature question" before falling through to real web discovery) but the irrelevant
+  hits still get surfaced to Kyle as candidates rather than being silently discarded when they clearly don't
+  match -- real, minor product gap, flagged but NOT fixed this session (out of scope for what Kyle asked).
+- The real external Discover step (10 of the 16) was genuinely good: SMBMarket, Josh Wilson, Zach Smith, Chris
+  Do, Tim Ferriss, Mike Michalowicz, Kat Stull, Dan Mattei, Pat Flynn, the SBA -- with a well-reasoned note
+  explaining how to use each one to actually answer the open question (hybrid vs. full-remote feasibility for a
+  $350K owner-income target).
+
+**Verdict on item 11's own 4 judgment questions:** real question (yes) · sensible pick (mixed -- first 6 no,
+last 10 yes) · explained why (only for the good half) · actually helped (net yes, once Kyle dismisses the 6
+catalogue duplicates). Reported to Kyle in plain language. Item 11 closed.
+
+**Follow-up worth flagging later, not done:** filter or suppress catalogue-step candidates from `pursue()` when
+they don't plausibly match the target's topic, so irrelevant academic-standards hits stop landing in the
+review queue. Not built -- just noted for a future session.
+
+## Item 11's follow-up: the catalogue-noise gap fixed, not just flagged (2026-09-20)
+
+Kyle: *"we must fix this product gap right now before I forget about it."* — the real gap item 11's test surfaced:
+the automatic research-catalogue step (Crossref/OpenAlex, via `scholar.py`) was dumping every record it found
+straight into the review queue with no relevance check, so an ordinary "in-office vs. remote" workplace-policy
+target — tagged `expert`/`authoritative` like most ordinary business questions are — got back furniture-standards
+specs, a 1914 Scientific American piece on the U.S. Patent Office, and a fisheries remote-sensing survey. Real
+records, term-matched (they share "office"/"work"/"needs"/"remote" with the question), completely useless.
+
+**What I tried and rejected before landing on the fix, in order, each checked against the real observed titles:**
+- Filtering results by `claims.overlap()` token overlap. Tested offline against the three real bad titles: they
+  scored 0.333–0.667 overlap (deceptively high, from sharing only generic words) while a genuinely on-topic
+  hypothetical title scored 0.000 (different vocabulary). Would have let the actual junk through and blocked good
+  hits. Rejected.
+- Diluting the overlap with the record's abstract (more vocabulary, less luck from a short title). Checked against
+  the real Patent Office record via Crossref's own API: it has no abstract at all — most Crossref records don't.
+  Would not have touched the motivating case. Rejected.
+- A relevance judgement from a cheap model call before saving a record as a candidate. This is the one approach
+  that could actually tell "shares words" from "is about this" — but `scholar.py`'s whole reason to exist is
+  running this pass at $0 with no model call (its own module docstring says so), and
+  `test_the_catalogue_pass_makes_no_model_call` freezes that as a hard test. Not available on this path.
+
+**The actual fix**: `scholar.target_wants_literature()` used to gate the catalogue query on `preferred_classes`
+alone (any target asking for "expert" or "authoritative" evidence triggered a full Crossref/OpenAlex search). That
+conflates two different things: the CLASS of evidence a target wants (which "expert" covers broadly — a lawyer's
+opinion, an HR consultant's post, a licensing board's FAQ) and whether that evidence is the PEER-REVIEWED kind a
+scholarly catalogue actually carries. Since the query never runs in the first place for a non-literature question,
+there's no result set left to (unreliably) filter afterward.
+
+Now it requires BOTH: the class, and the target's own question text matching `SCHOLAR_HINT` (the same
+paper/study/research/journal/peer-reviewed/academic/... pattern already used to gate the free-text `refine` path —
+just never applied to a target's own question before). `SCHOLAR_HINT` moved from `discover.py` into `scholar.py`
+(where `SCHOLAR_CLASSES` already lives) so both halves of the test live together; widened `peer[- ]reviewed` to
+`peer[- ]review(?:ed)?` so "peer review" (no -ed) still matches, which an existing test relied on. `for_target()`'s
+`why` message now says which half failed (wrong class vs. right class but not a literature question) instead of
+one generic sentence.
+
+Verified offline (pure regex/logic, no DB/app/model access needed) against the real observed case and several
+synthetic ones — all came out as intended, including the exact motivating case now correctly returning `False`.
+Compiles clean (`py_compile`). Updated the two existing tests
+(`test_a_target_is_only_queried_when_it_asks_for_expert_evidence`,
+`test_discover_asks_the_catalogue_only_when_literature_is_wanted`) that asserted the old class-only behavior — they
+needed question text added to keep passing, since the whole point of the fix is that class alone is no longer
+enough. Did not touch `search()`, `to_discoveries()`, `to_candidates()`, any schema, or the manual catalogue-search
+API endpoint (`api.py`) — scoped to exactly the two automatic call sites (`discover.scholar_wanted`/`scholar_pass`,
+`knowledge.pursue`'s catalogue step via `scholar.for_target`) that were surfacing unreviewed noise.
+
+**Kyle, please run yourself** (I can't run pytest here — no `.venv`/deps in this bridge's VM, same as every other
+change this session):
+
+    .venv/bin/pytest tests/test_s2_scholar.py -v
+
+If that's green, the fix is confirmed not to have broken anything scholar-related. To confirm it actually kills the
+real noise, re-running item 11's exact test (the "Buyer needs in-office presence" target, `pursue(target_id,
+external=True)`) should now show the catalogue step returning `run: False` with the new "not a literature question"
+reason, instead of the 6 junk records.
+
+Files touched: `neurosearch/scholar.py`, `neurosearch/discover.py`, `tests/test_s2_scholar.py`.
+
+**Confirmed by Kyle (2026-09-20)**: `.venv/bin/pytest tests/test_s2_scholar.py -v` — 31 passed, including the two
+updated tests. This fix is done.
+
+## Real nightly run closes L-30/L-31/L-41 and CR7 (2026-09-20, run by Kyle at 15:02)
+
+Kyle ran `neurosearch nightly run --budget 2 --research-refresh-budget 1` for real (not a test/fixture). Preflight
+(integrity check + verified backup) passed. Result: `"ran": true, "ok": true`, $2.00 of $2.00 spent across 2 of his
+3 active projects (findings batches queued: job `f9939e1f...` / 107 sources, job `6e16a8d9...` / 1 source).
+`research_refresh` came back non-null with `"ran": true`, 56 refreshes requested across all 3 projects,
+`"stopped_by_budget": true` (used its full $1). Per CR7's own gate text ("research_refresh non-null, ran:true, any
+count including 0 — both pass"), **CR7 passes**. Per L-30/L-31 ("one real night at $2, preflight ran, every number
+reconciles"), **L-30 and L-31 pass** — this was a real, non-forced, budget-respecting night; the full JSON is in
+this session's transcript if the raw numbers are ever needed. L-41 (can Kyle explain what changed from the report
+alone) still wants Kyle to actually read `neurosearch nightly report` himself once — flagging as still technically
+open pending that one read, though the data behind it already exists.
+
+Background work from this run (2 batch jobs + 56 refresh-triggered ingest jobs) was still in flight as of this
+note — his live server/workers were already running and picking them up (`neurosearch status` showed
+queued:29/running:14 shortly after). Not something to re-verify; ordinary background processing.
+
+Suggested next Kyle-gated items to pick up (all ready now, none conflict with the above): L-51 (review-queue
+check, $0 read-only), L-21 (lid-open/lid-closed worker test, best done while jobs are actively flowing), L-40
+(Tonight UI, in-app), AD4B (`project discover-report`, $0 read-only, sample size already reached on both active
+projects).
+
+## L-51 closed on real data (2026-09-20)
+
+Kyle ran `neurosearch project review-queue` against his real "buying businesses" project (17,365 proposed, 25
+surfaced). All three gate questions pass: short (25 of 17,365), every line tagged with why (disagreement/
+evidence_weak + tension tier), and disagreement never hidden by the cap (0 disagreement items in the
+16,661-item hidden pool, only weak-evidence noise). The surfaced disagreement itself (valuation multiples
+ranging 2-6x SDE depending on source -- Ben Kelly, Buy Then Build, Hormozi, etc.) is one Kyle confirmed he
+already knew about: "this is not exact science, theres no consensus, just averages or gut feelings. its a
+market, its always changing." L-51 is DONE. Per the gate text, this also unlocks L-52 (set
+NEUROSEARCH_MORNING_REPORT_NEEDS_ME=1) -- though L-52's own newer note says it's separately blocked on a
+missing review-queue web UI, so flip the flag but don't expect it to fully close L-52 alone.
+
+## AD4B stays open: Kyle's answer names the exact ambiguity the gate anticipated (2026-09-20)
+
+Kyle ran `neurosearch project discover-report` on his real "buying businesses" project: usable_sample confirmed
+(10,532 genuine decisions), 8% capture rate / 92% reject rate. Asked whether that ratio leaves him satisfied,
+his answer: "that filtering seems fine as long as I am not missing out on potentially novel or insightful
+findings." That is a real, named concern, not an unconditional pass -- and per the report's own text, current
+data cannot answer it ("this describes the system as it actually performed -- it is NOT a comparison against
+static ranking, which was never shown to the user and cannot be reconstructed from current state"). Per AD4B's
+own gate text ("only if that report's numbers leave real ambiguity is AD4B... worth building -- never
+speculatively"), this is exactly that ambiguity. AD4B (the smallest design that answers Kyle's specific
+question -- a controlled interleaving or occasional static-control batch, NOT a general analytics platform) is
+now a real candidate to build, not closed. Not built yet -- needs scoping/costing before starting; flagging
+here rather than starting implementation unprompted.
+
+## Creator-trust cliff fix: approve_proposed() now sees creator disposition before the cutoff (2026-09-20)
+
+**What motivated this**: Kyle's own words -- "run step 1 - problem is that I have been BULK approving everything
+so I don't think I have been providing good data back to the app to influence things from my side." Investigated
+whether Discovery's relevance filter silently discards genuinely valuable content. Verified via the app's own API
+(read-only, project c752ed152ec942dd97b9a94c3f1b3b96): of 9,691 skipped_low_relevance candidates, 8,887 were
+model-scored 1-49 (i.e. NOT hard-zero rejections), with a 297-503-item borderline band (35-49) whose model-stated
+reasons often indicated real topical relevance. Concrete case: "Acquisitions Anonymous" (a podcast directly on
+this project's acquisition-research thesis) had 21 episodes acquired and 360 more auto-skipped, scores 5-48.
+
+**Root cause**: `candidates.py::creator_disposition()` already computed a per-creator trust signal (`adjust`,
+bounded +/-12), but it was wired ONLY into the later pool rerank (`rerank()`, AD2) -- never into the initial
+`approve_proposed()` skip decision in `ingest.py`, where the actual `skipped_low_relevance` verdict happens
+against the hard `LOW_RELEVANCE = 50` cutoff. A creator's disposition could never rescue a borderline candidate
+at the point where it mattered.
+
+**Self-caught bug before shipping**: first draft used `max(0, creator_disposition()['adjust'])`. Offline
+reconstruction of Acquisitions Anonymous's real numbers (21 acquired, ~360 skipped_low_relevance) showed `adjust`
+computes to -5, because the disposition formula treats `skipped_low_relevance` as a real negative relevance
+signal (its own docstring calls it "a genuine relevance judgment made in review") -- which is false for Kyle's
+actual bulk-approve workflow: those 360 skips were never individually reviewed, they were auto-filed by the very
+scoring gap this fix addresses. `max(0, adjust)` would have given ZERO rescue to the exact creator that motivated
+the fix. Fixed by using only the unambiguous positive signal instead: has this project ever kept >=1 source from
+this creator (`disp[creator]['pos'] > 0`)? If so, apply a flat, bounded, ADD-ONLY +`DISPOSITION_MAX_ADJUST` (12)
+to that candidate's relevance score before the cutoff. Never touches the negative/skip-derived side.
+
+**Files changed**:
+- `neurosearch/candidates.py`: new `creators_for(platform_external_ids)` -- batched (platform, external_id) ->
+  creator lookup against the `candidates` table (schema-verified: `sources` has `platform TEXT NOT NULL` and
+  `external_id TEXT`, matching what `ingest.py` reads off each row). Missing/creator-less pairs are simply
+  omitted (no trust adjustment), never an error.
+- `neurosearch/ingest.py::approve_proposed()`: low/rest split now goes through `_adjusted_relevance(r)`, which
+  adds the +12 creator-trust boost (when earned) before comparing to `LOW_RELEVANCE`, instead of comparing
+  `r["relevance"]` raw.
+- Both verified with `python3 -m py_compile` only (this session's bridge shell has no project .venv/dependencies)
+  -- NOT live-tested. Kyle needs to run the real test suite (see below) before trusting this in production.
+
+**Backlog recovery (new file)**: `tools/resurface_creator_trusted_candidates.py` -- the code fix above only
+changes FUTURE `approve_proposed()` calls, so this is a one-time, Kyle-run, non-destructive, idempotent script
+that finds already-skipped candidates that would have cleared the cutoff under the same rule and moves them from
+`skipped_low_relevance` back to `available` (visible again in Sources > Seen -- NOT auto-added to the project;
+Kyle still judges each one himself, same as any other candidate). Safe to re-run; only ever touches rows still
+sitting in `skipped_low_relevance`.
+
+**Still open / explicitly NOT built as part of this fix** (scoping judgment, not signed off by Kyle): the chat
+tools in `qa.py` (`update_brief`, `record_fact`, `propose_claim`, `set_source_priority`, `note_gap`,
+`save_finding`) still cannot reach or reverse a `skipped_low_relevance` verdict, and giving chat feedback that
+kind of reach is a separate, larger piece of work than the cliff fix above.
+
+**Kyle: what to run (on the Mac, in your real Terminal -- never through the bridge)**:
+
+1. Confirm nothing broke:
+   ```
+   .venv/bin/pytest tests/test_n7_pool.py tests/test_s75_discovery_excludes.py tests/test_s66_harvest_isolation.py tests/test_s73_members_only_never_outrank.py tests/test_k4_explore.py -q
+   ```
+   (or run the full suite with `.venv/bin/pytest -q` if you'd rather be thorough)
+
+2. Preview the backlog rescue (writes nothing):
+   ```
+   .venv/bin/python tools/resurface_creator_trusted_candidates.py --project c752ed152ec942dd97b9a94c3f1b3b96 --dry-run
+   ```
+
+3. If the preview looks right, actually apply it:
+   ```
+   .venv/bin/python tools/resurface_creator_trusted_candidates.py --project c752ed152ec942dd97b9a94c3f1b3b96
+   ```
+
+You can also run step 2/3 against your other two projects' ids (`neurosearch project list`) if you want the same
+recovery there, though the evidence gathered so far (the Acquisitions Anonymous case, the borderline-score
+analysis) was specific to the business-acquisition project.
+
+**Closed out (2026-09-20, Kyle ran it himself):** all 5 affected test files passed clean (75 passed, 0 failed).
+Backlog resurface applied for real (not just dry-run) against c752ed152ec942dd97b9a94c3f1b3b96: 405 candidates
+moved from skipped_low_relevance back to available, across 14 already-trusted creators (Acquiring Minds 104,
+Jonathan Jay 75, Walker Deibel 49, Acquisitions Anonymous Podcast 45, and 10 smaller creators). This work item
+is done -- code fix live for future reviews, backlog recovered, nothing further pending here.
+
+## Mission A + Mission B: chat reaches Discovery, and AD4B becomes measurable (2026-09-20)
+
+Follow-on from the creator-trust cliff fix above. Kyle: "do both." Plan doc:
+`docs/MISSION-2026-09-20-CHAT-FEEDBACK-AND-AD4B.md`.
+
+### Mission A -- chat feedback can now reach a Discovery verdict
+
+Kyle's stated reason ("I say CHAT in big letters because that's where I will be giving feedback to the app"):
+none of the six chat tools could touch a `skipped_low_relevance` candidate. Saying "I want more from X" in chat
+moved nothing; the only lever was the batch script.
+
+- `neurosearch/candidates.py::reconsider_creator(project_id, creator)` -- live, single-creator version of
+  `tools/resurface_creator_trusted_candidates.py`, on the SAME rule `ingest.approve_proposed` uses (`pos > 0`
+  earns `DISPOSITION_MAX_ADJUST` against `LOW_RELEVANCE`), so chat and review cannot disagree. Case-insensitive
+  and partial name matching, because a person types "acquiring minds". ADD-ONLY; `skipped_limit`,
+  `needs_membership` and `user_dismissed` are never touched -- a review cap, a YouTube paywall and an explicit
+  human rejection are not relevance judgments this may overturn.
+- `neurosearch/qa.py` -- `reconsider_creator` wired in four places: tool schema in `_library_tools()`,
+  `TOOL_LABELS`, the tool-guidance block in the system prompt, and a `_run_tool()` handler.
+- The return is a status dict, never a bare count, specifically so the tool can never no-op silently: `moved`,
+  `nothing_left`, `untrusted` (seen but never kept -- no history to override the score with), `unknown` (not in
+  the index at all; lists the creators that ARE trusted), `no_creator`. Kyle bulk-approves, so a tool that
+  quietly did nothing would be indistinguishable from one that worked.
+- `tests/test_ad1_chat_reaches_discovery.py` -- 9 tests covering the threshold boundary (48 and 38 move, 37 and
+  5 do not), fuzzy matching, idempotence, each honest-failure branch, the other skip states, the qa.py handler
+  text, and that the tool is actually offered to the model.
+
+### Mission B -- AD4B, with a corrected premise
+
+**The plan doc's first version of Mission B was wrong and has been rewritten in place.** It assumed low-scoring
+candidates were HIDDEN from Kyle and proposed an "unfiltered review lane" sampled over future batches. Reading
+`web/js/sources.js` line 32 and `db.proposed_sources` shows otherwise: the review card shows EVERY proposed
+item, sorted by relevance. The score decides which rows arrive PRE-TICKED, not which are visible. Bulk-approving
+accepts the pre-tick. The 9,691 skipped candidates were on screen, unticked, never scrolled to. The honest
+question is therefore not "what was hidden" but "when Kyle looks deliberately at what was not pre-ticked, how
+often does he want it" -- which is answerable against the existing backlog, today, for free.
+
+- `tools/ad4b_blind_sample.py` -- stratified sample across the four rejection bands (0-19, 20-34, 35-44, 45-49),
+  bands interleaved so position leaks nothing, fixed seed, verdicts held in `_scoring_key` at the bottom. The
+  reviewable half carries only what the ranker itself saw.
+- `tools/ad4b_score.py` -- reads the filled rubric back: headline kept-rate, cut by band and creator, what Kyle
+  would have kept with the model's reason beside it, and a verdict. Thresholds are in the source BEFORE the run
+  (<10% closes AD4B, >25% means the cutoff changes) so the reading is not retrofitted to the result.
+- `tests/test_ad4b_blind_sample.py` -- 11 tests, the load-bearing one being the blindness invariant: no score,
+  band, verdict, url or id may appear in `review_these`. Blindness is the whole method here, because Kyle
+  bulk-approves: shown the score he would agree with the score, and the measurement would report his deference
+  back to him as agreement.
+
+### Verification status
+
+`py_compile` clean on all five changed/new files. The two AD4B tools were additionally self-tested end to end
+against synthetic sqlite data in the bridge shell (10 assertions incl. the blindness invariant and the scorer's
+three verdict branches, run through the real CLI) -- they import no project dependencies, so this was possible
+without the .venv. NOTHING was run against the live database, and pytest has not been run by me at all (no
+.venv in the bridge shell). Kyle runs the suite; the exact command is in the mission doc's Status section.
+
+## tools/ad4b_review.html — a blind-review UI, and two findings about the sample (2026-09-20)
+
+Kyle, on being handed a 40-item JSON rubric to hand-edit: "don't know what to do next... can you build an HTML
+site that makes this easier?" Fair — hand-editing JSON is miserable and scrolling a raw file is the easiest way
+to break the blindness by accident.
+
+`tools/ad4b_review.html` — a local, self-contained page (opened from the repo, NOT a published artifact: the
+artifact sandbox blocks page-initiated downloads, which would break the round-trip back to `ad4b_score.py`).
+Loads an `ad4b-sample-*.json` in the browser (nothing uploaded), shows one candidate at a time with only what
+the ranker saw, keyboard-driven (K/S/arrows), autosaves progress to localStorage, and on completion computes
+and shows the result in-page, then offers the filled JSON for download so the canonical scorer can confirm it.
+
+Deliberate design call: Keep and Skip are visually symmetric — same size, same weight, differing only in hue.
+Biasing either button would bias the measurement this tool exists to produce.
+
+**Verified by running the page's real script under a DOM shim in node** (not by eye):
+- Numbers match `tools/ad4b_score.py` exactly on the same filled rubric: 33% headline, kept 10/30, identical
+  band rows (35-44 3/10, 20-34 4/10, 0-19 3/10), identical 10-row creator table in the same order, same
+  verdict branch. The page is a convenience; the .py remains the number of record.
+- Blindness: walked all 30 cards programmatically; zero score/band/verdict/candidate_id leaks onto any card,
+  and the results pane stays empty for the whole review.
+- Two bugs found and fixed by that testing, not by reading: a `@media` written inside a CSS selector list
+  (invalid, would have silently killed following rules — replaced with a `--btn-ink` token across all three
+  theme states), and a fully-filled rubric forcing a 30-card click-through instead of going to results.
+
+### Two findings about the sample itself, which change how the result reads
+
+1. **The 45-49 band is empty.** The 405 candidates resurfaced earlier today took it — every item scoring 45-49
+   belonged to a creator this project had already kept work from. So this sample measures the POST-rescue
+   remainder (0-19: 8345, 20-34: 843, 35-44: 98) and draws 10 from each of three bands, not 40 from four. The
+   cliff band that motivated the whole investigation is already handled, so a low headline number here must NOT
+   be read as "the filter was fine all along" — it would mean "the filter is fine NOW, after the fix."
+
+2. **Zero of the 30 sampled candidates have a stored description, and none have a published date.** 22 of 30
+   have a duration. `relevance.py`'s own system prompt tells the model it will see "each video's title, a
+   snippet of its description, its length and view count" — for this population the description is empty, so
+   the ranker is scoring on title and length alone. If that holds across the candidate index rather than just
+   this sample, it is a bigger lever on relevance quality than the cutoff ever was, and it is not something
+   either mission addressed. NOT yet investigated — flagged here, and to Kyle, as the next thing worth pulling
+   on. Checking it properly means the app's own API or a query Kyle runs, never a direct DB read from a
+   session (CLAUDE.md standing rule #1).
+
+### Correction the same day: --html shipped broken, twice (2026-09-20)
+
+Kyle: "thats not working. it still asks me to drag a file in." He was right, and my verification was at fault
+both times.
+
+1. **Auto-load ran before the payload existed.** The injected `<script id="embedded">` sits at the end of the
+   document, i.e. after the page's own script, so `getElementById("embedded")` was null at evaluation time.
+   The page fell back to the drop zone. My node harness had pre-created that element in the shim, inventing a
+   DOM order no browser produces -- so it passed something that could never work. Fixed: auto-load now waits
+   for `DOMContentLoaded` (with a `readyState` guard for the already-parsed case), and the harness was rewritten
+   to withhold the element during eval and only add it before firing the event, which is what caught it.
+2. **The payload was being spliced into the middle of the JavaScript.** The injector used
+   `shell.replace(close_body_tag, tag, 1)` -- first match -- and the page's own source mentioned that tag inside
+   an explanatory comment, so the first match was in the comment, not at the end of the document. It produced a
+   page whose script failed to parse at all. Fixed: inject at the LAST occurrence via `rpartition`, and the
+   comment no longer contains the literal tag. Both belt and braces, since either alone would have held.
+
+Lesson worth keeping: a hand-rolled DOM shim verifies the logic, not the page. It cannot see parse order, CSS
+validity or layout, and it will happily confirm a page that never runs. Anything it reports is provisional until
+the page has actually been opened in a browser.
+
+## Focus review in the app: one card at a time, and skips that finally mean something (2026-09-20)
+
+Kyle, after using the AD4B blind-review page: "I really like this new way of reviewing, can we build something
+like this into the app?" His three scoping answers: both surfaces, skips count as real judgement, alongside the
+list rather than replacing it.
+
+**This is not a UX nicety — it closes the loop on the thing that started this whole day.** The review card shows
+~400 rows sorted by relevance with the top N pre-ticked and one button; bulk-approving it is the rational move
+with that interface. But the rows left unticked then get filed as `skipped_low_relevance`, which is the RANKER's
+verdict, and `creator_disposition` half-counts those as if Kyle had rejected them. The app was attributing
+opinions to him he never formed, then ranking on them. Kyle's own words at the start: "I have been BULK
+approving everything so I don't think I have been providing good data back to the app to influence things from
+my side." Focus review produces a real per-item judgement, and submits a deliberate skip as `user_dismissed` --
+full weight, unambiguous.
+
+**Backend**
+- `ingest.approve_proposed(collection_id, source_ids, dismissed_ids=None)`. `dismissed_ids` are recorded as
+  `user_dismissed` and excluded from the automatic `skipped_low_relevance` / `skipped_limit` buckets entirely.
+  Untouched rows keep exactly the old behaviour, so the list path is bit-for-bit unchanged. An id appearing in
+  both lists resolves as KEPT (keeping queues a download; dismissing later is the reversible direction). A gated
+  item is never turned into a judgement -- it stays `needs_membership`, because a video YouTube will not serve
+  says nothing about anyone's taste. Returns `dismissed` so the UI can report it.
+- `api.ApproveIn.dismissed_ids`, forwarded by `api_approve`. Existing callers pass None and are unaffected.
+- The pool side needed NO backend work: `GET /discover/next` is already documented as a one-at-a-time resolve
+  loop, and each pool row already carries its own `actions.capture` / `actions.dismiss` endpoints, so focus
+  review drives exactly the path clicking the row's own buttons drives -- never a parallel one.
+
+**Frontend**
+- `neurosearch/web/js/focus.js` (new, registered in `bootstrap.js` before `sources.js`) -- a surface-agnostic
+  one-at-a-time reviewer. Callers hand it items and an `onSubmit`; it knows nothing about reviews or pools.
+  Keyboard K / S / arrows / Esc, progress rail, back-navigation to change an answer before submitting (the undo
+  window), partial submit, and a hide-scores toggle (shown by default -- this is work, not a blind measurement --
+  but scores anchor, so it is one click to drop them).
+- `sources.js`: "◉ Review one at a time" on the review card beside the existing list controls, and on the pool
+  header. The list and bulk-capture paths are untouched.
+- CSS appended to `styles.css`, built entirely from the existing token set so it follows the app's light/dark.
+  Keep and Skip are deliberately identical in size and weight, differing only in hue: a screen whose job is to
+  capture an honest judgement must not make one answer visually easier than the other.
+
+**Tests** -- `tests/test_ad2_focus_review_signal.py`, 8 cases on the part that carries the risk: the signal.
+Deliberate skip becomes `user_dismissed`; a HIGH-scoring deliberate skip does not silently become
+`skipped_limit` (which carries no preference signal at all -- the subtle failure this guards); dismiss-all;
+the contradictory-id rule; the old bulk path unchanged; gated items excluded; the API forwarding; and the one
+that states the point -- a creator rejected item by item reaches `creator_disposition` at FULL weight (neg 3,
+not 1.5) and actually moves `adjust` negative.
+
+**Verification status, stated precisely.** `py_compile` and `node --check` clean on everything. The focus
+component's STATE MACHINE was exercised under a logic harness (advance, stop at the last card, back-navigate and
+change an answer, correct keep/drop split on submit, partial submit, empty input opens nothing, and the gated
+guard). That harness found one real bug: the Keep button is disabled for gated items but the K key walked
+straight past it -- now guarded in `focusDecide` itself.
+
+What the harness does NOT cover, and after this morning's `--html` failure it is worth writing down rather than
+implying: it is a fake DOM. It cannot see rendering, CSS validity, event wiring, or whether the buttons appear
+where they should. Nothing here has been opened in a browser, and pytest has not been run by me at all (no .venv
+in the bridge shell). Kyle runs the suite and looks at the screen; until then this is unverified UI.
+
+### Focus review, verified in the running app (2026-09-20)
+
+Kyle: "I cannot find the toggle." Opened his actual app through the browser rather than reasoning about it.
+The code had loaded correctly all along (`focusOpen`, `rvFocus`, `poolFocus` all defined) -- neither HOST
+surface was on screen:
+- `#reviewWrap` was empty and `.card.rv` count was 0: no pending review card exists right now, so the review-card
+  button has nothing to attach to. It appears next time a channel or playlist is added.
+- He was on the Sources list (1,616 sources), not the pool. `loadPool()` only runs when `state.srcFilter ===
+  'pool'`, reached via the `#srcPoolChip` chip -- "🔎 Known, not captured 9,816" -- so the pool button had not
+  been rendered yet either.
+
+Entering the pool rendered the button, and opening it confirmed the panel renders correctly in the real app:
+title, count, hide-scores toggle, score chip, fact chips, the why text, equal-weight Keep/Skip, back/forward and
+the keyboard hint. This is the first time any of this UI has been seen rather than simulated.
+
+Two things the real page taught that no harness could:
+1. **A mislabelled score.** The pool passes `i.potential` (a $0 scan against open questions and weak areas) into
+   the same slot the review card fills with the relevance ranker's score, and the shared tooltip called it "the
+   ranker's score from the title and description". Two different numbers under one label, in the app whose whole
+   current problem is meaning being attributed to scores that do not carry it. Fixed: `focusOpen` now takes
+   `scoreTitle` / `scoreWord` and each caller names its own number.
+2. **A false alarm in my own probe**, worth recording so it is not re-diagnosed later: clicking the button via a
+   held DOM reference did nothing, because the pool poller rewrites `#srcCount` and the node had been detached
+   between query and click. Calling `poolFocus()` directly worked. Not an app bug; a stale-reference artifact of
+   testing a polling page.
+
+### Skip → Lose (2026-09-20, Kyle's wording)
+
+Button and key changed from Skip / S to **Lose / L** across `focus.js` (label, key handler, footer hint, the
+class `.fx-act.skip` → `.fx-act.lose` with the matching rule in `styles.css`) and both callers' subtitles in
+`sources.js`, so the explanation uses the same verb as the button. Backend state names are untouched:
+`user_dismissed` and `skipped_low_relevance` are what the data actually is, and renaming a stored state to match
+a button label would be the same category error this work keeps correcting.
+
+Verified in the running app after a reload, not assumed: buttons read "Keep/K" and "Lose/L", pressing L records
+a rejection, and S is now inert. The test decision was discarded via `focusClose()` without submitting —
+nothing reached the database.
+
+## The ranker was screening businesses, not judging content (2026-09-20) — root cause of the relevance problem
+
+AD4B returned a number, and it is decisive: **Kyle would have kept 23 of 30 candidates the relevance filter
+rejected — 77%, against a 25% bar fixed in the source before the run.**
+
+```
+35-44: kept 10/10 (100%)     20-34: kept 9/10 (90%)     0-19: kept 4/10 (40%)
+```
+
+**That pattern rules out the cutoff.** A threshold in the wrong place loses material near the line and falls off
+fast. This loses across the entire range — 40% even among items scored 0-19, which the model called flatly
+irrelevant. A score wrong that uniformly is not mis-calibrated; it is measuring something other than what Kyle
+wants.
+
+**The mechanism, from the model's own reasons on items Kyle kept:** "Roofing, physical labor not remote" ·
+"Trades roll-up not remote" · "Large 8-figure deal, size mismatch" · "Built manufacturing business, not
+acquired" · "Dog training niche, high revenue but physical". Every one is a fact about the BUSINESS in the
+video, not about whether the video teaches anything.
+
+**Why it was doing that.** `db.project_steering` renders the project brief verbatim, and Kyle's brief is a list
+of acquisition requirements: "Business must be operable remotely / from home", "SDE target: at least ~$350,000",
+"Acquisition price range: likely $500K-$999K", "Laundromats are rejected". `relevance.SYSTEM` then asked for a
+score on "how likely it is to contain material useful for THIS project" — with no statement of what that block
+IS. So the model checked each video's subject business against the buy-box, which is a reasonable reading of
+what it was given. But a roofing roll-up interview teaches deal structure, seller financing and diligence; the
+method transfers regardless of whether that business is one Kyle would buy. The ranker was confusing the
+business he wants to own with the content that teaches him how to buy one.
+
+Compounding it: none of the 30 sampled candidates had a stored description, so these rejections were inferred
+from titles alone.
+
+**Fixed**
+- `relevance.SYSTEM` rewritten: score on what a video TEACHES; the brief is the person's buy-box and explicitly
+  NOT a filter on useful content; the exact excuses observed ("not remote", "size mismatch", "wrong industry",
+  "built it instead of buying it") are named as non-reasons; constraints are a TIEBREAK that never pushes an
+  instructive video below 60; a missing description means score mid, not reject.
+- `relevance._head` states at the point of injection that the steering block is the person's situation and
+  buy-box, to be judged against what a video would teach. The shared `project_steering` is untouched — every
+  other prompt consumes it and this is the ranker's misreading to fix, not the brief's.
+- `prompt_version()` hashes SYSTEM and `input_hash` folds that in, so every score from the old prompt is now
+  automatically stale rather than silently trusted. New version: `rank-c33f6c4c`.
+- `candidates.rescore(project_id, updates)` — writes new scores WITHOUT touching state. Deliberately separate
+  from `mark`: "what is this worth" and "what did we decide" are different questions, and a re-score has to be
+  readable before anything moves.
+- `tools/rescore_candidates.py` — re-scores an existing backlog under the corrected prompt. Hard `--budget`
+  checked before each call, `--dry-run`, per-batch progress, before/after averages and the biggest movers.
+  `--resurface` (opt-in, a second run) promotes anything that now clears the cutoff back to `available`.
+
+**Tests** — `tests/test_ad3_ranking_judges_teaching.py`: the prompt names each observed excuse as a non-reason;
+the below-60 floor exists; a missing description is not a rejection; `_head` passes the brief through verbatim
+AND says what it is for; changing the prompt invalidates old `input_hash`es; `rescore` writes scores without
+moving state and ignores other projects' rows.
+
+**Not yet run against anything.** `py_compile` clean; pytest not run by me (no .venv in the bridge shell); no
+model call made. Costs real money when Kyle runs it — roughly one call per 80 candidates, so the full 9,286
+backlog is on the order of $2-3.
+
+**Open, and worth more than it looks:** candidate descriptions are empty across this sample. If that holds
+index-wide, the ranker is judging titles alone on every scan, which caps the quality of any prompt. Not yet
+investigated.
+
+### The ranking fix, validated on real data (2026-09-20)
+
+Two paid slices, $0.20 total, against the 9,286 `skipped_low_relevance` candidates.
+
+**Slice 1 — top 400 by old score.** avg 31.4 → 48.0, 222/400 now clear the cutoff. The movers were exactly the
+predicted ones: "Top Three Ways to Buy a Business Without Cash" 34→88, "How a First-Timer Pulled Off a $52m
+Acquisition" 30→78 (previously "size mismatch"), "Leaving Corporate to Buy a $4m Manufacturer" 28→75
+(previously not-remote), "FBI Hostage Negotiator: The Art of Negotiating" 30→75 — that last one the cleanest
+case, since it contains no business at all, only transferable method.
+
+**That slice could not prove the fix, and I said so before spending more.** `--limit` took the HIGHEST-scoring
+rejects, which are the ones most likely to be genuine and so the ones that should climb. Whether real noise
+stays down is a question about the other end. Added `--order {best,worst,spread}` and ran a spread.
+
+**Slice 2 — 400 spread evenly across all 9,286. This is the result that matters:**
+
+```
+of those the old prompt scored 0-19:  20/352 now clear the cutoff (6%)
+of those it scored 20+:               22/48  now clear            (46%)
+```
+
+A blanket uplift would show similar rates in both bands. 6% against 46% is the fix doing precisely what it was
+supposed to: undoing buy-box rejections while leaving genuine noise alone. Spot-checking the 0-19 items that did
+climb, they are old mistakes rather than new ones — "How to Buy and Operate an Appliance Repair Business" (18,
+rejected for being physical work), and several Acquisitions Anonymous episodes whose entire format is tearing
+apart a real deal's financials, rejected for the industry of the business being analysed.
+
+**One soft spot, recorded rather than smoothed over:** three n8n / AI-automation tutorials climbed 2-3 → 52.
+Those teach a software tool, not acquisition. They land barely over the line so they surface at the bottom
+rather than being buried, which is defensible for a borderline item, but it is the one place the new prompt
+reads "useful method" broadly. Worth re-checking after a full run.
+
+**The yield is wildly uneven, so the spend should be too.** Extrapolated: the 0-19 band is 8,345 items, ~$2.00
+and ~2 hours, to recover ~500. The 20+ band is ~940 items, ~$0.25 and ~15 minutes, to recover ~440. Nearly equal
+yield at an eighth of the cost. Added `--min-old-score N` so the cheap half can be taken first, and the ETA line
+now reports hours when it means hours (117 calls at ~70s is not "117 minutes" in any useful sense).
+
+### A bug in my own tool, caught before the full run (2026-09-20)
+
+I told Kyle "Ctrl-C is safe — every batch is written as it completes." It was not true. `rescore_candidates.py`
+accumulated all 117 batches in memory and called `candidates.rescore` ONCE after the loop, so an interrupt or a
+crash at call 116 would have discarded ~$2.30 of paid model calls. `relevance.rank_collection` had already
+solved this and says so in its own comment ("persist THIS batch before going round again, so yielding (or dying)
+never loses a paid call"); the new tool simply did not follow the pattern sitting next to it.
+
+Fixed: each batch is written the moment it returns, before the next call is made. Also added `--resurface-only`,
+which makes no model calls and promotes whatever currently clears the cutoff — the no-cost way to finish a run
+that was interrupted, which is only useful BECAUSE the scores now persist as they go.
+
+Worth keeping as a pattern note: a long paid loop needs its durability decided before the first run, not after
+someone has already been told it is safe.
+
+## The Candidate Index has almost no descriptions, and never did (2026-09-20)
+
+Measured across Kyle's acquisition project, per state, via the app's own API:
+
+```
+                        n      with description   published_at
+skipped_low_relevance  9286    7   (0%)           0 (0%)
+skipped_limit           574    0   (0%)           0 (0%)
+acquired                841    21  (2%)          20 (2%)
+available               795    20  (3%)           0 (0%)
+```
+
+~48 of 11,774 candidates carry a description; essentially none carry a publish date. Duration is the only field
+reliably present (77-90%).
+
+`relevance.SYSTEM` opens by telling the model it will see "each video's title, a snippet of its description, its
+length and view count". It sees a title and a runtime. **Every relevance score this project has ever computed
+was made on that**, which is how six words of title became "Roofing, physical labor not remote". The prompt fix
+shipped earlier today is a better instruction given to a model that is still guessing from a title, so this caps
+how good any prompt can be.
+
+**The cause is a deliberate trade, not an oversight.** `media.enumerate_entries` lists with
+`extract_flat="in_playlist"` and then reads `e.get("description")` — flat extraction never populates it, so the
+field is plumbed end to end and filled by nothing. Flat mode is why adding a 400-video channel takes seconds
+rather than half an hour. At `settings.yt_delay` (4 s, randomised, serialised by `media.polite`) a real metadata
+fetch costs ~4.4 s per video whenever it is paid, and it holds the same per-site lock ingestion needs:
+
+- all 11,774 candidates: ~14 hours, and it would starve the ingest queue
+- the 795 in `available`: ~1 hour
+- listing a channel non-flat: ~30 minutes instead of seconds
+
+So "turn flat off" is not a fix, it is moving the same cost somewhere more painful. The useful move is to hydrate
+what is about to be JUDGED — which helps twice, because focus review currently shows "no description was stored
+for this item" at exactly the moment a human is deciding.
+
+**`tools/backfill_descriptions.py`** — fetches metadata for candidates in a given state (default `available`,
+best-scoring first), through `media.fetch_info` so it shares `polite()`'s spacing with ingestion instead of
+racing it. A bot-check `RateLimited` stops it cleanly rather than hammering. Each result is written as it lands,
+so Ctrl-C costs nothing and re-running resumes. Writes go through `candidates.remember` with `project_id=None`:
+fill-empty-fields-only, the Index's one idempotent write path, and — verified by reading `remember` — the
+`project_id` guard means a backfill physically cannot move a candidate's state as a side effect.
+
+**Still open**: the listing path itself. Future scans will keep storing description-less candidates. The options
+are a low-lane hydrate job after each scan, hydrating only the ranking POOL before scoring, or leaving it and
+accepting that titles are what the ranker gets. Not decided — it is a real cost trade, not a bug to fix.
+
+**Also noticed, not yet acted on**: 574 candidates sit in `skipped_limit` — scored ABOVE the cutoff and dropped
+only for falling outside the "pick top N" cap. That was never a quality judgement, and today's re-score does not
+touch them.
+
+### The 574 nobody ever judged, routed into focus review (2026-09-20)
+
+`skipped_limit` means "scored ABOVE the relevance cutoff, then dropped for falling outside the number you picked
+in that review". It is not a quality verdict about the item — it is a consequence of Kyle typing 20 in a box.
+569 of them (574 less 5 hit by the laundromat/accounting excludes) had never been looked at by anyone, and there
+was no way to isolate them: `_pool_items` already includes `skipped_limit`, but the pool's `kind` filter
+separates where an item CAME FROM, not what was DECIDED about it.
+
+- `candidates.pool(..., state=None)` — filter the pool by candidate state, applied before the exclude pass so
+  counts and items agree. Plus a `never_judged` count in `counts`, computed over all items, so the chip can show
+  a total rather than a page.
+- `api_pool(..., state=None)` passthrough.
+- `sources.js`: `POOL.state`, a "never judged N" chip beside the existing Show filters (only rendered when there
+  are any), and focus review re-titled "Never judged — one at a time" with a subtitle that says what the set is.
+
+Verified against the running app, not assumed: the endpoint returns 569 all in `skipped_limit`; the chip renders
+as "never judged 569"; focus opens on them with the right title. Sample of what was in there — "How to Buy a
+Business with an SBA Loan", "How To Create A Business Acquisition Pipeline", "SBA 7a loan Application Process".
+SBA financing is central to Kyle's brief. None of it had ever been seen.
+
+**One flaw found by checking rather than assuming:** `api_pool` clamps `limit` to 500, so asking for 600 returned
+500 of 569 with no indication that 69 were missing — a pass that looks complete while it is not. The subtitle now
+states "N of M" and says to reopen for the remainder, which works because deciding moves items out of
+`skipped_limit`. The cap itself is left alone; it protects the 9,816-item case.
+
+## A Lose is now worth what a Keep is worth (2026-09-20)
+
+Kyle, part-way through reviewing the never-judged pool: *"are we helping train the app in any meaningful way by
+doing this?"* Traced rather than answered from intuition, and the honest answer was lopsided:
+
+- **Keep** fed three live consumers: `creator_disposition.pos` (the review-time cutoff boost), `creator_yield`
+  (pool ordering), and the ingested material itself.
+- **Lose** fed essentially nothing he could reach. `user_dismissed` lands in `creator_disposition`'s negative
+  half, but that half is read only by `candidates.rerank`, which runs only inside `next_batch`, which only
+  `/discover/next` reaches — and **the web UI never calls it** (verified by grep across `web/js`). On top of
+  that, the morning's cliff fix deliberately read `pos > 0` and ignored the negative side entirely.
+- Neither reaches the ranker: `relevance.py` has no access to decision history at all.
+
+That last point stands. The first two are fixed.
+
+**`candidates.creator_verdict(project_id)`** — a bounded per-creator adjustment from EXPLICIT decisions only
+(`acquired` + `user_dismissed`), deliberately blind to `skipped_low_relevance`. That blindness is the whole
+design: an auto-skip records that nobody looked, not that anyone objected, and conflating the two is precisely
+the sign error that produced the cliff bug. Above `DISPOSITION_MIN_REAL_DECISIONS` (3) the adjustment is
+rate-based and symmetric (±`DISPOSITION_MAX_ADJUST`); below it the older generous rule stands, so one stray Lose
+cannot bury a creator and the cliff fix does not regress.
+
+Two consumers, both live:
+- `ingest.approve_proposed` now uses the verdict instead of the positive-only rule. A creator rejected three
+  times by hand stops having borderline items rescued — a 55-scoring item from them now lands under the cutoff.
+- `candidates.pool` applies it after the revision cache, the same place and for the same reason `_excluded_by`
+  is applied: decisions change constantly and the cached scoring pass must not rebuild per decision.
+  `_pool_items` returns SHARED dicts, so every adjusted item is copied first. This is what makes the answer to
+  Kyle's question a yes on the surface he is actually using — before it, a Lose changed nothing about what he
+  was shown next.
+
+`reconsider_creator` is left on `pos > 0` on purpose, with a note saying why: it runs because the user asked in
+words for more from that creator, and an explicit request outranks a learned verdict.
+
+**Tests** — `tests/test_ad5_dismissals_count.py` (9): negative verdict, symmetric positive, mixed rate, auto-skips
+invisible (the sign-error guard, modelled on the real Acquisitions Anonymous numbers), one-decision leniency both
+ways, and three end-to-end review cases — demote a rejected creator below the cutoff, still rescue a kept one,
+leave an unknown creator untouched. **72 passed** across the five affected files, run by Kyle against a temp
+database while the re-score kept running.
+
+**Noted, not a defect:** while `tools/rescore_candidates.py` runs, the pool is slow (~22 s). `project_pool_revision`
+fingerprints `MAX(updated_at)` on `candidate_projects`, which the re-score rewrites every batch, so the cached
+9,816-item scoring pass is invalidated roughly every 70 seconds. It returns to normal when the run finishes.
+
+## YouTube Data API client — the structural fix for the missing descriptions (2026-09-20)
+
+Kyle: *"obviously we should hit the API first, then backfill the slow way after"* — and then asked whether other
+free APIs were worth adding. Measuring his library first settled that question: **1,471 of 1,616 sources are
+YouTube (91%)**; the rest is 48 web, 46 media, 20 images, 18 documents, 3 Instagram, and **zero podcast-platform
+sources**. So the YouTube API is not the first item on a list, it is most of the available value. The Podcast
+Index API — free, and it exposes publisher-provided transcripts that would beat Whisper on cost AND quality —
+was about to be recommended and would have done nothing on this data. Recorded so nobody re-proposes it without
+checking the platform mix again.
+
+`neurosearch/youtube_api.py`, structured after `scholar.py` (its direct precedent: `safe_fetch` as the one fetch
+path, an `available()` gate, provider limits stated in the docstring). Key from `NEUROSEARCH_YOUTUBE_API_KEY`;
+absent, `available()` reports off and every caller falls back to yt-dlp unchanged, so the module is additive.
+
+- `videos(ids)` — 50 ids per quota unit against 10,000/day free. Kyle's 11,774-candidate backlog is ~236 units
+  and minutes, against ~14 hours of paced yt-dlp that also holds the lock ingestion needs.
+- `playlist_items(id)` / `uploads_playlist_id(channel)` — 1 unit per 50 and `snippet.description` included, so a
+  channel can be ENUMERATED with descriptions attached. That removes the flat-vs-slow tradeoff at the root
+  rather than paying for it later. NOT yet wired into `media.enumerate_entries` — that changes the live ingest
+  path and deserves its own pass.
+- `video_fields()` maps straight onto the names `candidates.remember` already uses, so there is no second
+  mapping layer. Includes `has_captions` from `contentDetails.caption` — the thing `usage.estimate_video` cannot
+  determine today, which is why the review card quotes "+$X if captions turn out to be missing" as a range.
+- `search.list` deliberately NOT implemented: 100 units per call, so a hundred searches would exhaust the day.
+- Captions themselves are impossible here — `captions.download` needs OAuth as the video's owner — so
+  third-party transcripts stay yt-dlp's job permanently. Stated in the module docstring so it is not
+  rediscovered.
+
+`tools/backfill_descriptions.py` now partitions its work: YouTube rows through the API in 50s, everything else
+(and everything when no key is set, or with `--no-api`) through the old paced path. Written per batch. A quota
+wall or an API error stops cleanly and reports what was saved — and explicitly does NOT fall through to the
+14-hour yt-dlp path the user did not ask for.
+
+**Tests** — `tests/test_ad6_youtube_api.py` (15): ISO-8601 durations incl. day components; unparseable durations
+are None rather than 0 (a zero would read as a real zero-length video and poison a cost estimate); field mapping;
+`has_captions` tri-state (None must not read as "no captions" and inflate Whisper estimates); private/deleted
+playlist entries dropped rather than stored as unfetchable candidates; 120 ids → exactly three calls; dedupe;
+ids the API omits are absent rather than errors; the no-key gate names the fallback.
+
+**Not verified by me:** no live API call has been made — there is no key yet. Parsing and batching are tested
+offline; the network half is Kyle's to run once he has one.
+
+**Also flagged in the survey, both tied to existing features rather than to a platform:** FRED (free key) for
+prime/Treasury rates, since SBA 7(a) is prime-linked and Claims currently have no way to resolve a rate question
+against today's number; and the Wayback Machine (free, no key) for `works.py`, which already marks documents
+superseded but cannot show what the superseded version said. Neither built.
+
+## Dismissed findings were counting as creator yield (2026-09-20)
+
+Kyle: *"is the keep vs lose for new findings as well as found but not ingested content?"* No — focus review
+covers only SOURCES (the pre-ingest review card and the candidate pool). Findings are `project_notes` with
+statuses approved/suggested/reserve/dismissed, changed through `/api/notes/{id}/status`, and `research.js` has
+no focus reviewer at all.
+
+Checking why turned up the same class of bug one layer down. `creator_yield` — which feeds `_potential` and so
+the pool's ordering — counted findings per source with `COUNT(*) FROM project_notes ... GROUP BY source_id`
+and **no status filter**. A finding Kyle dismissed as worthless counted exactly as much as one he approved, so
+a creator producing volumes of noise scored like one producing keepers provided the extractor found anything.
+This morning the ranker treated auto-skips as his judgement; here the yield metric treated his judgement as if
+it had not happened.
+
+Measured before choosing the fix (via the app's own API): **17,193 approved · 2,352 suggested · 17 reserve ·
+1,438 dismissed**. So 1,438 explicit rejections were scored as wins.
+
+Fixed with `AND COALESCE(status,'') <> 'dismissed'` — deliberately NOT `= 'approved'`. Approved-only would zero
+the 2,352 findings he has not reviewed yet, penalising recent sources for his review backlog rather than for
+their quality, which is the same mistake as treating an auto-skip as a rejection. `status` is
+`NOT NULL DEFAULT 'approved'`, so rows written before that column existed count as approved, never as dismissed.
+
+**Tests** — `tests/test_ad7_dismissed_findings.py` (5): dismissed excluded, unreviewed still counted, reserve
+counted, legacy rows with the column omitted counted, and two creators with identical raw finding counts but
+opposite quality now distinguishable. The SQL was additionally run against the real DDL (base table plus the
+two ALTER migrations) in an in-memory database before shipping, because the base `project_notes` schema has
+neither `status` nor `source_id` and an assumption there would have failed only on Kyle's machine.
+
+**Deliberately not done**: dismissed findings do not count NEGATIVELY, only at zero. The symmetric treatment
+`creator_verdict` got for sources may be right here too, but it is a design change rather than a bug fix.
+
+**Still open**: a focus reviewer for findings. The component is surface-agnostic and would work, but 17,193
+items is many hours, and findings need different handling — they carry citations worth checking, and
+"dismiss" on a finding means something different from "do not ingest this video".
+
+## The Cowork session can now run the test suite itself (2026-09-21)
+
+Kyle: *"After this is setup, I no longer want to paste things to terminal."* The sandbox shell is a Linux VM,
+not macOS — his `.venv/bin/python` is a broken symlink from there, `localhost:8000` is unreachable, and macOS
+grants terminals only "click" tier for computer-use (see it, click it, cannot type), so driving Terminal was
+never an option. But the repo IS mounted, `uv` is available and pypi is reachable, so the VM can have its own
+environment:
+
+```
+uv python install 3.12 && uv venv --python 3.12 $HOME/nsvenv
+uv pip install --python $HOME/nsvenv/bin/python <the pyproject deps, minus the darwin-only pyobjc ones>
+cd <repo> && PYTHONPATH=. TMPDIR=/tmp $HOME/nsvenv/bin/python -m pytest
+```
+
+Built in ~25s. Nothing is written into the repo (no `-e .`, venv lives outside the mount). The macOS-only
+`pyobjc-framework-Vision`/`Quartz` deps are already `sys_platform == 'darwin'` guarded, so they simply skip.
+
+**Two operational notes.** `TMPDIR=/tmp` matters: the suite creates hundreds of temp databases and the session's
+writable allowance is ~9.8 GB — without it the run dies in a flood of `sqlite3.OperationalError: database or
+disk is full`, which reads exactly like a code failure and is not one. And a backgrounded run does NOT survive
+the end of a `device_bash` call, so long suites must finish inside one call (~84s for 45 files).
+
+### What running it immediately found — three regressions I had shipped and nobody had seen
+
+All three were frozen-value gates that Kyle's partial runs never touched, because I only ever handed him the
+subsets relevant to each change. Every one traces to Mission A or the ranking-prompt rewrite.
+
+1. `test_core.py::test_router_equivalence_fake_tier1` — answer-task input total 200052 -> 211650. Diagnosed by
+   measurement, not inference: removing the `reconsider_creator` tool schema gives -7344, additionally removing
+   its guidance block from `qa.PROJECT_BLOCK` gives -4254, and together they land back on exactly 200052. Call
+   counts unchanged at 34, which is what separates a deliberate prompt change from the router drift the gate
+   exists to catch. Re-baselined (grand total 266271 -> 277869) with that accounting in a comment.
+2. `test_core.py::test_migration_compare_one_command` — `CHAT_ARM_INPUT_TOTAL` 213112 -> 224716, same cause,
+   different cache layout. That constant's own history shows this is routine practice here ("0.31.0: + resolve_work
+   tool; 0.29.0: + research_state/propose_claim tools"), so re-freezing follows the established pattern.
+3. Frozen ranking `prompt_version` `f38f9a9c` -> `c33f6c4c` in three assertions, from the prompt rewrite and the
+   220->400 snippet change. Comment added stating the freeze still does its job: drift NOT accompanied by a
+   deliberate prompt edit is still a bug.
+
+**Real cost of Mission A, now measured rather than assumed:** ~341 extra input tokens on every chat call, about
+5.8%. That is the price of the chat tool, and it was invisible until the suite ran.
+
+`tests/test_core.py` now passes 114/114. Across the first 45 test files: **694 passed, 2 failed.**
+
+**The two remaining failures look environmental and need confirming on the Mac**, not here:
+- `test_j3_fallback::test_doctor_is_fast_and_release_check_writes_an_artifact` — doctor returns FAIL; it checks
+  provider health and this VM has no configured provider.
+- `test_l05_sample_findings::test_fixed_cohort_is_balanced_and_importance_stratified` — compares model sets over
+  `E5_COHORT`, a list of source ids hardcoded from Kyle's live database, which a temp database does not contain.
+
+**Also touched, flagged rather than hidden:** the `CHAT_ARM_INPUT_TOTAL` edit also applied to
+`.chr2_livetest/worktree/tests/test_core.py`, an untracked scratch worktree. Harmless, but it was not the main
+repo and was not asked for.
+
+**Standing rule unchanged:** nothing here touched `data/neurosearch.db`. The suite runs entirely against temp
+databases (`conftest.py` hard-sets `NEUROSEARCH_DATA_DIR`), which is why running it needs no new permission.
+Running the TOOLS against the live database would, and has not been requested or granted.
+
+## Intake now carries descriptions (B1), and one tool run at a time (B2) — 2026-09-21
+
+Two items from `docs/COMPLETION-CHECKLIST-2026-09-21.md`, both done without touching the live database.
+
+**B1 — the backlog can no longer rebuild itself.** The re-score fixed the 9,286 candidates already in the
+Index; the intake that created them was unchanged, so the next channel scan would have started the same
+problem over. `media.enumerate_entries` lists with `extract_flat="in_playlist"` and then reads
+`e.get("description")`, a field flat extraction never populates — every candidate it has ever created arrived
+with a NULL description and was scored on a title and a runtime.
+
+**It is an enrichment, not a replacement path, and that was the important call.** Listing a channel through
+`playlistItems` would also carry descriptions, and that is what the checklist proposed. But a channel's uploads
+playlist omits members-only videos, and it has no equivalent of the Shorts tab the current code scans — so an
+API-first listing would have silently stopped surfacing the gated content `access_gate_of` exists to detect,
+trading one blind spot for another. Instead the flat listing stays the sole authority on WHICH videos exist,
+and `media._enrich_youtube` fills in what flat extraction structurally cannot carry: description, publish date,
+duration, view count, and whether captions exist. It only ever fills EMPTY fields, so a listing value is never
+overwritten by the API. Wired into `enumerate_search` as well, since Discover hands those results straight to
+the ranker.
+
+Cost: 1 quota unit per 50 videos, capped at `media.ENRICH_MAX = 600` entries per enumeration (24 units at the
+ceiling, against 10,000 a day). With no key, or on a spent quota, or during an API outage, `_enrich_youtube`
+returns the listing exactly as it found it — the no-key path is today's path unchanged rather than a degraded
+one, and two tests pin precisely that.
+
+Also added `youtube_api.channel_ref` / `playlist_id_of` / `resolve_channel` / `enrich` / `enumerate_url` — an
+API-first path that IS complete (descriptions and publish dates attached at listing time) and is deliberately
+not what ingestion calls, for the reason above. It is there for tools and for a future caller that wants it.
+
+**B2 — `--budget` means what it says again.** Three `rescore_candidates.py` runs were once going at once in
+separate Terminal tabs. Each enforced `--budget 5` correctly, and each was therefore wrong about the total:
+$15 was authorised by accident, and the three interleaved writes to the same `candidate_projects` rows. New
+`tools/_runlock.py` takes an exclusive `flock` for the life of the process, held by `rescore_candidates.py` and
+`backfill_descriptions.py` (which shares one 10,000-unit daily quota across concurrent runs). The kernel drops
+the lock when the process dies for any reason — Ctrl-C, a crash, a closed window — so there is no stale-lock
+failure mode and no cleanup step to remember. `--dry-run` does not take the lock; `--ignore-lock` exists and
+prints, in as many words, that every budget and quota ceiling is now per-run.
+
+**A naming error corrected everywhere.** Earlier entries here, `youtube_api.py`'s header, `backfill_descriptions.py`
+and `test_ad6` all referred to `media.enumerate_youtube`. No such function exists; it is `media.enumerate_entries`
+(media.py:286). Fixed in all five places.
+
+**A design ratchet caught something real.** `test_s50_design_drift` failed at 30 colour literals against a
+ceiling of 28 — the focus reviewer's scrim was two hand-written `rgba()` values, and `dialog::backdrop` had a
+third, different one. Rather than raise the ceiling, all three became a new `--scrim` token in both theme
+blocks and the ceiling came DOWN to 27 in the same commit, which is what the test's own failure message asks
+for. Every layer above the page now dims it by the same amount.
+
+**Tests:** `tests/test_ad8_enumeration_descriptions.py` (14) and `tests/test_ad9_runlock.py` (7) are new. Full
+suite run in the sandbox, in slices (572 + 207 + 326 + 472 + 355 + 289): **2,221 passed**, with only the two known environmental failures —
+`test_j3_fallback::test_doctor_is_fast_and_release_check_writes_an_artifact` and
+`test_l05_sample_findings::test_fixed_cohort_is_balanced_and_importance_stratified`. Both need the Mac; neither
+is touched by anything here. `tests/test_s54_send_screenshot.py` passes in full (73) but takes ~3.5 minutes in
+this VM because every assertion shells out to node — it has to be run in slices here, which is a property of
+the sandbox's 180-second call ceiling and not of the test.
+
+**Still requires Kyle or Claude Code (live database — standing rule #1 unchanged):** A1
+`rescore_candidates.py --resurface-only` for the ~322 candidates already scoring above the cutoff but stranded
+in `skipped_low_relevance`; A2 `backfill_descriptions.py --limit 500` for the ~408 still without one; A3 the
+two environmental tests; C1 a fresh AD4B blind review against the new scores, which is the only way to know
+whether the 77% false-rejection rate actually moved.

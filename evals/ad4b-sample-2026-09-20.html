@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AD4B Blind Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#f6f6f9; --surface:#fff; --surface-2:#fbfbfd;
+  --ink:#191b22; --muted:#6e7185; --faint:#9a9db0;
+  --line:#e3e4ed; --line-strong:#cfd1de;
+  --accent:#4c5b8a; --accent-soft:#eceffa;
+  --keep:#2e7d5b; --keep-soft:#e8f4ee;
+  --skip:#6b6e82; --skip-soft:#eeeff3;
+  --warn:#9a6b2f;
+  --shadow:0 1px 2px rgba(20,22,35,.05),0 8px 24px -12px rgba(20,22,35,.18);
+  --btn-ink:#ffffff;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#131419; --surface:#1b1d25; --surface-2:#20222b;
+    --ink:#e9eaf1; --muted:#9a9db0; --faint:#71748a;
+    --line:#2b2e39; --line-strong:#3a3e4c;
+    --accent:#8f9ed4; --accent-soft:#232839;
+    --keep:#6bbd94; --keep-soft:#1c2a24;
+    --skip:#9a9db0; --skip-soft:#242630;
+    --warn:#d4a45f;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+    --btn-ink:#14161d;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#131419; --surface:#1b1d25; --surface-2:#20222b;
+  --ink:#e9eaf1; --muted:#9a9db0; --faint:#71748a;
+  --line:#2b2e39; --line-strong:#3a3e4c;
+  --accent:#8f9ed4; --accent-soft:#232839;
+  --keep:#6bbd94; --keep-soft:#1c2a24;
+  --skip:#9a9db0; --skip-soft:#242630;
+  --warn:#d4a45f;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+  --btn-ink:#14161d;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ground); color:var(--ink);
+  font:15px/1.55 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.wrap{max-width:660px;margin:0 auto;padding:0 20px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+
+/* progress rail */
+#rail{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line)}
+#rail .bar{height:3px;background:var(--line)}
+#rail .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s ease}
+#rail .meta{max-width:660px;margin:0 auto;padding:10px 20px;display:flex;gap:12px;align-items:center;
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);letter-spacing:.02em}
+#rail .meta b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+#rail .spacer{margin-left:auto}
+.ghost{background:none;border:1px solid var(--line-strong);color:var(--muted);border-radius:6px;
+  padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;font-family:"IBM Plex Mono",monospace}
+.ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+/* intro / dropzone */
+header.intro{padding:44px 0 28px}
+header.intro .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+header.intro h1{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+header.intro p{color:var(--muted);margin:12px 0 0;max-width:56ch}
+#drop{margin-top:26px;border:1.5px dashed var(--line-strong);border-radius:10px;background:var(--surface);
+  padding:34px 24px;text-align:center;transition:border-color .15s,background .15s}
+#drop.over{border-color:var(--accent);background:var(--accent-soft)}
+#drop p{margin:0 0 14px;color:var(--muted);font-size:14px}
+.btn{background:var(--accent);color:var(--btn-ink);border:0;border-radius:7px;padding:10px 18px;
+  font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.rules{margin-top:22px;border-left:2px solid var(--line-strong);padding:2px 0 2px 16px;
+  color:var(--muted);font-size:13.5px}
+.rules b{color:var(--ink);font-weight:600}
+.rules ul{margin:8px 0 0;padding-left:18px}
+.rules li{margin:5px 0}
+
+/* card */
+.stage{padding-top:26px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+  padding:26px 26px 24px}
+.saw{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.saw::after{content:"";flex:1;height:1px;background:var(--line)}
+.card h2{font-size:23px;line-height:1.28;font-weight:600;letter-spacing:-.015em}
+.facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+.fact{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:3px 8px}
+.fact b{color:var(--ink);font-weight:500}
+.desc{margin-top:16px;color:var(--ink);font-size:14.5px;line-height:1.6;white-space:pre-wrap}
+.nodesc{margin-top:16px;color:var(--faint);font-size:13px;font-style:italic}
+
+/* actions — deliberately symmetric so neither answer is the visually easy one */
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}
+.act{border:1.5px solid var(--line-strong);background:var(--surface);border-radius:9px;padding:14px 12px;
+  font:inherit;cursor:pointer;color:var(--ink);text-align:center;transition:all .12s}
+.act .lab{font-weight:600;font-size:15px;display:block}
+.act .key{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);margin-top:3px;display:block}
+.act:hover{transform:translateY(-1px)}
+.act.keep:hover,.act.keep[aria-pressed="true"]{border-color:var(--keep);background:var(--keep-soft);color:var(--keep)}
+.act.skip:hover,.act.skip[aria-pressed="true"]{border-color:var(--skip);background:var(--skip-soft);color:var(--skip)}
+.act[aria-pressed="true"] .key{color:inherit;opacity:.75}
+.why{margin-top:12px}
+.why input{width:100%;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  border-radius:7px;padding:10px 12px;font:inherit;font-size:14px}
+.why input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.nav{display:flex;gap:10px;align-items:center;margin-top:16px;font-size:13px;color:var(--muted)}
+.nav .spacer{margin-left:auto}
+
+/* results */
+.res h2{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.headline{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:10px;padding:22px 24px;margin:20px 0 26px;box-shadow:var(--shadow)}
+.headline .big{font-family:"IBM Plex Mono",monospace;font-size:44px;font-weight:600;letter-spacing:-.03em;
+  color:var(--accent);line-height:1;font-variant-numeric:tabular-nums}
+.headline .cap{color:var(--muted);margin-top:10px;font-size:14.5px}
+.sec{margin-top:30px}
+.sec h3{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);font-weight:500}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.meter{height:5px;background:var(--line);border-radius:3px;overflow:hidden;min-width:70px}
+.meter i{display:block;height:100%;background:var(--accent)}
+.kept{border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:14px 16px;margin-bottom:9px}
+.kept .t{font-weight:600;font-size:14.5px;line-height:1.4}
+.kept .m{margin-top:7px;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}
+.score{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;background:var(--accent-soft);
+  color:var(--accent);border-radius:4px;padding:2px 7px}
+.said{font-style:italic}
+.verdict{margin-top:30px;border-radius:10px;padding:20px 22px;border:1px solid var(--line);background:var(--surface-2)}
+.verdict .tag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  font-weight:600;margin-bottom:9px}
+.verdict.close{border-left:3px solid var(--keep)} .verdict.close .tag{color:var(--keep)}
+.verdict.mid{border-left:3px solid var(--warn)} .verdict.mid .tag{color:var(--warn)}
+.verdict.act{border-left:3px solid var(--accent)} .verdict.act .tag{color:var(--accent)}
+.verdict p{margin:0;font-size:14.5px;line-height:1.6}
+.export{margin-top:30px;border-top:1px solid var(--line);padding-top:22px}
+.export .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.export textarea{width:100%;height:110px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);
+  color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px;padding:10px;resize:vertical}
+.export code{font-family:"IBM Plex Mono",monospace;font-size:12.5px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--ink);word-break:break-all}
+.note{color:var(--muted);font-size:13px;margin-top:10px}
+.warnbar{background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--warn);
+  border-radius:8px;padding:12px 16px;color:var(--muted);font-size:13.5px;margin-bottom:20px}
+@media (max-width:480px){
+  header.intro h1{font-size:25px}
+  .headline .big{font-size:36px}
+  .card{padding:20px 18px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="rail" hidden>
+  <div class="bar"><i id="railbar"></i></div>
+  <div class="meta">
+    <span>item <b id="pos">1</b> / <b id="total">30</b></span>
+    <span>judged <b id="done">0</b></span>
+    <span class="spacer"></span>
+    <button class="ghost" id="finish">see results</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <section id="intro">
+    <header class="intro">
+      <div class="eyebrow">AD4B · Neuro Search</div>
+      <h1>Blind review of what the filter rejected</h1>
+      <p>Judge each candidate on what the relevance ranker itself saw — nothing more. The scores and the
+         model's verdicts stay sealed until you finish.</p>
+    </header>
+    <div id="drop">
+      <p>Drop <span class="mono">ad4b-sample-*.json</span> here</p>
+      <button class="btn" id="pick">Choose file</button>
+      <input type="file" id="file" accept="application/json,.json" hidden>
+    </div>
+    <div class="rules">
+      <b>One question per item: would you want this in the project?</b>
+      <ul>
+        <li>You see the title, creator and length. That is what the ranker had.</li>
+        <li>Nothing leaves this page — the file is read in your browser, not uploaded.</li>
+        <li>Progress saves as you go, so you can stop and come back.</li>
+        <li><b>K</b> keep · <b>S</b> skip · <b>←</b> back · <b>→</b> forward</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="stage" class="stage" hidden>
+    <div class="card">
+      <div class="saw">what the ranker saw</div>
+      <h2 id="title"></h2>
+      <div class="facts" id="facts"></div>
+      <div id="descwrap"></div>
+    </div>
+    <div class="acts">
+      <button class="act keep" id="bKeep"><span class="lab">Keep</span><span class="key">K — I want this</span></button>
+      <button class="act skip" id="bSkip"><span class="lab">Skip</span><span class="key">S — not useful</span></button>
+    </div>
+    <div class="why"><input id="why" placeholder="why, in a few words (optional)" autocomplete="off"></div>
+    <div class="nav">
+      <button class="ghost" id="prev">← back</button>
+      <button class="ghost" id="next">forward →</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="reset">start over</button>
+    </div>
+  </section>
+
+  <section id="res" class="res" hidden></section>
+</div>
+<script>
+(function(){
+"use strict";
+var CLOSE_BELOW=0.10, ACT_ABOVE=0.25;   // set before any run, same as tools/ad4b_score.py
+var report=null, key=null, idx=0, store="";
+var $=function(id){return document.getElementById(id)};
+
+function pct(x){return Math.round(x*100)+"%"}
+function esc(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML}
+
+function save(){ try{ localStorage.setItem(store, JSON.stringify({idx:idx,
+    d:report.review_these.map(function(r){return r.review})})); }catch(e){} }
+function restore(){
+  try{
+    var raw=localStorage.getItem(store); if(!raw) return false;
+    var s=JSON.parse(raw);
+    if(!s||!s.d||s.d.length!==report.review_these.length) return false;
+    report.review_these.forEach(function(r,i){ if(s.d[i]) r.review=s.d[i]; });
+    idx=Math.min(s.idx||0, report.review_these.length-1);
+    return report.review_these.some(function(r){return typeof r.review.keep==="boolean"});
+  }catch(e){ return false; }
+}
+
+function judged(){ return report.review_these.filter(function(r){return typeof r.review.keep==="boolean"}) }
+
+function load(text){
+  var d;
+  try{ d=JSON.parse(text) }catch(e){ alert("That file isn't valid JSON."); return }
+  if(!d.review_these||!d._scoring_key){ alert("That doesn't look like an ad4b-sample file — it needs review_these and _scoring_key."); return }
+  report=d;
+  key={}; d._scoring_key.forEach(function(k){ key[k.item]=k });   // sealed until results
+  store="ad4b:"+(d.project_id||"?")+":"+(d.generated_at||"?");
+  restore();
+  $("intro").hidden=true; $("rail").hidden=false; $("total").textContent=d.review_these.length;
+  // an already-complete rubric (saved progress, or a file filled in elsewhere) goes straight to the answer
+  if(judged().length===d.review_these.length){ results(); return; }
+  render();
+}
+
+function render(){
+  $("stage").hidden=false; $("res").hidden=true;
+  var r=report.review_these[idx];
+  $("title").textContent=r.title||"(untitled)";
+  var f=[];
+  if(r.creator) f.push(["creator",r.creator]);
+  if(r.kind)    f.push(["kind",r.kind]);
+  if(r.length)  f.push(["length",r.length]);
+  if(r.published) f.push(["published",r.published]);
+  $("facts").innerHTML=f.map(function(p){return '<span class="fact">'+esc(p[0])+' <b>'+esc(p[1])+'</b></span>'}).join("");
+  var desc=(r.description||"").trim();
+  $("descwrap").innerHTML = desc
+    ? '<div class="desc">'+esc(desc)+'</div>'
+    : '<div class="nodesc">No description was stored for this item — the ranker scored it on the title alone.</div>';
+  $("why").value=r.review.why||"";
+  $("bKeep").setAttribute("aria-pressed", r.review.keep===true);
+  $("bSkip").setAttribute("aria-pressed", r.review.keep===false);
+  $("pos").textContent=idx+1;
+  var n=judged().length, t=report.review_these.length;
+  $("done").textContent=n;
+  $("railbar").style.width=(n/t*100)+"%";
+  $("finish").textContent = n===t ? "see results" : "see results ("+n+"/"+t+")";
+}
+
+function decide(keep){
+  var r=report.review_these[idx];
+  r.review.keep=keep; r.review.why=$("why").value.trim();
+  save();
+  if(idx<report.review_these.length-1){ idx++; render(); }
+  else if(judged().length===report.review_these.length){ results(); }
+  else { render(); }
+}
+function move(d){
+  report.review_these[idx].review.why=$("why").value.trim();
+  idx=Math.max(0,Math.min(report.review_these.length-1,idx+d)); save(); render();
+}
+
+function results(){
+  var t=report.review_these.length, J=judged(), n=J.length;
+  if(!n){ alert("Nothing judged yet."); return }
+  var kept=J.filter(function(r){return r.review.keep});
+  var rate=kept.length/n;
+
+  var bands={}, creators={};
+  J.forEach(function(r){
+    var k=key[r.item]||{};
+    (bands[k.band]=bands[k.band]||[]).push(!!r.review.keep);
+    var c=(k.creator||r.creator)||"(no creator)";
+    (creators[c]=creators[c]||[]).push(!!r.review.keep);
+  });
+  var bandRows=Object.keys(bands).sort(function(a,b){return parseInt(b)-parseInt(a)});
+  var credRows=Object.keys(creators).filter(function(c){return creators[c].length>=2})
+    .sort(function(a,b){
+      var ra=creators[a].filter(Boolean).length/creators[a].length, rb=creators[b].filter(Boolean).length/creators[b].length;
+      return rb-ra || creators[b].length-creators[a].length;
+    });
+  var sum=function(v){return v.filter(Boolean).length};
+
+  var vcls = rate<CLOSE_BELOW?"close":(rate<ACT_ABOVE?"mid":"act");
+  var vtag = rate<CLOSE_BELOW?"AD4B closes":(rate<ACT_ABOVE?"Real, not alarming":"The filter is costing you");
+  var vtxt = rate<CLOSE_BELOW
+    ? pct(rate)+" is below the "+pct(CLOSE_BELOW)+" bar set before this ran. The filter is not costing you meaningful material. AD4B closes: no experiment to build, no cutoff change warranted."
+    : rate<ACT_ABOVE
+    ? pct(rate)+" sits between the "+pct(CLOSE_BELOW)+" and "+pct(ACT_ABOVE)+" bars set before this ran. Worth reading the band table: loss concentrated in the highest band means widening the creator-trust nudge is the cheap fix; loss spread evenly means the score itself is the problem."
+    : pct(rate)+" is above the "+pct(ACT_ABOVE)+" bar set before this ran. The filter is costing you real material and the cutoff or the scoring prompt should change — the band and creator tables say where.";
+
+  var h='';
+  if(n<t) h+='<div class="warnbar">'+(t-n)+' of '+t+' items are still unjudged. These numbers cover the '+n+' you did judge.</div>';
+  h+='<h2>What you would have kept</h2>';
+  h+='<div class="headline"><div class="big">'+pct(rate)+'</div><div class="cap">You kept <b>'+kept.length+'</b> of the <b>'+n+'</b> candidates the relevance filter had rejected.</div></div>';
+
+  h+='<div class="sec"><h3>By score band — the highest band sits nearest the cutoff</h3><table><thead><tr><th>band</th><th>kept</th><th>rate</th><th></th></tr></thead><tbody>';
+  bandRows.forEach(function(b){
+    var v=bands[b], r2=sum(v)/v.length;
+    h+='<tr><td class="num">'+esc(b)+'</td><td class="num">'+sum(v)+' / '+v.length+'</td><td class="num">'+pct(r2)+'</td>'
+      +'<td><div class="meter"><i style="width:'+(r2*100)+'%"></i></div></td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  if(credRows.length){
+    h+='<div class="sec"><h3>By creator — 2 or more judged</h3><table><thead><tr><th>creator</th><th>kept</th><th>rate</th></tr></thead><tbody>';
+    credRows.forEach(function(c){
+      var v=creators[c];
+      h+='<tr><td>'+esc(c)+'</td><td class="num">'+sum(v)+' / '+v.length+'</td><td class="num">'+pct(sum(v)/v.length)+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+
+  if(kept.length){
+    h+='<div class="sec"><h3>What you kept, and what the model said about it</h3>';
+    kept.sort(function(a,b){return (key[b.item]||{}).score-(key[a.item]||{}).score}).forEach(function(r){
+      var k=key[r.item]||{};
+      h+='<div class="kept"><div class="t">'+esc(r.title||"(untitled)")+'</div><div class="m">'
+        +'<span class="score">'+esc(k.score)+'</span>'
+        +'<span>'+esc(k.creator||r.creator||"")+'</span>'
+        +'<span class="said">model: '+esc(k.model_said||"(no reason given)")+'</span>'
+        +(r.review.why?'<span>you: '+esc(r.review.why)+'</span>':'')
+        +'</div></div>';
+    });
+    h+='</div>';
+  }
+
+  h+='<div class="verdict '+vcls+'"><div class="tag">'+esc(vtag)+'</div><p>'+esc(vtxt)+'</p></div>';
+
+  h+='<div class="export"><h3 class="mono" style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:12px">Save the filled rubric</h3>'
+    +'<div class="row"><button class="btn" id="dl">Download JSON</button><button class="ghost" id="cp">Copy to clipboard</button></div>'
+    +'<p class="note">Then run the canonical scorer — it is the number of record, and it writes nothing:</p>'
+    +'<p><code>.venv/bin/python tools/ad4b_score.py --in &lt;path to the saved file&gt;</code></p>'
+    +'<textarea id="json" readonly spellcheck="false"></textarea></div>';
+
+  $("stage").hidden=true; $("res").hidden=false; $("res").innerHTML=h;
+  $("railbar").style.width="100%"; $("done").textContent=n;
+
+  var out=JSON.stringify(report,null,2);
+  $("json").value=out;
+  $("dl").onclick=function(){
+    var name=(report.project_id?"ad4b-filled-"+report.project_id.slice(0,8):"ad4b-filled")+".json";
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([out],{type:"application/json"}));
+    a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000);
+  };
+  $("cp").onclick=function(){
+    var ta=$("json"); ta.select(); ta.setSelectionRange(0,out.length);
+    var ok=false; try{ ok=document.execCommand("copy") }catch(e){}
+    if(!ok && navigator.clipboard){ navigator.clipboard.writeText(out).then(function(){$("cp").textContent="copied"}); return }
+    $("cp").textContent = ok ? "copied" : "select the box and copy";
+  };
+}
+
+/* wiring */
+$("pick").onclick=function(){ $("file").click() };
+$("file").onchange=function(e){ var f=e.target.files[0]; if(f) f.text().then(load) };
+var dz=$("drop");
+["dragenter","dragover"].forEach(function(ev){ dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.add("over")}) });
+["dragleave","drop"].forEach(function(ev){ dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.remove("over")}) });
+dz.addEventListener("drop",function(e){ var f=e.dataTransfer.files[0]; if(f) f.text().then(load) });
+$("bKeep").onclick=function(){decide(true)};
+$("bSkip").onclick=function(){decide(false)};
+$("prev").onclick=function(){move(-1)};
+$("next").onclick=function(){move(1)};
+$("finish").onclick=results;
+$("reset").onclick=function(){
+  if(!confirm("Clear every judgement for this file and start from item 1?")) return;
+  try{ localStorage.removeItem(store) }catch(e){}
+  report.review_these.forEach(function(r){ r.review={keep:null,why:""} });
+  idx=0; render();
+};
+/* A page written by `ad4b_blind_sample.py --html` carries its rubric inline: no file step.
+   The payload tag is injected at the end of the document, i.e. AFTER this script, so it does not exist yet while
+   this script is being evaluated -- wait for the parse to finish before looking for it. */
+function boot(){
+  var emb=document.getElementById("embedded");
+  if(emb && (emb.textContent||"").trim()){ load(emb.textContent); }
+}
+if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded",boot); } else { boot(); }
+
+document.addEventListener("keydown",function(e){
+  if(!report || $("stage").hidden) return;
+  if(e.target.tagName==="INPUT"){ if(e.key==="Enter"){e.preventDefault();$("why").blur()} return }
+  var k=e.key.toLowerCase();
+  if(k==="k"){e.preventDefault();decide(true)}
+  else if(k==="s"){e.preventDefault();decide(false)}
+  else if(e.key==="ArrowLeft"){e.preventDefault();move(-1)}
+  else if(e.key==="ArrowRight"){e.preventDefault();move(1)}
+});
+})();
+</script>
+<script id="embedded" type="application/json">{"generated_at": "2026-09-20T16:34:16-0700", "project_id": "c752ed152ec942dd97b9a94c3f1b3b96", "question": "For each item: would you want this in the project? Judge ONLY from what is shown \u2014 title, creator, description, length, date. That is all the relevance ranker saw. Set review.keep to true or false and add one line in review.why. Do not scroll to _scoring_key until you are done.", "population": {"total_rejected_and_scored": 9286, "by_band": {"0-19": 8345, "20-34": 843, "35-44": 98}}, "sampling": {"per_band": 10, "seed": 44, "sampled": 30}, "review_these": [{"item": 1, "title": "How to Survive & Get Rich in the 2026 Recession", "creator": "Dan Martell", "description": "", "length": "10m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 2, "title": "Inside a $3.4M Rodeo Supply Business", "creator": "Acquisitions Anonymous Podcast", "description": "", "length": "30m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 3, "title": "Buying his first business for an 8 figure deal", "creator": "Jonathan Jay", "description": "", "length": "14m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 4, "title": "Roofing + Florida = Path to $100m | Matt Jackson Interview", "creator": "Acquiring Minds", "description": "", "length": "87m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 5, "title": "How to Scale Through Acquisition: Organizational Design & M&A Strategy with Matt Person", "creator": "Jaryd Krause - Buying Online Businesses", "description": "", "length": "48m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 6, "title": "Claude just changed tax season forever", "creator": "Nick Puru | AI Automation", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 7, "title": "Buying an Insolvent Business - An interview with Rob Goddard", "creator": "Jonathan Jay", "description": "", "length": "16m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 8, "title": "22 Year-Old Starts a $50K/Month Mobile Car Detailing Business", "creator": "UpFlip", "description": "", "length": "37m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 9, "title": "8 Figure Exit, 19M Users, Zero Ads, All Content - Here's The Playbook with Seph Fontane Pennock", "creator": "Jaryd Krause - Buying Online Businesses", "description": "", "length": "46m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 10, "title": "Break The Cycle Of Overthinking With This Strategy #shorts", "creator": "Action Academy", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 11, "title": "My Children Are A Financial Blessing Not a Burden\u2026", "creator": "Legacy Investing Show", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 12, "title": "How I\u2019d Structure $250K Income in 2026!", "creator": "Legacy Investing Show", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 13, "title": "Buy a Business in 2025 and Never Look Back... Start Here!", "creator": "Jonathan Jay", "description": "", "length": "5m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 14, "title": "Would You Pay $16M for a Crypto News Site?", "creator": "Acquisitions Anonymous Podcast", "description": "", "length": "32m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 15, "title": "Bricklayer to Blue-Collar Empire | Justin Escajeda Interview", "creator": "Acquiring Minds", "description": "", "length": "87m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 16, "title": "How Carey Smith Made $500 Million Through Selling Fans", "creator": "Action Academy", "description": "", "length": "53m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 17, "title": "The most dystopian app ever made\u2026", "creator": "Fireship", "description": "", "length": "4m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 18, "title": "The new Claude Code desktop app, redesigned for parallel agents", "creator": "Claude", "description": "", "length": "0m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 19, "title": "Start Hiring More People And You Will Get Tax Benefits", "creator": "Action Academy", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 20, "title": "Why Every Business Owner Should Think Like a Forensic Accountant with Clay Kniepmann", "creator": "Anders Virtual CFO", "description": "", "length": "35m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 21, "title": "It\u2019s easier than you think to change your life\u2026", "creator": "Cory Weigel", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 22, "title": "the only skill you need to build a $1M company\u2026", "creator": "Dan Martell", "description": "", "length": "15m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 23, "title": "Intro to Cash Flow Statements | Direct Method", "creator": "Accounting Stuff", "description": "", "length": "12m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 24, "title": "The Advisor Who Digs Into Your Deal Before You Sign Anything", "creator": "Acquisition Lab", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 25, "title": "$2M Startup, 3 Hours of Sleep, 1 Total Meltdown", "creator": "Nick Huber - Sweaty Startup", "description": "", "length": "4m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 26, "title": "Claude Skills 2.0: Make Your AI Agent Do Any Task Perfectly", "creator": "Nick Puru | AI Automation", "description": "", "length": "21m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 27, "title": "Could You Buy a Funeral Business? Jonathan Jay 2025", "creator": "Jonathan Jay", "description": "", "length": "45m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 28, "title": "This Is How You Actually Build Wealth", "creator": "Nick Huber - Sweaty Startup", "description": "", "length": "4m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 29, "title": "What should we do with them?", "creator": "Cory Weigel", "description": "", "length": null, "published": null, "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 30, "title": "Selling $100,000 per Day of Dog Training | Garth Fasano Interview", "creator": "Acquiring Minds", "description": "", "length": "97m", "published": null, "kind": "video", "review": {"keep": null, "why": ""}}], "_scoring_key": [{"item": 1, "candidate_id": "c11fbe5cc860473d996f1faecbc7a4ef", "score": 20, "band": "20-34", "model_said": "recession wealth survival, tangential", "url": "https://www.youtube.com/watch?v=nfzfzwaxCnc", "creator": "Dan Martell"}, {"item": 2, "candidate_id": "8798c761e46e4f0da91d801a6d3b0cb5", "score": 15, "band": "0-19", "model_said": "Rodeo supply, physical", "url": "https://www.youtube.com/watch?v=Prd9w7z7tGg", "creator": "Acquisitions Anonymous Podcast"}, {"item": 3, "candidate_id": "f3185babbb114639a84fc8fde34e5a6b", "score": 35, "band": "35-44", "model_said": "Large 8-figure deal, size mismatch", "url": "https://www.youtube.com/watch?v=5hfWDTBCyu4", "creator": "Jonathan Jay"}, {"item": 4, "candidate_id": "2d4c393eeac849a2bcc8a0eeb9dd36a7", "score": 22, "band": "20-34", "model_said": "Roofing, physical labor not remote", "url": "https://www.youtube.com/watch?v=zifseOOektM", "creator": "Acquiring Minds"}, {"item": 5, "candidate_id": "104b044cc8084d4b8971d0230e78a24f", "score": 35, "band": "35-44", "model_said": "Corporate M&A org design, less applicable", "url": "https://www.youtube.com/watch?v=VeGeUXqOmBU", "creator": "Jaryd Krause - Buying Online Businesses"}, {"item": 6, "candidate_id": "437fba07514147688a37cd3d07324ef9", "score": 30, "band": "20-34", "model_said": "Tax season AI, tangential tax angle", "url": "https://www.youtube.com/shorts/Pk6r4vQUlMQ", "creator": "Nick Puru | AI Automation"}, {"item": 7, "candidate_id": "292911d0105549f1a4ebf6f432e3d30f", "score": 35, "band": "35-44", "model_said": "Insolvent business niche interview", "url": "https://www.youtube.com/watch?v=NAtWAEghCeE", "creator": "Jonathan Jay"}, {"item": 8, "candidate_id": "cfdc891c7e5040f5b8ae5eeae768e29b", "score": 10, "band": "0-19", "model_said": "Detailing startup, not acquisition", "url": "https://www.youtube.com/watch?v=3jIWyxNjtpU", "creator": "UpFlip"}, {"item": 9, "candidate_id": "069260d618fe49e1a614f17359efbd4d", "score": 35, "band": "35-44", "model_said": "Exit story, not buyer focused", "url": "https://www.youtube.com/watch?v=FMOUVBVpemk", "creator": "Jaryd Krause - Buying Online Businesses"}, {"item": 10, "candidate_id": "b431a2d266774c6e841a51af2804667e", "score": 2, "band": "0-19", "model_said": "Overthinking, unrelated", "url": "https://www.youtube.com/shorts/KPmsUK4tf30", "creator": "Action Academy"}, {"item": 11, "candidate_id": "a1f960861cbe47e9a4c318a09997b4a3", "score": 5, "band": "0-19", "model_said": "Children financial blessing, irrelevant", "url": "https://www.youtube.com/shorts/OQH4Vn_EadQ", "creator": "Legacy Investing Show"}, {"item": 12, "candidate_id": "f402dd13f0b74703ba92f499a789466e", "score": 25, "band": "20-34", "model_said": "Income structuring, generic tax content", "url": "https://www.youtube.com/shorts/R4B8gNCqHTM", "creator": "Legacy Investing Show"}, {"item": 13, "candidate_id": "fc9d7a6190304a059484bf06fc52b8ac", "score": 35, "band": "35-44", "model_said": "Generic 2025 teaser clip", "url": "https://www.youtube.com/watch?v=pIkc7mL2Gyw", "creator": "Jonathan Jay"}, {"item": 14, "candidate_id": "0c79a763c1c54685a740bc39b9129aa0", "score": 35, "band": "35-44", "model_said": "Digital media site, remote-operable", "url": "https://www.youtube.com/watch?v=gIUj0XgHuM4", "creator": "Acquisitions Anonymous Podcast"}, {"item": 15, "candidate_id": "6e55e25204dd40248f79a935cd2e5861", "score": 35, "band": "35-44", "model_said": "Trades roll-up not remote", "url": "https://www.youtube.com/watch?v=kE5BcVdDEFg", "creator": "Acquiring Minds"}, {"item": 16, "candidate_id": "3fca10615a29410e9b1ceee59b751fab", "score": 18, "band": "0-19", "model_said": "Built manufacturing business, not acquired", "url": "https://www.youtube.com/watch?v=yqjaaU6Sll4", "creator": "Action Academy"}, {"item": 17, "candidate_id": "67076d1ac3184bf8ab43a58a819090ec", "score": 0, "band": "0-19", "model_said": "App culture commentary, irrelevant", "url": "https://www.youtube.com/watch?v=zvbTDUSz8Cc", "creator": "Fireship"}, {"item": 18, "candidate_id": "dd155354fbf34dadba33ff3fb31727a5", "score": 1, "band": "0-19", "model_said": "Desktop app redesign feature", "url": "https://www.youtube.com/watch?v=rWaQSQEm_aY", "creator": "Claude"}, {"item": 19, "candidate_id": "f9c6a762374244d1a1308ab99e32c80b", "score": 35, "band": "35-44", "model_said": "Hiring tax benefits, relevant to tax strategy", "url": "https://www.youtube.com/shorts/9QhPXQ_mDts", "creator": "Action Academy"}, {"item": 20, "candidate_id": "935a37d47b064d6dbd3c22439ac91ce4", "score": 20, "band": "20-34", "model_said": "Forensic accountant lens, due diligence adjacent", "url": "https://www.youtube.com/watch?v=Jjm5UpIXNCw", "creator": "Anders Virtual CFO"}, {"item": 21, "candidate_id": "04528359f1e74a4eae592f3c042d8984", "score": 20, "band": "20-34", "model_said": "Vague motivational maybe acquisition ease", "url": "https://www.youtube.com/shorts/pWQuFfLE3iA", "creator": "Cory Weigel"}, {"item": 22, "candidate_id": "c982ff428f0047acab3cfa00905e3244", "score": 20, "band": "20-34", "model_said": "Business building skill, tangential", "url": "https://www.youtube.com/watch?v=XzHgfDRxi0g", "creator": "Dan Martell"}, {"item": 23, "candidate_id": "beed8d523acc44c4aa85cf93db6eecef", "score": 20, "band": "20-34", "model_said": "Cash flow statement intro, minor relevance", "url": "https://www.youtube.com/watch?v=Xy-yDw0gsgc", "creator": "Accounting Stuff"}, {"item": 24, "candidate_id": "56e0fa7b9ec54b6c94c93206331bec8a", "score": 35, "band": "35-44", "model_said": "Advisor intro, likely short clip", "url": "https://www.youtube.com/shorts/QBorQVWaSI0", "creator": "Acquisition Lab"}, {"item": 25, "candidate_id": "b4bcb580b9dc40d2be3bf37cfdf2d296", "score": 12, "band": "0-19", "model_said": "Founder burnout story, tangential", "url": "https://www.youtube.com/watch?v=aTYdEo9KFSM", "creator": "Nick Huber - Sweaty Startup"}, {"item": 26, "candidate_id": "6edcb6fc86bf401d9d397999b9c0e29e", "score": 10, "band": "0-19", "model_said": "AI task automation tool, tangential", "url": "https://www.youtube.com/watch?v=4J_Xf_SogBk", "creator": "Nick Puru | AI Automation"}, {"item": 27, "candidate_id": "8938155d917b4b87899488bcfdc5e724", "score": 35, "band": "35-44", "model_said": "Niche funeral business exploration, tangential", "url": "https://www.youtube.com/watch?v=RunvVYuiqB0", "creator": "Jonathan Jay"}, {"item": 28, "candidate_id": "55510fc98b8340bbb29dbbab519688a6", "score": 25, "band": "20-34", "model_said": "Wealth building generic claim", "url": "https://www.youtube.com/watch?v=KdH0B11kPmU", "creator": "Nick Huber - Sweaty Startup"}, {"item": 29, "candidate_id": "2f3f042fb7684d3eb33c79b14f11ddd4", "score": 3, "band": "0-19", "model_said": "Vague clickbait title", "url": "https://www.youtube.com/shorts/5WYxxju4pkg", "creator": "Cory Weigel"}, {"item": 30, "candidate_id": "df8cd4d230184b66ac1f0a8beabe9256", "score": 32, "band": "20-34", "model_said": "Dog training niche, high revenue but physical", "url": "https://www.youtube.com/watch?v=wnnD8Cszzaw", "creator": "Acquiring Minds"}]}</script>
+
+</html>

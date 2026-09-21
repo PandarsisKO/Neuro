@@ -455,7 +455,19 @@ def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
         out[c]["sources"] += 1
     ph = ",".join("?" * len(chan))
     args = list(chan)
-    for r in conn.execute(f"SELECT source_id, COUNT(*) n FROM project_notes WHERE project_id=? AND source_id IN ({ph}) GROUP BY source_id",
+    # 2026-09-20, Kyle: "is the keep vs lose for new findings as well?" It is not — and checking why turned up
+    # the same class of bug one layer down. This count had NO status filter, so a finding he dismissed as
+    # worthless counted toward its creator's yield exactly as much as one he approved: a creator producing
+    # volumes of noise scored like one producing keepers, as long as the extractor found something. Measured on
+    # his project the day this was found: 17,193 approved, 2,352 suggested (not yet reviewed), 17 reserve,
+    # 1,438 dismissed — so ~1,438 explicit rejections were being counted as wins.
+    #
+    # `status <> 'dismissed'` rather than `status = 'approved'` deliberately. Approved-only would zero out the
+    # 2,352 findings he simply has not got to yet, penalising recent sources for his review backlog rather than
+    # for their quality — the same mistake as treating an auto-skip as a rejection, which is what started this
+    # whole thread.
+    for r in conn.execute(f"SELECT source_id, COUNT(*) n FROM project_notes WHERE project_id=? "
+                          f"AND source_id IN ({ph}) AND COALESCE(status,'') <> 'dismissed' GROUP BY source_id",
                           (project_id, *args)).fetchall():
         out[chan[r["source_id"]]]["findings"] += r["n"]
     for r in conn.execute(f"""SELECT n.source_id sid, c.claim_type ct, c.topic tp, COUNT(*) n FROM project_claims c JOIN project_notes n ON n.id=c.origin_note_id
@@ -922,7 +934,30 @@ def _pool_items(project_id: str) -> list[dict[str, Any]]:
     return items
 
 
-def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
+# Discovery exclude list (item 2, 2026-09-20): Kyle's brief already said "laundromats are rejected as primary
+# target" and project_facts already had two explicit `rejected` rows naming laundromats and accounting/
+# bookkeeping firms by creator -- none of it was ever read here. `_pool_items` stays revision-cached and
+# untouched (excludes are cheap to check per-item and change far more often than the pool itself would want to
+# recompute); filtering happens in `pool()`, after the cache lookup, so adding or removing an exclude takes
+# effect on the very next call with no cache bust.
+def _excluded_by(project_id: str, item: dict[str, Any]) -> dict[str, Any] | None:
+    excludes = db.list_excludes(project_id)
+    if not excludes:
+        return None
+    hay = f"{item.get('title') or ''} {' '.join(item.get('why') or [])}".lower()
+    creator = (item.get('creator') or '').strip().lower()
+    for x in excludes:
+        if x["kind"] == "creator":
+            if creator and creator == x["term"].strip().lower():
+                return x
+        else:
+            if x["term"].strip().lower() in hay:
+                return x
+    return None
+
+
+def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all",
+         state: str | None = None) -> dict[str, Any]:
     """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
     why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web.
 
@@ -932,6 +967,32 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
         all_items = cache.get_or_compute(f"pool_items:{project_id}", db.project_pool_revision(project_id),
                                          lambda: _pool_items(project_id), label="pool_items")
     items = all_items if kind == "all" else [i for i in all_items if i["kind"] == ("skipped" if kind == "skipped" else "candidate")]
+    # 2026-09-20: `skipped_limit` is not a quality verdict -- it means "scored above the cutoff but outside the
+    # number you picked in review". 574 of them on Kyle's project had never been judged by anyone, and there was
+    # no way to look at just those: `kind` separates where an item came from, not what was decided about it.
+    if state:
+        items = [i for i in items if i.get("state") == state]
+    items = [i for i in items if not _excluded_by(project_id, i)]
+    # Kyle, mid-review: "are we helping train the app in any meaningful way by doing this?" On this surface the
+    # honest answer was no -- `_pool_items` scores against questions, vocabulary and creator YIELD (what a creator
+    # has already produced once ingested), none of which move when you reject something. So a Lose changed
+    # nothing about what you were shown next. It does now. Applied here, after the revision cache, for the same
+    # reason `_excluded_by` is: decisions change constantly and the cached pass must not be rebuilt for each one.
+    # `_pool_items` returns SHARED dicts, so every adjusted item is a copy.
+    verdict = creator_verdict(project_id)
+    if verdict:
+        adjusted = []
+        for i in items:
+            v = verdict.get((i.get("creator") or "").strip())
+            if not v or not v["adjust"]:
+                adjusted.append(i)
+                continue
+            j = dict(i)
+            j["base_potential"] = i["potential"]
+            j["potential"] = max(0, min(100, i["potential"] + v["adjust"]))
+            j["why"] = [*(i.get("why") or []), v["why"]]
+            adjusted.append(j)
+        items = adjusted
     if q:
         qt = _toks(q)
         items = [i for i in items if qt <= _toks(i["title"] + " " + (i.get("creator") or "") + " " + " ".join(i["why"]))]
@@ -941,6 +1002,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
             "creator": lambda i: (0 if i["same_creator_as_priority"] else 1, -i["potential"])}.get(rank_by, lambda i: (-i["potential"],))
     items = sorted(items, key=keyf, reverse=(rank_by == "newest"))   # never sort the cached list in place
     counts = {"skipped": sum(1 for i in items if i["kind"] == "skipped"), "candidates": sum(1 for i in items if i["kind"] == "candidate"),
+              "never_judged": sum(1 for i in all_items if i.get("state") == "skipped_limit" and not _excluded_by(project_id, i)),
               "worth_a_look": sum(1 for i in items if i["potential"] >= WORTH_A_LOOK), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
     return {"total": len(items), "items": items[:limit], "counts": counts, "rank_by": rank_by,
             "explain": "Known but never captured: sources the review skipped (older than the cutoff) and sources seen while exploring. Potential is a $0 scan of the title and description against your open questions, weak areas and the project's own words — a hint for review, never a verdict. Nothing here is evidence until you capture it."}
@@ -1164,6 +1226,141 @@ def creator_disposition(project_id: str) -> dict[str, dict[str, Any]]:
             why = (f"this project has mostly acquired {creator}'s items before ({pos} of {decided} decided)" if adjust > 0
                   else f"this project has mostly rejected {creator}'s items before ({int(counts.get('user_dismissed', 0))} of {decided} decided)")
         out[creator] = {"adjust": adjust, "decided": decided, "pos": pos, "neg": neg, "why": why}
+    return out
+
+
+DISPOSITION_MIN_REAL_DECISIONS = 3     # one stray Keep or Lose is not a verdict about a creator
+
+
+def creator_verdict(project_id: str) -> dict[str, dict[str, Any]]:
+    """creator -> a bounded adjustment built from this project's EXPLICIT decisions only: what it acquired, and
+    what the person rejected BY HAND (`user_dismissed`).
+
+    Deliberately blind to `skipped_low_relevance`, which `creator_disposition` half-counts as a rejection. That
+    was the sign-error behind the 2026-09-20 cliff fix: an auto-skip records that nobody looked, not that anyone
+    objected, and for a bulk-approved review the two are opposite things. So this reads only the two states a
+    human actually chose.
+
+    Symmetric by design. `approve_proposed` previously took just the positive half (`pos > 0` earned a flat
+    boost) because at the time Kyle's only skips WERE bulk-approve residue and there was no trustworthy negative
+    signal to read. Focus review changed that -- a Lose there is a real per-item rejection -- so the negative
+    half is now worth the same as the positive one, and a creator this project keeps turning down stops having
+    its borderline items rescued.
+
+    Below DISPOSITION_MIN_REAL_DECISIONS the older, more generous rule stands (any keep earns the full boost):
+    with one or two decisions on record a rate is noise, and being lenient there is what the cliff fix was for."""
+    conn = db.connect()
+    rows = conn.execute("""SELECT c.creator cr, cp.state st, COUNT(*) n FROM candidate_projects cp
+                           JOIN candidates c ON c.id=cp.candidate_id
+                           WHERE cp.project_id=? AND cp.state IN ('acquired','user_dismissed')
+                             AND c.creator IS NOT NULL
+                           GROUP BY c.creator, cp.state""", (project_id,)).fetchall()
+    by_creator: dict[str, dict[str, int]] = {}
+    for r in rows:
+        by_creator.setdefault(r["cr"].strip(), {})[r["st"]] = r["n"]
+    out: dict[str, dict[str, Any]] = {}
+    for creator, counts in by_creator.items():
+        kept = counts.get("acquired", 0)
+        dropped = counts.get("user_dismissed", 0)
+        decided = kept + dropped
+        if decided >= DISPOSITION_MIN_REAL_DECISIONS:
+            rate = max(-1.0, min(1.0, (kept - dropped) / decided))
+            adjust = int(round(DISPOSITION_MAX_ADJUST * rate))
+        else:
+            adjust = DISPOSITION_MAX_ADJUST if kept else 0
+        why = None
+        if adjust > 0:
+            why = f"you have kept {kept} of {decided} decided from {creator}"
+        elif adjust < 0:
+            why = f"you have rejected {dropped} of {decided} decided from {creator}"
+        out[creator] = {"adjust": adjust, "kept": kept, "dismissed": dropped, "decided": decided, "why": why}
+    return out
+
+
+def reconsider_creator(project_id: str, creator: str) -> dict[str, Any]:
+    """Chat-driven version of tools/resurface_creator_trusted_candidates.py: the user says, in chat, that they
+    want more from a creator, and candidates this project already auto-skipped for that creator come back into
+    review. Same rule as `ingest.approve_proposed`'s creator-trust nudge, so chat and review agree: a creator
+    this project has actually kept something from (`pos > 0`) gets DISPOSITION_MAX_ADJUST added to a borderline
+    score, and anything that would then have cleared LOW_RELEVANCE is moved back to `available`.
+
+    Deliberately still `pos > 0` rather than `creator_verdict`'s symmetric adjustment: this runs because the
+    USER ASKED for more from this creator, in words, just now. An explicit request outranks a learned verdict --
+    if they are overriding their own past rejections, that is their call to make, not something to argue with.
+
+    Why `pos > 0` and not `creator_disposition()`'s `adjust`: `adjust`'s negative half counts
+    `skipped_low_relevance` as a rejection, which is only true when someone reviewed item by item -- for a
+    bulk-approved review it double-counts the very auto-skips this is meant to undo (see approve_proposed's
+    note). ADD-ONLY here too: nothing is ever pushed down, nothing below the adjusted threshold is touched.
+
+    Never silently does nothing: the returned dict always says which case it hit, so the chat can tell the user
+    the truth rather than an empty success. `matched_creator` is the real creator string as stored, since the
+    user typing "acquiring minds" should resurface "Acquiring Minds"."""
+    disp = creator_disposition(project_id)
+    want = (creator or "").strip().lower()
+    if not want:
+        return {"status": "no_creator", "moved": 0, "candidates": []}
+    trusted = {c: d for c, d in disp.items() if int(d.get("pos", 0)) > 0}
+    exact = [c for c in trusted if c.lower() == want]
+    partial = [c for c in trusted if want in c.lower() or c.lower() in want]
+    matches = exact or partial
+    if not matches:
+        # distinguish "never kept anything from them" from "never heard of them" -- different things to say
+        known = [c for c in disp if c.lower() == want or want in c.lower()]
+        return {"status": "untrusted" if known else "unknown", "moved": 0, "candidates": [],
+                "known_creator": known[0] if known else None,
+                "trusted_creators": sorted(trusted, key=lambda c: -int(trusted[c].get("pos", 0)))[:12]}
+    threshold = LOW_RELEVANCE - DISPOSITION_MAX_ADJUST
+    conn = db.connect()
+    moved: list[dict[str, Any]] = []
+    for matched in matches:
+        rows = conn.execute(
+            "SELECT cp.candidate_id cid, c.title, cp.relevance rel FROM candidate_projects cp "
+            "JOIN candidates c ON c.id = cp.candidate_id "
+            "WHERE cp.project_id=? AND cp.state='skipped_low_relevance' AND cp.relevance IS NOT NULL "
+            "AND cp.relevance >= ? AND c.creator IS NOT NULL AND TRIM(LOWER(c.creator))=?",
+            (project_id, threshold, matched.lower())).fetchall()
+        moved.extend({"id": r["cid"], "title": r["title"], "relevance": r["rel"], "creator": matched} for r in rows)
+    if not moved:
+        return {"status": "nothing_left", "moved": 0, "candidates": [], "matched_creator": matches[0],
+                "matched_creators": matches}
+    mark(project_id, [m["id"] for m in moved], "available",
+         reason=f"you asked in chat for more from {matches[0]}; this project has kept their work before, so "
+                f"candidates within {DISPOSITION_MAX_ADJUST} points of the cutoff are back in review")
+    return {"status": "moved", "moved": len(moved), "candidates": moved, "matched_creator": matches[0],
+            "matched_creators": matches, "threshold": threshold}
+
+
+def rescore(project_id: str, updates: list[tuple[str, int, str]]) -> int:
+    """Write new relevance scores onto existing candidate rows WITHOUT touching their state.
+
+    Separate from `mark` on purpose: re-scoring answers "what is this worth?", which is a different question
+    from "what did we decide about it?". A tool that re-scores must be able to show the person what changed
+    before anything moves, so the two are not allowed to happen in one call."""
+    t = time.time()
+    n = 0
+    with db.tx() as conn:
+        for cid, score, why in updates:
+            n += conn.execute("UPDATE candidate_projects SET relevance=?, relevance_why=?, updated_at=? "
+                              "WHERE candidate_id=? AND project_id=?",
+                              (int(score), (why or "")[:80], t, cid, project_id)).rowcount
+    return n
+
+
+def creators_for(platform_external_ids: list[tuple[str, str]]) -> dict[tuple[str, str], str]:
+    """(platform, external_id) -> creator, for candidates already indexed (created during the scan that populated
+    a review listing -- by the time `ingest.approve_proposed` runs, every proposed source has a matching
+    candidate row). Batched to one query per pair rather than N; missing/creator-less pairs are simply omitted,
+    never an error -- a candidate with no creator on record just gets no trust adjustment, same as before this
+    existed."""
+    out: dict[tuple[str, str], str] = {}
+    if not platform_external_ids:
+        return out
+    conn = db.connect()
+    for platform, ext in {p for p in platform_external_ids if p[0] and p[1]}:
+        row = conn.execute("SELECT creator FROM candidates WHERE platform=? AND external_id=?", (platform, ext)).fetchone()
+        if row and row["creator"]:
+            out[(platform, ext)] = row["creator"].strip()
     return out
 
 

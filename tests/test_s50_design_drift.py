@@ -35,7 +35,8 @@ CSS_BODY = re.sub(r'\[data-theme=dark\]\{.*?\}', '', re.sub(r':root\{.*?\}', '',
 
 # ---- baseline at 19d858b. Lower these when you clean a surface; never raise without a HARDENING entry.
 MAX_INLINE_STYLE_ATTRS = 287
-MAX_CSS_COLOUR_LITERALS = 28
+MAX_CSS_COLOUR_LITERALS = 27   # 28 -> 27: the focus reviewer's scrim and dialog::backdrop's
+                               # were three different hand-written values; all are --scrim now
 MAX_JS_COLOUR_LITERALS = 3
 MAX_DISTINCT_FONT_SIZES = 16
 MAX_DISTINCT_RADII = 11

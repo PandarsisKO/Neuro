@@ -513,12 +513,13 @@ def api_source_yield(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/pool", dependencies=[Depends(require_auth)])
-def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
+def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all",
+             state: str | None = None) -> dict[str, Any]:
     """S5: the known-but-uncaptured pool — skipped (pre-cutoff) sources + Candidate Index rows, ranked by a $0 potential scan."""
     from . import candidates
     if not db.get_project(project_id):
         raise HTTPException(404)
-    return candidates.pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(limit, 500)), kind=kind)
+    return candidates.pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(limit, 500)), kind=kind, state=state)
 
 
 @app.get("/api/projects/{project_id}/discover/next", dependencies=[Depends(require_auth)])
@@ -769,7 +770,8 @@ def api_reviews(project_id: str) -> list[dict[str, Any]]:
 
 
 class ApproveIn(BaseModel):
-    source_ids: list[str] | None = None   # None = all proposed
+    source_ids: list[str] | None = None      # None = all proposed
+    dismissed_ids: list[str] | None = None   # focus review: looked at one by one and rejected on purpose
 
 
 class HtmlIn(BaseModel):
@@ -1012,7 +1014,7 @@ def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
 
 @app.post("/api/collections/{collection_id}/approve", dependencies=[Depends(require_auth)])
 def api_approve(collection_id: str, body: ApproveIn) -> dict[str, Any]:
-    return ingest.approve_proposed(collection_id, body.source_ids)
+    return ingest.approve_proposed(collection_id, body.source_ids, body.dismissed_ids)
 
 
 @app.get("/api/defaults", dependencies=[Depends(require_auth)])
@@ -2248,6 +2250,35 @@ def api_add_fact(project_id: str, body: FactIn) -> dict[str, Any]:
 @app.delete("/api/facts/{fact_id}", dependencies=[Depends(require_auth)])
 def api_delete_fact(fact_id: int) -> dict[str, Any]:
     db.delete_fact(fact_id)
+    return {"ok": True}
+
+
+# Discovery exclude list (item 2, 2026-09-20): a short, explicit "not interested in" list Discovery's `pool()`/
+# `next_batch()` check on every candidate before it is ever shown -- separate from the free-text brief, which
+# nothing here parses for hard rules. See db.project_excludes / candidates._excluded_by.
+class ExcludeIn(BaseModel):
+    kind: str        # "keyword" | "creator"
+    term: str
+    reason: str | None = None
+
+
+@app.get("/api/projects/{project_id}/excludes", dependencies=[Depends(require_auth)])
+def api_excludes(project_id: str) -> list[dict[str, Any]]:
+    return db.list_excludes(project_id)
+
+
+@app.post("/api/projects/{project_id}/excludes", dependencies=[Depends(require_auth)])
+def api_add_exclude(project_id: str, body: ExcludeIn) -> dict[str, Any]:
+    if body.kind not in ("keyword", "creator"):
+        raise HTTPException(422, "kind must be 'keyword' or 'creator'")
+    if not body.term.strip():
+        raise HTTPException(422, "term must not be empty")
+    return db.add_exclude(project_id, body.kind, body.term.strip(), body.reason)
+
+
+@app.delete("/api/excludes/{exclude_id}", dependencies=[Depends(require_auth)])
+def api_delete_exclude(exclude_id: int) -> dict[str, Any]:
+    db.delete_exclude(exclude_id)
     return {"ok": True}
 
 

@@ -1,6 +1,6 @@
 
-  :root{--bg:#F6F7F9;--panel:#FFFFFF;--panel2:#F1F3F6;--panel-strong:#E9EDF2;--line:#DDE3EA;--line-strong:#7A8EA5;--text:#18212B;--muted:#515B66;--text-faint:#65707D;--accent:#3156D3;--accent-hover:#2747B8;--accent-soft:#EEF2FF;--accent-text:#FFFFFF;--link:#2f5bea;--ok:#187A5A;--ok-soft:#EAF7F1;--warn:#946200;--warn-soft:#FFF6D8;--bad:#B42318;--bad-soft:#FEF0EE;--focus:#6184FF;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--side:250px;color-scheme:light}
-  [data-theme=dark]{--bg:#0F1115;--panel:#171A21;--panel2:#1D212B;--panel-strong:#232834;--line:#262B36;--line-strong:#5E6B86;--text:#E8E8EA;--muted:#9AA3B2;--text-faint:#828B9A;--accent:#5F88FF;--accent-hover:#7D9DFF;--accent-soft:#141C34;--accent-text:#0F1115;--link:#8fb0ff;--ok:#3ECF8E;--ok-soft:#143425;--warn:#F5B642;--warn-soft:#342814;--bad:#FF6B6B;--bad-soft:#341414;--focus:#6E8EFF;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;color-scheme:dark}
+  :root{--bg:#F6F7F9;--panel:#FFFFFF;--panel2:#F1F3F6;--panel-strong:#E9EDF2;--line:#DDE3EA;--line-strong:#7A8EA5;--text:#18212B;--muted:#515B66;--text-faint:#65707D;--accent:#3156D3;--accent-hover:#2747B8;--accent-soft:#EEF2FF;--accent-text:#FFFFFF;--link:#2f5bea;--ok:#187A5A;--ok-soft:#EAF7F1;--warn:#946200;--warn-soft:#FFF6D8;--bad:#B42318;--bad-soft:#FEF0EE;--focus:#6184FF;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--scrim:rgba(16,24,40,.5);--side:250px;color-scheme:light}
+  [data-theme=dark]{--bg:#0F1115;--panel:#171A21;--panel2:#1D212B;--panel-strong:#232834;--line:#262B36;--line-strong:#5E6B86;--text:#E8E8EA;--muted:#9AA3B2;--text-faint:#828B9A;--accent:#5F88FF;--accent-hover:#7D9DFF;--accent-soft:#141C34;--accent-text:#0F1115;--link:#8fb0ff;--ok:#3ECF8E;--ok-soft:#143425;--warn:#F5B642;--warn-soft:#342814;--bad:#FF6B6B;--bad-soft:#341414;--focus:#6E8EFF;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;--scrim:rgba(0,0,0,.62);color-scheme:dark}
   :root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--space-12:48px;--space-16:64px;--text-xs:12px;--text-sm:13px;--text-base:15px;--text-lg:17px;--text-xl:20px;--text-2xl:26px;--radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-pill:999px;--motion-fast:100ms;--motion-normal:160ms;--motion-slow:220ms;--ease-standard:cubic-bezier(.2,.8,.2,1)}
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -135,7 +135,7 @@
   .deltaSupporting{color:var(--muted)}
   @keyframes s{to{transform:rotate(360deg)}}
   dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
-  dialog::backdrop{background:rgba(0,0,0,.45)}
+  dialog::backdrop{background:var(--scrim)}
 
   .themeBtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 9px;font-size:12px;border-radius:999px}
   #home .top{display:flex;align-items:flex-start;gap:12px} #home .top h1{flex:1}
@@ -374,3 +374,50 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
 /* F2: shared list-state primitive (see js/utils.js listState). */
 .listfail{color:var(--bad)}
 .listfail button{margin-left:8px}
+
+  /* ---- Focus review (2026-09-20) --------------------------------------------------------------------
+     One candidate at a time, over the top of whatever surface launched it. Keep and Skip are deliberately
+     the SAME size and weight, differing only in hue: this screen exists to capture a real judgement, and a
+     visually easier answer would bias the judgement it is trying to record. Everything here is built from
+     the tokens already in this file so it follows the app's light/dark automatically. */
+  #focusLayer .fx-back{position:fixed;inset:0;background:var(--scrim);z-index:150}
+  #focusLayer .fx-panel{position:fixed;z-index:151;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);
+    box-shadow:0 20px 60px -20px rgba(0,0,0,.45);padding:0 0 14px}
+  #focusLayer .fx-rail{height:3px;background:var(--panel-strong);border-radius:var(--radius-lg) var(--radius-lg) 0 0;overflow:hidden}
+  #focusLayer .fx-rail i{display:block;height:100%;background:var(--accent);transition:width var(--motion-normal) var(--ease-standard)}
+  #focusLayer .fx-head{display:flex;align-items:center;gap:8px;padding:12px 14px 6px;flex-wrap:wrap}
+  #focusLayer .fx-count{font-size:var(--text-xs);white-space:nowrap;font-variant-numeric:tabular-nums}
+  #focusLayer .fx-sub{padding:0 14px 8px;font-size:var(--text-xs)}
+  #focusLayer .fx-card{margin:4px 14px 0;padding:16px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius-md)}
+  #focusLayer .fx-t{font-size:var(--text-lg);line-height:1.35;font-weight:600}
+  #focusLayer .fx-t a{text-decoration:none}
+  #focusLayer .fx-t a:hover{text-decoration:underline}
+  #focusLayer .fsc{display:inline-block;min-width:26px;text-align:center;font-size:var(--text-xs);font-weight:600;
+    padding:1px 6px;border-radius:var(--radius-sm);background:var(--chip);color:var(--muted);margin-right:8px;vertical-align:2px}
+  #focusLayer .fsc.mid{background:var(--warn-soft);color:var(--warn)}
+  #focusLayer .fsc.hi{background:var(--ok-soft);color:var(--ok)}
+  #focusLayer .fx-facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  #focusLayer .fx-f{font-size:var(--text-xs);color:var(--muted);background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius-sm);padding:2px 7px}
+  #focusLayer .fx-f b{color:var(--text);font-weight:500}
+  #focusLayer .fx-desc{margin-top:10px;font-size:var(--text-sm);line-height:1.55;color:var(--text);white-space:pre-wrap}
+  #focusLayer .fwhy{margin-top:10px;font-size:var(--text-xs);color:var(--text-faint);font-style:italic}
+  #focusLayer .fx-gate{margin-top:10px;font-size:var(--text-xs);color:var(--warn)}
+  #focusLayer .fx-acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 14px 0}
+  #focusLayer .fx-act{display:flex;flex-direction:column;align-items:center;gap:2px;padding:13px 10px;
+    border:1.5px solid var(--line-strong);background:var(--panel);border-radius:var(--radius-md);
+    transition:border-color var(--motion-fast),background var(--motion-fast),color var(--motion-fast)}
+  #focusLayer .fx-act .l{font-weight:600;font-size:var(--text-base)}
+  #focusLayer .fx-act .k{font-size:11px;color:var(--text-faint)}
+  #focusLayer .fx-act[disabled]{opacity:.45;cursor:not-allowed}
+  #focusLayer .fx-act.keep:hover:not([disabled]),#focusLayer .fx-act.keep.on{border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+  #focusLayer .fx-act.lose:hover,#focusLayer .fx-act.lose.on{border-color:var(--line-strong);background:var(--panel-strong);color:var(--text)}
+  #focusLayer .fx-act.on .k{color:inherit;opacity:.8}
+  #focusLayer .fx-foot{display:flex;align-items:center;gap:8px;margin:12px 14px 0;flex-wrap:wrap}
+  #focusLayer .fx-hint{font-size:var(--text-xs)}
+  @media (max-width:520px){
+    #focusLayer .fx-panel{width:calc(100vw - 16px);max-height:calc(100vh - 24px)}
+    #focusLayer .fx-t{font-size:var(--text-base)}
+  }
