@@ -8148,3 +8148,36 @@ Fixed with a module-local autouse fixture calling `db.init_db()` — idempotent,
 `NEUROSEARCH_DATA_DIR` to a temp directory, so it costs nothing and touches nothing real. Swept the rest of the
 suite for the same class by re-running every chunk with randomisation ON (the repo's default, which the slicing
 had been disabling): no others. Only the two known environmental failures remain.
+
+## E2 has a surface: "What it said then" on the source drawer — 2026-09-21
+
+`works.superseded_text` and `works.rescue_link` shipped earlier today with nothing calling them. Now there is a
+`GET /api/sources/{id}/archived` endpoint and a button in the source drawer.
+
+**The design decision that mattered: the two answers are not the same answer, and the UI must not pretend they
+are.** A capture taken before the successor version's effective date IS the text a dated finding was drawn
+from — that is the whole point of E2. The newest capture of a URL is something much weaker: a copy of the page,
+evidence of nothing in particular, useful only when a citation has 404'd and the evidence merely moved. The
+endpoint returns `kind: "superseded"` or `kind: "nearest"`, and the drawer says different things about each —
+the weaker one carries "it is not evidence of what any particular version of the document said" in as many
+words. Rendering them identically would have quietly upgraded the second into the first, which is the failure
+mode with no visible symptom.
+
+**Two other properties are pinned by test rather than left to care.** An archive outage renders as "could not
+reach the archive just now — nothing about this source has changed", never as an absence of history; "the
+archive is busy" reading as "this source has no past" is the same class of lie. And the lookup is the only
+thing in the drawer that reaches the public internet, so nothing fetches it on open: a test asserts `/archived`
+does not appear anywhere inside `sourceDrawer`, because every source anyone clicked would otherwise hit
+archive.org. The button is the consent.
+
+The control is offered only for a source with an `http(s)` URL — an uploaded document has no public page, and
+offering the button there would promise a lookup that cannot work.
+
+**Tests:** `tests/test_e2b_archived_surface.py` (11). Full suite re-run in slices: **2,276 passed**, only the two
+known environmental failures (`test_j3_fallback`, `test_l05_sample_findings`), neither touched here.
+
+**Not done, and not doable from this session:** every remaining checklist item (A1, A2, A3, C1, D3, and B1's live
+channel check) writes to or reads `data/neurosearch.db`. From the Cowork session the only route to that file is
+the bridge mount, where SQLite's locking is unreliable and the running app server may already hold the database
+open — standing rule #1, and `_refuse_bridge_mount()` guards every tool regardless. Kyle approved the work; the
+approval does not make the mount safe, so those stay with Claude Code.

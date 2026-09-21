@@ -152,8 +152,9 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
         <button class="small" onclick="dlg.close();askAboutSource('${sid}',${JSON.stringify(s.title).replace(/"/g, '&quot;')})">Ask about this source</button>
         <button class="small ghost" onclick="dlg.close();viewTranscript('${sid}')">${s.platform === 'book' ? '📖 Read' : s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>
         ${s.long && s.depth !== 'deep' ? `<button class="small ghost" title="Read it again in smaller parts and keep every specific finding" onclick="dlg.close();readDeeper('${sid}')">Read deeper</button>` : ''}
+        ${(s.url || '').startsWith('http') ? `<button class="small ghost" id="arcBtn" title="Look this page up in the Wayback Machine — if a newer version of the document superseded the one this source cites, this is the text it actually said" onclick="sourceArchived('${sid}')">What it said then</button>` : ''}
         ${oneSource}
-      </div></div>
+      </div><div id="arcOut"></div></div>
     ${(u.plan.uses || []).length || (u.chat || []).length ? `<div style="margin-top:10px"><b>Where it shows up</b></div>` +
       (u.plan.uses || []).map(p => `<div class="kn"><span class="st strong">📋 plan</span><div><b>${esc(p.where)}</b>${p.text ? `<div class="why">${esc(p.text)}</div>` : ''}</div></div>`).join('') +
       (u.chat || []).map(c => `<div class="kn"><span class="st developing">💬 chat</span><div><b>${esc(c.conversation)}</b> <span class="muted">· ${esc((c.locators || []).join(', '))}</span><div class="why">${esc(c.snippet)}</div></div></div>`).join('')
@@ -164,6 +165,44 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
     ${group('reserve', 'Extracted beyond the cap', ' <span class="muted" style="font-weight:normal;font-size:12px">— lower importance, kept rather than thrown away</span>')}
     ${group('dismissed', 'Dismissed')}
     ${d.findings_total ? '' : '<div class="muted" style="margin-top:10px">No findings from this source yet.</div>'}`;
+}
+// E2 -- the archived copy. Deliberately NOT fetched when the drawer opens: it is the only thing in here that
+// reaches the public internet, and most of the time nobody wants it. The button is the consent.
+//
+// The two answers are labelled differently on purpose. "superseded" is the capture from before the successor
+// version took effect -- the text a dated finding was actually true of, and the whole reason E2 exists.
+// "nearest" is just the newest capture of the page, which is worth having when a citation has 404'd but is NOT
+// evidence of what any particular version said. Presenting them identically would quietly upgrade the second
+// into the first.
+globalThis.sourceArchived = async function sourceArchived(sid) {
+  const out = $('#arcOut'), btn = $('#arcBtn');
+  if (!out) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Looking…'; }
+  out.innerHTML = '<div class="why"><span class="spin"></span> asking the Wayback Machine…</div>';
+  let r;
+  try {
+    r = await api(`/api/sources/${sid}/archived`);
+  } catch (e) {
+    // an archive outage must not read as "this source has no history"
+    out.innerHTML = `<div class="why">Could not reach the archive just now — nothing about this source has changed. ${esc(String(e && e.message || e))}</div>`;
+    if (btn) { btn.disabled = false; btn.textContent = 'Try again'; }
+    return;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'What it said then'; }
+  if (!r.available) { out.innerHTML = `<div class="why">${esc(r.reason || 'no archived copy found')}</div>`; return; }
+  const c = r.capture || {};
+  const head = r.kind === 'superseded'
+    ? `<b>📎 As it read before ${esc(r.superseded_by || 'the newer version')}</b> <span class="muted">· captured ${esc(c.date || '')}, the last copy taken before ${esc(r.effective_date || 'it took effect')}</span>`
+    : `<b>📎 Archived copy</b> <span class="muted">· captured ${esc(c.date || '')} — the newest the archive holds, not tied to any version</span>`;
+  const caveat = r.kind === 'superseded'
+    ? 'This is the text the findings from this source were drawn from. The live page now serves the newer version.'
+    : 'Useful if the live page has moved or gone — but it is not evidence of what any particular version of the document said.';
+  out.innerHTML = `<div class="card mt-2" style="background:var(--panel2)">${head}
+    <div class="why">${esc(caveat)}</div>
+    <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
+      <a class="small ghost" style="text-decoration:none" href="${esc(c.viewer_url || '#')}" target="_blank">Open the capture ↗</a>
+      <a class="muted" href="${esc(c.archived_url || '#')}" target="_blank" title="the page exactly as captured, without the archive's own navigation">raw ↗</a>
+    </div></div>`;
 }
 globalThis.drawerNote = async function drawerNote(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerRebuild = async function drawerRebuild(sid) { await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], source_ids: [sid], transport: 'interactive' }); toast('↻ queued'); dlg.close(); loadJobs(); if (state.view === 'sources') loadSources(); }

@@ -144,8 +144,12 @@ though it were the old. That is worse than returning nothing, because it reads l
 mode (never archived, outage, rate limit, a local uploaded copy that was never on the public web) returns None
 rather than raising, because an archive outage is not a reason to call a finding unsupported. 25 tests.
 
-Not wired to any UI yet — the functions exist and are tested; a surface that shows "here is what it said then"
-is a separate, smaller piece of work. — *Cowork*
+**UI DONE 2026-09-21.** `GET /api/sources/{id}/archived` plus a "What it said then" button on the source
+drawer. The endpoint labels its answer `superseded` (the capture from before the successor took effect — the
+text a dated finding was drawn from) or `nearest` (just the newest capture, worth having for a 404'd citation
+but evidence of nothing in particular), and the drawer says different things about each. On demand only: a test
+asserts the lookup does not appear anywhere inside `sourceDrawer`, or every source anyone opened would hit
+archive.org. 11 tests. — *Cowork*
 
 Explicitly NOT recommended after checking the data: the Podcast Index API. Free and it exposes publisher
 transcripts, but Kyle has **zero** podcast-platform sources — 1,471 of 1,616 are YouTube. Revisit only if that

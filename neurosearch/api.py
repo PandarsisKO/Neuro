@@ -1694,6 +1694,39 @@ def api_image_engines() -> dict[str, Any]:
     return images.engines()
 
 
+@app.get("/api/sources/{source_id}/archived", dependencies=[Depends(require_auth)])
+def api_source_archived(source_id: str) -> dict[str, Any]:
+    """E2 -- what this source's page said before it changed, from the Wayback Machine.
+
+    ON DEMAND ONLY. This is the one source endpoint that reaches the public internet, so nothing calls it on
+    drawer load: the frontend attaches it to a button. Two answers, and the caller is told which it got, because
+    they are worth very different amounts:
+
+      kind="superseded"  the last capture STRICTLY BEFORE the successor version's effective date -- the text a
+                         dated finding was actually true of. This is the valuable one.
+      kind="nearest"     no version lineage to cut on, so just the most recent capture of the URL. Useful when a
+                         citation has 404'd and the evidence merely moved.
+
+    Never 5xx on an archive problem. An outage, a rate limit, or a URL that was never archived all come back as
+    available=false with a plain reason, because "the archive is busy" must not read to the caller like "this
+    source has no history".
+    """
+    from . import works          # imported per-endpoint here, as every other works route in this file does
+    s = db.get_source(source_id)
+    if not s:
+        raise HTTPException(404)
+    hit = works.superseded_text(source_id)
+    if hit:
+        return {"available": True, "kind": "superseded", **hit}
+    url = s.get("url") or ""
+    if not url.startswith(("http://", "https://")):
+        return {"available": False, "reason": "this source has no public web address to look up"}
+    cap = works.rescue_link(url)
+    if not cap:
+        return {"available": False, "reason": "the Wayback Machine has no capture of this page"}
+    return {"available": True, "kind": "nearest", "url": url, "capture": cap}
+
+
 @app.get("/api/sources/{source_id}/transcript.txt", dependencies=[Depends(require_auth)])
 def api_transcript(source_id: str, timestamps: bool = True) -> Any:
     s = db.get_source(source_id)
