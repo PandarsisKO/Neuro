@@ -8181,3 +8181,46 @@ channel check) writes to or reads `data/neurosearch.db`. From the Cowork session
 the bridge mount, where SQLite's locking is unreliable and the running app server may already hold the database
 open — standing rule #1, and `_refuse_bridge_mount()` guards every tool regardless. Kyle approved the work; the
 approval does not make the mount safe, so those stay with Claude Code.
+
+## Five-step verification run after the description fix (2026-09-21)
+
+The whole chain re-run end to end on the fixed data, finishing with a regenerated C1 blind sample. No code was
+changed in this pass — run and report only.
+
+**1. `tools/rescore_candidates.py --resurface-only`** — *"nothing in 'skipped_low_relevance' currently scores
+>= 50; nothing to promote"*. An earlier run today moved 322 candidates back to `available`; this one confirms
+the promotion is idempotent and that nothing is still stranded behind the fixed bug.
+
+**2. `tools/backfill_descriptions.py --limit 500`** — 49 videos, 1 call, 1 quota unit, 49/49 returned, 0 saved.
+`available` holds 1,827 candidates of which 1,778 (97%) now carry a description, against 1,419 (78%) before the
+first backfill. The 49 still empty were all fetched successfully, so those videos genuinely have no description
+on YouTube (typically Shorts) — measured rather than assumed, because a second full fetch returned every one of
+them again with nothing to write.
+
+**3. `pytest tests/test_j3_fallback.py tests/test_l05_sample_findings.py`** — 2 failed, 14 passed. Both
+unchanged from the full-suite run: `release_check` returns FAIL where the test asserts PASS (`doctor` itself
+passes, and the failing sub-check is not named in the output), and
+`test_fixed_cohort_is_balanced_and_importance_stratified` expects the alias `claude-haiku-4-5` but receives the
+dated snapshot `claude-haiku-4-5-20251001`. Neither was touched.
+
+**4. `media.enumerate_entries('https://www.youtube.com/@AcquiringMinds')` — 457 entries, 457 with descriptions.**
+This closes the item yesterday's entry left open as *"the listing path itself — future scans will keep storing
+description-less candidates"*. `media.py` now runs a hydrate pass over the fields `extract_flat="in_playlist"`
+structurally cannot carry, delegating to `youtube_api`, so flat enumeration keeps its seconds-not-half-an-hour
+speed and the descriptions arrive anyway. 100% on the measured channel, against the 0% the same path produced
+yesterday. The flat-vs-slow trade described at length in the 2026-09-20 entries is no longer being paid.
+
+**5. `tools/ad4b_blind_sample.py --seed 77`** — 8,654 rejected+scored candidates in the project (bands: 0-19:
+6,076 · 20-34: 1,811 · 35-44: 570 · 45-49: 197), 40 sampled blind to `evals/ad4b-sample-after-fix.json` with an
+HTML review page beside it. **Unjudged** — the sample exists, nobody has scored it yet; `tools/ad4b_score.py`
+takes the filled rubric when someone does.
+
+**Verified live for the first time:** `youtube_api.py` had never made a network call when it was written — the
+2026-09-20 entry states that plainly. It has now made 10 across the two backfill runs, returning 408/408 and
+49/49, with zero failures and 10 of 10,000 daily quota units spent.
+
+**For whoever re-freezes:** the full suite earlier today failed 8. The five not listed above are frozen values
+that `754d424` moved — the ranking prompt hash (`f38f9a9c` → `c33f6c4c`, 3 tests) and two fake token totals each
+off by exactly +11,598, which is one prompt change surfacing in two independent fixtures rather than two drifts.
+The sixth is `test_s50_design_drift` at 30 colour literals against a ceiling of 28. CLAUDE.md treats a frozen
+number as a decision, so re-freezing belongs to the change that moved it, not to this verification run.
