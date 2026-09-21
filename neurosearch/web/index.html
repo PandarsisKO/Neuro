@@ -270,6 +270,7 @@
       <div id="paneQuestions" hidden></div>
       <div id="paneWatchouts" hidden></div>
       <div id="paneAreas" hidden></div>
+      <div id="paneQueue" hidden></div>
       <div id="paneClaims" hidden>
         <div class="row" style="gap:6px;margin:2px 0 8px;flex-wrap:wrap">
           <input id="cwQ" placeholder="Search Claims…" oninput="CW.q=this.value;CW.offset=0;loadClaimsWorkbench()" style="min-width:180px">
@@ -328,6 +329,12 @@
         <div class="muted">Recorded automatically when you state them in a chat ("we're going with X", "budget is Y"). Add or remove here.</div>
         <div id="facts" class="mt-2"></div>
         <div class="row mt-2"><select id="factKind" class="w-auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
+      </div>
+      <div class="card"><b>Not interested in</b>
+        <div class="muted">A short list of things to keep out of Discovery. A <b>keyword</b> is matched against a candidate's title, description and topic; a <b>creator</b> is matched against the channel or author name. Unlike the brief, this is a hard mechanical rule — nothing interprets it, and it costs nothing to apply. Existing sources are untouched; this only filters what gets proposed next.</div>
+        <div id="excludes" class="mt-2"></div>
+        <div class="row mt-2"><select id="exKind" class="w-auto"><option value="keyword">keyword</option><option value="creator">creator</option></select><input id="exTerm" placeholder="e.g. laundromat"><input id="exReason" placeholder="why — shown back to you later (optional)" style="max-width:280px"><button class="small" onclick="addExclude()">Add</button></div>
+        <div class="muted mt-2" id="exMsg"></div>
       </div>
       <div class="card"><b>Spending valve</b>
         <div class="muted">Estimated API spend across all projects. When a budget is reached the background queue pauses (nothing fails or is lost) and resumes when the window rolls over or you raise the limit. Chat answers and plan builds you start yourself are still allowed.</div>

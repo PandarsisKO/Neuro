@@ -213,9 +213,10 @@ globalThis.askAboutSource = function askAboutSource(sid, title) {
   showView('chat'); setTimeout(() => { const q = $('#q'); if (q) { q.placeholder = `Ask about "${title.slice(0, 40)}"…`; q.focus(); } }, 100);
 }
 // ---- R2: the Research shell — one $0 request renders every pane (research_view.overview?full=1) ----
-globalThis.RES = { pane: 'overview', area: null, v: null, state: null, next: [], qs: [], wos: [], open: {} };
+globalThis.RES = { pane: 'overview', area: null, v: null, state: null, next: [], qs: [], wos: [], open: {}, queue: null, queueN: null };
 globalThis.resSay = function resSay(m) { const el = $('#resMsg'); if (el) el.textContent = m || ''; }
 globalThis.loadResearch = async function loadResearch() {
+  RES.queue = null; RES.queueN = null;      // never show one project's queue under another, or a decided Claim as pending
   try { RES.v = await api(`/api/projects/${state.project.id}/research/overview?full=1&limit=6`); }
   catch (e) { resSay('could not load: ' + e.message); return; }
   $('#nResearch').textContent = RES.v.attention ? (RES.v.attention + (RES.v.attention_capped ? '+' : '')) : '';   // 0.63.23: the card says 99+, so the badge must too
@@ -251,7 +252,8 @@ globalThis.renderShell = function renderShell() {
   // counts the server total (s.important_questions) -- same screen, same concept, an order of magnitude
   // apart. The tile already has the number; the tab drops its own.
   const tabs = [['overview', 'Overview', null], ['questions', 'Open questions', null], ['watchouts', 'Watch-outs', RES.wos.length],
-                ['areas', 'Areas', (v.areas || []).length], ['claims', 'Claims', s.claims_total], ['tools', 'Research tools', null]];
+                ['areas', 'Areas', (v.areas || []).length], ['claims', 'Claims', s.claims_total],
+                ['queue', 'Review queue', RES.queueN], ['tools', 'Research tools', null]];
   $('#resNav').innerHTML = tabs.map(([k, l, n]) => `<span class="chipf ${RES.pane === k ? 'on' : ''}" onclick="resPane('${k}')">${l}${n != null ? ` <b>${n}</b>` : ''}</span>`).join('');
   $('#resHead').innerHTML = v.empty ? 'nothing to research yet — approve some findings first'
     : `<b>${v.attention}</b> need${v.attention === 1 ? 's' : ''} you${v.attention_capped ? '+' : ''} · ${s.claims_total} Claim${s.claims_total === 1 ? '' : 's'} from your findings, all built at no cost`;
@@ -261,6 +263,60 @@ globalThis.renderShell = function renderShell() {
   if (RES.pane === 'questions') renderQuestionsPane();
   if (RES.pane === 'watchouts') renderWatchoutsPane();
   if (RES.pane === 'areas') renderAreasPane();
+  if (RES.pane === 'queue') renderQueuePane();
+}
+
+// ---- the claims review queue (L-51) and its topic summaries (S76) ----
+// The endpoint has existed since L-51 with no web surface at all, and S76 then wrote topic summaries into a
+// response nothing displayed. Both are reachable here.
+//
+// Fetched when the tab is opened rather than with the rest of the Research view: it is a separate request that
+// recomputes impact over every proposed Claim, and most visits to Research are not visits to this.
+globalThis.renderQueuePane = async function renderQueuePane() {
+  const el = $('#paneQueue');
+  if (!RES.queue) {
+    el.innerHTML = '<div class="muted"><span class="spin"></span> building the queue…</div>';
+    try { RES.queue = await api(`/api/projects/${state.project.id}/claims/review-queue?limit=25`); }
+    catch (e) { el.innerHTML = `<div class="empty">could not build the review queue — ${esc(String(e && e.message || e))}</div>`; return; }
+    RES.queueN = (RES.queue.queue || []).length;
+  }
+  const q = RES.queue, c = q.counts || {}, shown = q.queue || [];
+  if (!shown.length) {
+    el.innerHTML = `<div class="empty">Nothing needs you here. Of ${c.proposed_total || 0} proposed Claim${c.proposed_total === 1 ? '' : 's'}, none show disagreement, affect the Master Plan, or rest on thin evidence.</div>`;
+    return;
+  }
+  // S76: the synthesis sits ABOVE the individual claims and never replaces them -- it is a reading aid, not a
+  // merge, and the claims it summarises are all still listed below untouched.
+  const sums = (q.topic_summaries || []).map(t =>
+    `<div class="kn"><span class="st developing">${t.n}</span><div><div>${esc(t.summary_text)}</div>
+       <div class="why">${esc(t.topic || 'unspecified')}${t.basis && t.basis !== 'unspecified' ? ` · ${esc(t.basis)}` : ''} — a reading aid over the Claims below, which are unchanged and still listed individually</div></div></div>`).join('');
+  const REASON_WORDS = { disagreement: 'sources disagree', plan_impact: 'the Master Plan depends on it', evidence_weak: 'thin evidence' };
+  const rows = shown.map(x => {
+    const why = (x.reasons || []).map(r => `<span class="tag">${esc(REASON_WORDS[r] || r)}</span>`).join(' ');
+    const tens = (x.tensions || []).filter(t => t.impact === 'high').length;
+    return `<div class="kn">${stTag(x.strength)}<div class="grow min-w-0">
+      <div>${esc(x.text)}</div>
+      <div class="why">${why} · ${x.independent_sources} independent source${x.independent_sources === 1 ? '' : 's'}${(x.members.note_ids || []).length ? ` · ${x.members.note_ids.length} finding${x.members.note_ids.length === 1 ? '' : 's'} behind it` : ''}${tens ? ` · ${tens} high-impact tension${tens === 1 ? '' : 's'}` : ''}</div>
+      ${x.strength_why ? `<div class="why">${esc(x.strength_why)}</div>` : ''}</div>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="small" title="You stand behind this. Reversible — nothing is deleted." onclick="queueDecide('${x.claim_id}','accepted')">Accept</button>
+        <button class="small ghost" title="You do not accept this. Reversible." onclick="queueDecide('${x.claim_id}','rejected')">Reject</button>
+      </span></div>`;
+  }).join('');
+  // `not_shown` is the cap's own account of what it hid, by reason -- disagreement is never capped, so a
+  // non-zero number here can only be plan_impact or evidence_weak.
+  const hidden = c.hidden_total
+    ? `<div class="muted mt-2">${c.hidden_total} more below the cap (${Object.entries(c.not_shown || {}).filter(([, n]) => n).map(([r, n]) => `${n} ${REASON_WORDS[r] || r}`).join(' · ') || 'no reason recorded'}). Disagreement is never capped, so nothing contested is hidden here.</div>`
+    : '';
+  el.innerHTML =
+    `<div class="muted">The few proposed Claims that actually need a person: sources disagree, the Master Plan depends on it, or the evidence is thin. ${c.shown} of ${c.proposed_total} proposed Claims.</div>
+     ${sums ? `<div class="mt-3"><b>What the numbers say together</b><div class="muted text-xs">Grouped by topic and by what is being measured, so ranges of different things are never blended.</div><div class="mt-2">${sums}</div></div>` : ''}
+     <div class="mt-3">${rows}</div>${hidden}`;
+}
+globalThis.queueDecide = async function queueDecide(claimId, status) {
+  await claimStatus(claimId, status);
+  RES.queue = null;                      // the decision changes the queue; rebuild rather than patch a stale copy
+  renderQueuePane();
 }
 
 globalThis.renderOverview = function renderOverview() {
@@ -1331,6 +1387,39 @@ globalThis.deleteProject = async function deleteProject() { if (!confirm('Delete
 globalThis.renderFacts = function renderFacts(facts) {
   $('#facts').innerHTML = facts.map(f => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span class="grow">${esc(f.content)}</span><a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`).join('') || '<div class="muted">none yet</div>';
 }
+// ---- Discovery exclude list (S75) ----
+// The table, the filter and the endpoints shipped without anywhere to reach them: the only way to add an
+// exclusion was a raw API call. This is that surface, kept deliberately close to the Decisions card above,
+// because the two are the same idea at different strengths -- a `rejected` fact is history, an exclude is a
+// rule that actually runs.
+globalThis.renderExcludes = function renderExcludes(rows) {
+  $('#excludes').innerHTML = (rows || []).map(x =>
+    `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)">
+       <span class="tag" style="flex:0 0 auto">${esc(x.kind)}</span>
+       <span class="grow">${esc(x.term)}${x.reason ? ` <span class="muted">— ${esc(x.reason)}</span>` : ''}</span>
+       <a href="#" class="muted" onclick="delExclude(${x.id});return false">remove</a>
+     </div>`).join('')
+    || '<div class="muted">Nothing excluded. Discovery is judging everything against your brief alone.</div>';
+}
+globalThis.loadExcludes = async function loadExcludes() {
+  try { renderExcludes(await api(`/api/projects/${state.project.id}/excludes`)); }
+  catch (e) { $('#excludes').innerHTML = `<div class="muted">could not load the exclude list — ${esc(String(e && e.message || e))}</div>`; }
+}
+globalThis.addExclude = async function addExclude() {
+  const term = $('#exTerm').value.trim();
+  // the server rejects a blank term; saying so here costs nothing and avoids a pointless round trip
+  if (!term) { $('#exMsg').textContent = 'type the keyword or creator name first'; return; }
+  $('#exMsg').textContent = '';
+  await post(`/api/projects/${state.project.id}/excludes`,
+             { kind: $('#exKind').value, term, reason: $('#exReason').value.trim() || null });
+  $('#exTerm').value = ''; $('#exReason').value = '';
+  loadExcludes();
+}
+globalThis.delExclude = async function delExclude(id) {
+  await del(`/api/excludes/${id}`);
+  loadExcludes();
+}
+
 globalThis.addFact = async function addFact() {
   const t = $('#factText').value.trim(); if (!t) return;
   await post(`/api/projects/${state.project.id}/facts`, { kind: $('#factKind').value, content: t }); $('#factText').value = '';
