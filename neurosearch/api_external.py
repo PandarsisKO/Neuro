@@ -130,6 +130,8 @@ def admin_router(require_auth: Callable[..., None]) -> APIRouter:
     def fact_class(fact_id: int, body: ClassIn) -> dict[str, Any]:
         return guard(lambda: access.set_fact_class(fact_id, body.disclosure_class, reason=body.reason))
 
+    invite_routes(r)
+
     @r.get("/backfill")
     def backfill_preview() -> dict[str, Any]:
         return access.backfill_classes(apply=False)
@@ -197,5 +199,100 @@ def inbox_router(require_auth: Callable[..., None]) -> APIRouter:
     def project_inbox(project_id: str, limit: int = 50) -> dict[str, Any]:
         from . import intake
         return {"intakes": intake.inbox(project_id, limit=max(1, min(limit, 200)))}
+
+    return r
+
+
+class InviteIn(BaseModel):
+    actor_id: str
+    label: str | None = None
+
+
+def invite_routes(r: APIRouter) -> None:
+    from . import oauth
+
+    @r.post("/invites")
+    def create_invite(body: InviteIn) -> dict[str, Any]:
+        try:
+            row, code = oauth.create_invite(body.actor_id, label=body.label)
+        except access.AccessError as e:
+            raise _http(e)
+        return {"invite": row, "code": code, "note": "shown once; single use; expires in 7 days"}
+
+    @r.get("/invites")
+    def invites() -> list[dict[str, Any]]:
+        return oauth.list_invites()
+
+    @r.post("/invites/{invite_id}/revoke")
+    def revoke_invite(invite_id: str) -> dict[str, Any]:
+        oauth.revoke_invite(invite_id)
+        return {"ok": True}
+
+
+def oauth_router() -> APIRouter:
+    """OAuth 2.1 for external AI clients (oauth.py). Public by design: every step is protected by PKCE plus the
+    owner-issued invite the person types at consent; nothing here reads project data."""
+    from fastapi.responses import HTMLResponse, RedirectResponse
+    from . import oauth
+    r = APIRouter()
+
+    def base(request: Request) -> str:
+        return oauth.base_url(str(request.base_url))
+
+    @r.get("/.well-known/oauth-protected-resource")
+    @r.get("/.well-known/oauth-protected-resource/ext/mcp")
+    def prm(request: Request) -> JSONResponse:
+        return JSONResponse(oauth.protected_resource_metadata(base(request)))
+
+    @r.get("/.well-known/oauth-authorization-server")
+    @r.get("/.well-known/openid-configuration")
+    def asm(request: Request) -> JSONResponse:
+        return JSONResponse(oauth.authorization_server_metadata(base(request)))
+
+    @r.post("/oauth/register")
+    async def register(request: Request) -> JSONResponse:
+        try:
+            meta = await request.json()
+            return JSONResponse(oauth.register(meta if isinstance(meta, dict) else {}), status_code=201)
+        except (ValueError, access.AccessError) as e:
+            return JSONResponse({"error": "invalid_client_metadata", "error_description": getattr(e, "message", str(e))}, status_code=400)
+
+    @r.get("/oauth/authorize")
+    def authorize_page(request: Request) -> HTMLResponse:
+        q = dict(request.query_params)
+        try:
+            c = oauth.check_authorize(q)
+        except access.AccessError as e:
+            return HTMLResponse(f"<p>Cannot connect: {e.message}</p>", status_code=400)
+        return HTMLResponse(oauth.consent_page(q, c), headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+    @r.post("/oauth/authorize")
+    async def authorize_submit(request: Request) -> Any:
+        form = {k: str(v) for k, v in (await request.form()).items()}
+        q = {k: v for k, v in form.items() if k != "invite_code"}
+        try:
+            return RedirectResponse(oauth.approve(q, form.get("invite_code", "")), status_code=303)
+        except access.AccessError as e:
+            try:
+                c = oauth.check_authorize(q)
+            except access.AccessError:
+                return HTMLResponse(f"<p>Cannot connect: {e.message}</p>", status_code=400)
+            return HTMLResponse(oauth.consent_page(q, c, error=e.message), status_code=400,
+                                headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+    @r.post("/oauth/token")
+    async def token(request: Request) -> JSONResponse:
+        form = {k: str(v) for k, v in (await request.form()).items()}
+        try:
+            return JSONResponse(oauth.token(form), headers={"Cache-Control": "no-store"})
+        except access.AccessError as e:
+            code = "invalid_grant" if e.code in ("auth_invalid", "auth_revoked") else ("slow_down" if e.code == "rate_limited" else "invalid_request")
+            return JSONResponse({"error": code, "error_description": e.message}, status_code=400, headers={"Cache-Control": "no-store"})
+
+    @r.post("/oauth/revoke")
+    async def revoke(request: Request) -> JSONResponse:
+        form = {k: str(v) for k, v in (await request.form()).items()}
+        oauth.revoke_token(form.get("token", ""))
+        return JSONResponse({})
 
     return r

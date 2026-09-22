@@ -114,15 +114,24 @@ def _check_rate(credential_id: str) -> None:
         _rate[credential_id] = window
 
 
+_CRED_SQL = ("SELECT c.*, a.name AS actor_name, a.disabled_at AS actor_disabled, k.label AS client_label "
+             "FROM external_credentials c JOIN external_actors a ON a.id=c.actor_id JOIN external_clients k ON k.id=c.client_id ")
+
+
 def authenticate(secret: str | None) -> Principal:
-    if not secret or not secret.startswith(TOKEN_PREFIX) or len(secret) < PREFIX_LEN + 16:
-        raise AccessError("auth_invalid", "missing or malformed credential")
-    row = db.connect().execute(
-        "SELECT c.*, a.name AS actor_name, a.disabled_at AS actor_disabled, k.label AS client_label "
-        "FROM external_credentials c JOIN external_actors a ON a.id=c.actor_id JOIN external_clients k ON k.id=c.client_id "
-        "WHERE c.token_prefix=?", (secret[:PREFIX_LEN],)).fetchone()
-    if row is None or not secrets.compare_digest(row["token_hash"], _hash(secret)):
-        raise AccessError("auth_invalid", "unknown credential")
+    """A static credential (`nsx_…`), or an OAuth access token (`nsa_…`, oauth.py) that stands for one. Either way
+    every check below — revoked, disabled, expired, rate — is made against the credential."""
+    if secret and secret.startswith("nsa_"):
+        from . import oauth
+        row = db.connect().execute(_CRED_SQL + "WHERE c.id=?", (oauth.resolve_access(secret),)).fetchone()
+        if row is None:
+            raise AccessError("auth_invalid", "unknown credential")
+    else:
+        if not secret or not secret.startswith(TOKEN_PREFIX) or len(secret) < PREFIX_LEN + 16:
+            raise AccessError("auth_invalid", "missing or malformed credential")
+        row = db.connect().execute(_CRED_SQL + "WHERE c.token_prefix=?", (secret[:PREFIX_LEN],)).fetchone()
+        if row is None or not secrets.compare_digest(row["token_hash"], _hash(secret)):
+            raise AccessError("auth_invalid", "unknown credential")
     t = time.time()
     if row["revoked_at"] is not None and row["revoked_at"] <= t:
         raise AccessError("auth_revoked", row["revoke_reason"] or "credential revoked")

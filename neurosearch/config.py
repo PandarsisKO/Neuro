@@ -53,6 +53,9 @@ class Settings:
 
     # Auth: a single shared secret. Web UI login + Bearer token for API/MCP.
     app_token: str | None = field(default_factory=lambda: _env("NEUROSEARCH_APP_TOKEN"))
+    # P11 EA-7: the https origin external AI clients (and the person's browser, for the OAuth consent step) reach this
+    # app at — a Secure MCP Tunnel/proxy origin. Unset = derived from each request (local/LAN use).
+    public_url: str | None = field(default_factory=lambda: _env("NEUROSEARCH_PUBLIC_URL"))
 
     # Models
     anthropic_api_key: str | None = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))

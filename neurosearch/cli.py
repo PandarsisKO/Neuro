@@ -1325,3 +1325,14 @@ def access_issue(actor: str = typer.Option(..., help="actor id (see `access list
     row, secret = access.issue_credential(actor, client)
     typer.echo(json.dumps({"credential": row}, indent=2, default=str))
     typer.echo(f"\nsecret (shown once): {secret}")
+
+
+@access_app.command("invite")
+def access_invite(actor: str = typer.Option(..., help="the person's actor id (see `access list`)"),
+                  label: Optional[str] = typer.Option(None, help="a note for yourself, e.g. 'Gio's ChatGPT'")) -> None:
+    """Create a single-use connection code a person types when their AI client (e.g. ChatGPT) connects to Neuro."""
+    from . import oauth
+    _init()
+    row, code = oauth.create_invite(actor, label=label)
+    typer.echo(json.dumps({"invite": row}, indent=2, default=str))
+    typer.echo(f"\nconnection code (shown once, single use, 7 days): {code}")

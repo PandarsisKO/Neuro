@@ -138,9 +138,13 @@ async def lifespan(app: FastAPI):
         # P11: the external MCP app is rebuilt on every start -- its session manager can run once per instance, and a
         # process (the test suite; a reload) may start the app more than once.
         from .mcp_external import app as _fresh_ext_mcp, server as _ext_mcp
+        previous = _EXT_MCP_GATE.inner
         _EXT_MCP_GATE.inner = _fresh_ext_mcp()
-        async with mcp.session_manager.run(), _ext_mcp.session_manager.run():
-            yield
+        try:
+            async with mcp.session_manager.run(), _ext_mcp.session_manager.run():
+                yield
+        finally:
+            _EXT_MCP_GATE.inner = previous      # a nested start (tests) must not leave the outer app on a stopped manager
     finally:
         try:
             jobs.stop_workers()
@@ -233,9 +237,12 @@ class _ExternalCredentialGate:
         if scope.get("type") == "http":
             auth = next((v.decode(errors="replace") for k, v in scope.get("headers") or [] if k.lower() == b"authorization"), "")
             tok = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-            if not tok.startswith("nsx_"):
+            if not (tok.startswith("nsx_") or tok.startswith("nsa_")):
+                from . import oauth
+                host = next((v.decode() for k, v in scope.get("headers") or [] if k.lower() == b"host"), "localhost:8000")
+                meta = oauth.base_url(f"{scope.get('scheme', 'http')}://{host}") + "/.well-known/oauth-protected-resource"
                 await JSONResponse({"error": {"code": "auth_invalid", "message": "an external Neuro credential is required"}},
-                                   status_code=401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
+                                   status_code=401, headers={"WWW-Authenticate": f'Bearer resource_metadata="{meta}", scope="neuro"'})(scope, receive, send)
                 return
         await self.inner(scope, receive, send)
 
@@ -3731,3 +3738,6 @@ from .api_external import admin_router as _p11_admin_router, ext_router as _p11_
 app.include_router(_p11_admin_router(require_auth))
 app.include_router(_p11_ext_router())
 app.include_router(_p11_inbox_router(require_auth))
+from .api_external import oauth_router as _p11_oauth_router  # noqa: E402
+
+app.include_router(_p11_oauth_router())

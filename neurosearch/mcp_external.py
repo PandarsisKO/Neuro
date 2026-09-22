@@ -149,6 +149,19 @@ async def attach_artifact(project_id: str, intake_id: str, artifact_ref: dict[st
                                                 "item_request_id": item_request_id})
 
 
+@server.tool(annotations=WRITE, meta={"openai/fileParams": ["file"]})
+async def attach_file(project_id: str, intake_id: str, file: dict[str, Any], ctx: Context, item_id: str | None = None,
+                      client_declared_class: str | None = None, item_request_id: str | None = None) -> dict[str, Any]:
+    """Attach a file the user uploaded in this conversation (file = {download_url, file_id, mime_type?, file_name?}).
+    Use item_id when you already processed the file with add_processed_material: Neuro then keeps it as the original
+    and does NOT read it again. Without item_id, Neuro reads it itself."""
+    ref = {k: v for k, v in {"kind": "signed_url", "url": str(file.get("download_url") or ""),
+                              "filename": file.get("file_name") or "attachment", "content_type": file.get("mime_type")}.items() if v}
+    return await _call(ctx, "attach_artifact", {"project_id": project_id, "intake_id": intake_id, "artifact_ref": ref,
+                                                "item_id": item_id, "client_declared_class": client_declared_class,
+                                                "item_request_id": item_request_id})
+
+
 @server.tool(annotations=WRITE)
 async def finalize_intake(project_id: str, intake_id: str, ctx: Context, user_state: list[dict[str, Any]] | None = None,
                           interpretations: list[dict[str, Any]] | None = None, base_revision: int | None = None) -> dict[str, Any]:

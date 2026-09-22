@@ -54,7 +54,7 @@ _SECRETS = [
     (re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted]"),
     (re.compile(r"(?i)((?:api[_-]?key|token|password|passwd|secret|cookie|session[_-]?id|x-api-key)\s*[=:]\s*)[^\s,;'\"&]+"), r"\1[redacted]"),
     (re.compile(r"(?i)(/mcp/)[A-Za-z0-9._~-]{8,}"), r"\1[redacted]"),                   # MCP url token
-    (re.compile(r"\b(nsx_[A-Za-z0-9_-]{8})[A-Za-z0-9_-]+"), r"\1…"),                  # P11 external credentials: the 12-char prefix only
+    (re.compile(r"\b(ns[xari]_[A-Za-z0-9_-]{8})[A-Za-z0-9_-]+"), r"\1…"),            # P11 credentials, OAuth tokens, invites: 12-char prefix only
     (re.compile(r"(?i)([?&](?:sig|signature|x-amz-signature|x-goog-signature|token|key|auth|access_token|expires)=)[^&\s]+"), r"\1[redacted]"),
 ]
 

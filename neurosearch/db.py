@@ -964,6 +964,57 @@ CREATE TABLE IF NOT EXISTS intake_items (
     updated_at        REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_intake_items_intake ON intake_items(intake_id);
+
+-- P11 EA-7 (§40, plan §8): OAuth 2.1 for clients that cannot hold a static credential (ChatGPT authenticates custom
+-- MCP servers only via OAuth, verified 2026-09-22). The PERSON is bound by an owner-issued, single-use connection
+-- invite entered at consent time; each completed connection becomes one external_clients row + one credential, and
+-- every OAuth token resolves to that credential — so revoking it in the Access card ends the connection.
+CREATE TABLE IF NOT EXISTS oauth_clients (
+    client_id     TEXT PRIMARY KEY,           -- ours for DCR; the metadata URL itself for CIMD
+    client_name   TEXT,
+    redirect_uris TEXT NOT NULL,              -- JSON list, exact-match only
+    kind          TEXT NOT NULL,              -- dcr | cimd
+    metadata      TEXT,
+    created_at    REAL NOT NULL,
+    updated_at    REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS external_invites (
+    id          TEXT PRIMARY KEY,
+    actor_id    TEXT NOT NULL REFERENCES external_actors(id),
+    code_prefix TEXT NOT NULL UNIQUE,
+    code_hash   TEXT NOT NULL,
+    label       TEXT,
+    created_by  TEXT,
+    created_at  REAL NOT NULL,
+    expires_at  REAL NOT NULL,
+    used_at     REAL,
+    used_client_id TEXT,
+    revoked_at  REAL
+);
+CREATE TABLE IF NOT EXISTS oauth_codes (
+    code_hash      TEXT PRIMARY KEY,
+    oauth_client_id TEXT NOT NULL,
+    credential_id  TEXT NOT NULL,
+    redirect_uri   TEXT NOT NULL,
+    code_challenge TEXT NOT NULL,
+    scope          TEXT,
+    resource       TEXT,
+    expires_at     REAL NOT NULL,
+    used_at        REAL
+);
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+    id              TEXT PRIMARY KEY,
+    token_prefix    TEXT NOT NULL UNIQUE,
+    token_hash      TEXT NOT NULL,
+    kind            TEXT NOT NULL,            -- access | refresh
+    credential_id   TEXT NOT NULL,
+    oauth_client_id TEXT NOT NULL,
+    scope           TEXT,
+    created_at      REAL NOT NULL,
+    expires_at      REAL NOT NULL,
+    revoked_at      REAL
+);
+CREATE INDEX IF NOT EXISTS ix_oauth_tokens_credential ON oauth_tokens(credential_id);
 """
 
 _local = threading.local()
