@@ -1,7 +1,7 @@
 # P11 EXECUTION PLAN — External AI Access + Bidirectional Project Intelligence
 
 **Written 2026-09-22 against `origin/main` `9d08fcc` (0.63.95); revised the same day with Kyle's three product rulings
-(§12).** Status: **PLAN READY FOR FINAL REVIEW — implementation NOT started.** Authority: `EXTERNAL-AI-ACCESS-MISSION.md` §38–§67 (Frozen Architecture, accepted, not redrafted here) and
+(§12).** Status: **ACCEPTED and EXECUTING — EA-0…EA-8 built (`feb6140`…`b9c5575`), EA-9 gated; see HANDOFF 2026-09-22 "EA-0 → EA-8".** Authority: `EXTERNAL-AI-ACCESS-MISSION.md` §38–§67 (Frozen Architecture, accepted, not redrafted here) and
 Kyle's 2026-09-22 directive. This document is the one consolidated readiness pass the directive asked for; the nine
 P11-P1…P9 questions are answered as sections 1–10 below, and the rungs EA-0…EA-9 are the execution order. Nothing in
 sections 1–10 reopens a frozen decision; where the current code shaped a choice, the code is cited.

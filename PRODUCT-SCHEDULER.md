@@ -8,9 +8,9 @@ reflects the date each entry was written.
 
 ## NOW — one active effort
 
-**P11 EXTERNAL AI ACCESS — 2026-09-22, Kyle's directive.** **P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.**
+**P11 EXTERNAL AI ACCESS — 2026-09-22, Kyle's directive.** ~~ACTIVE / FINAL READINESS~~ **EXECUTING since Kyle's "Begin executing the plan." (2026-09-22): EA-0…EA-8 done, EA-9 gated (HANDOFF 2026-09-22 "EA-0 → EA-8").**
 Frozen Architecture (`EXTERNAL-AI-ACCESS-MISSION.md` §38–§67) accepted; consolidated plan in
-`docs/P11-EXECUTION-PLAN-2026-09-22.md`; implementation NOT started. Added beside the Discovery/findings effort below,
+`docs/P11-EXECUTION-PLAN-2026-09-22.md`. Added beside the Discovery/findings effort below,
 not in place of it — nothing already admitted is replaced or rewritten. Lanes: Cowork (Desktop) owns P11 planning and
 code it can write; Claude Code owns terminal/Git/live-Mac delivery. Rung ids EA-0…EA-9 live in the plan document.
 

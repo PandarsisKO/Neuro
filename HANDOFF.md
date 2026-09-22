@@ -13,7 +13,7 @@ in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md`.
 | **Active effort** | `PRODUCT-SCHEDULER.md` NOW → Discovery relevance + findings review; what is left is `docs/COMPLETION-CHECKLIST-2026-09-21.md`. |
 | **Open decisions / actions** | `docs/REPO-AUDIT-2026-09-21.md` §1–2 (Kyle) and `STATE-OF-THE-APP-2026-09-21-2300.md` (agents). |
 | **Parked** | `PRODUCT-SCHEDULER.md` PARKED — subreddit/Reddit API, FRED, L-21/L-40/L-60/L-61, Field Map, T2 migration, H1–H3, P12. Do not pick up. |
-| **P11 External AI Access** | **P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.** Frozen Architecture `EXTERNAL-AI-ACCESS-MISSION.md` §38–§67 accepted; plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`; implementation NOT started. Does not displace the NOW effort. |
+| **P11 External AI Access** | **EXECUTING (Kyle: "Begin executing the plan.", 2026-09-22).** EA-0…EA-8 built and green (`feb6140`…`b9c5575`, unpushed); **EA-9 gated** on transport, Gio's ChatGPT plan and Kyle-only account steps — see the 2026-09-22 "EA-0 → EA-8" entry. Plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`. Does not displace the NOW effort. |
 | **Who is where** | Codex offline the week of 2026-09-21; its tree was adopted into `main` (`f99ab95`…`8fb5e7c`). Claude Code: the Mac, the live DB, `neurosearch` CLI, pushes. Cowork: docs, code, full suite in a Linux VM on temp DBs; never the live DB. |
 | **Last green suite** | 2,346 passed, 0 failed (2026-09-21, at 0.63.95, `release-check` PASS). Any failure is new. |
 | **Unpushed** | none as of 2026-09-21 — `origin/main` carries the 0.63.95 release. |
@@ -2676,3 +2676,52 @@ gate, never a reason to move the target. **(2) Local actor** — `kyle` on attri
 lower a class, audited; derived floors inherit the most restrictive contributing class. The Frozen Architecture is
 unchanged. **Unresolved product decisions: none. Ready to execute: yes. Implementation: NOT started** — waits for
 "P11 plan accepted. Begin execution." Both P11 commits are unpushed from this session (no GitHub credentials here).
+
+## P11 EA-0 → EA-8 built; EA-9 gated on transport + Gio's plan — 2026-09-22
+
+Kyle: *"Begin executing the plan."* Executed `docs/P11-EXECUTION-PLAN-2026-09-22.md` from `fbc1473`. Seven code
+commits, each full-suite green in the Cowork VM (Linux venv on a /tmp mirror of the checkout, never the live DB):
+`feb6140` EA-0/1 · `36e046d` EA-2 · `9d52526` EA-3 · `03e2420` EA-4/5/6 · `332d891` EA-7 · `46dbf1c` EA-8 ·
+`b9c5575` public-origin guard. **Suite 2,346 → 2,419 passed, 0 failed** (+73 across `tests/test_ea1…ea8_*.py`).
+**None of these nine commits (incl. `a42f6a8`, `fbc1473`) is pushed** — this session has no GitHub credentials.
+
+**What exists now** (module → what it does): `external_schemas.py` versioned wire contracts · `access.py` actors
+(seeded `kyle`, `system`), clients, `nsx_` credentials (hash + 12-char prefix), grants (standard-only by default),
+§43 rule as one SQL expression + backfill, provenance floors for Claims/findings/tensions/plans, audit, client health
+· `ledger.py` `project_change_events`, record-in-tx / classify-after-commit (`db.after_commit`), cursor paging with
+the floor in SQL, `claims_reassessed` pass summary · `facts.py` record/reaffirm/supersede/withdraw/accept, conflicts
+· `external.py` the one service (list/open/changes/search/evidence/consult + intake + sync) · `intake.py` intake
+events, Path B via `store_transcript`, Path A via `ingest_local_file`, retained originals, derived status, Inbox view
+· `oauth.py` OAuth 2.1 AS (DCR + CIMD, PKCE S256, invite-bound consent, token → credential) · `mcp_external.py` at
+`/ext/mcp` · `api_external.py` `/api/access/*` (owner), `/api/ext/v1/*` (external), `/api/projects/{id}/inbox`,
+OAuth routes · Project settings card "People using this project from their own AI" + Decisions shared/private.
+Attribution: `ActorMiddleware` (local token → `kyle`), CLI → `kyle/cli`, jobs + nightly → `system` with
+`jobs.origin_*` as the cause. New job kind `intake_item` on the existing queue.
+
+**Deviation from the plan, recorded:** schemas live in `external_schemas.py`, not `schemas.REGISTRY` (that registry
+is provider output schemas held to the Anthropic subset). `db.health()` untouched; External AI Health is
+`/api/access/client-health` (repo-check forbids a second `/health` route string).
+
+**Re-verified from OpenAI's docs today (EA-7 precondition):** ChatGPT developer mode speaks SSE/streamable HTTP;
+authenticates custom MCP servers only with OAuth 2.1 (CIMD/DCR + PKCE) or no auth — no static bearer; write tools need
+user confirmation and are any tool without `readOnlyHint`; files arrive as `{download_url, file_id, mime_type,
+file_name}` via `_meta["openai/fileParams"]`; a private server is reachable through Secure MCP Tunnel (`tunnel-client`
++ an OpenAI Platform `tunnel_id` + runtime API key), but "the authorization server itself is not automatically
+tunneled". The plan matrix is inconsistent across OpenAI's own pages (developer-mode guide: Plus/Pro/Business/
+Enterprise/Edu get read+write; help-center article: full write is a Business/Enterprise/Edu beta, Pro read-only).
+
+**EA-9 is blocked on three things only Kyle can settle** (external platform gates, not design questions):
+1. **How ChatGPT and Gio's browser reach Neuro.** The consent page must be reachable from Gio's browser, so v1
+   needs a public HTTPS origin for at least `/oauth/*` + `/.well-known/*` (with or without Secure MCP Tunnel for
+   `/ext/mcp`). This overrides §62's "public inbound endpoint → not v1" for that narrow surface; `PublicOriginGuard`
+   keeps everything else 404 on that origin. Recommended: one HTTPS origin (e.g. a Cloudflare/Tailscale tunnel) to
+   `localhost:8000`, `NEUROSEARCH_PUBLIC_URL` set to it.
+2. **Gio's ChatGPT plan** — confirm developer mode on her account offers write tools (docs disagree for Plus/Pro).
+   If writes are unavailable, reads still work and write-back is the platform gate; the target stays ChatGPT.
+3. **Account steps**: the origin/tunnel itself; adding the app in Gio's ChatGPT (Settings → Apps → developer mode →
+   create, URL `https://<origin>/ext/mcp`, OAuth); giving Gio her code (`neurosearch access invite --actor gio` or the
+   settings card).
+
+**Claude Code, on the Mac (no Kyle decision needed):** pull + run the full suite on macOS; `neurosearch access
+backfill-classes` (dry run) and report the counts here, then `--apply` (materialises the same rule reads already
+use — no behaviour change); push. Release-check + version bump wait for EA-9.

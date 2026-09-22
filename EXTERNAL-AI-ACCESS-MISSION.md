@@ -1,7 +1,8 @@
 > **STATUS (2026-09-22): P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.** Kyle's directive of 2026-09-22 supersedes every earlier
 > status line in this file ("PARKED", "FILED, NOT STARTED", §38's "P11 remains PARKED", §66–§67's "does not admit"): those were
 > true when written and are kept as history. The Frozen Architecture (§38–§67) is ACCEPTED and is not to be redrafted.
-> The execution plan is `docs/P11-EXECUTION-PLAN-2026-09-22.md`. Implementation has NOT started. P11 joins the NOW queue
+> The execution plan is `docs/P11-EXECUTION-PLAN-2026-09-22.md`. **Update, same day: Kyle authorised execution; EA-0…EA-8 are
+> built (HANDOFF 2026-09-22 "EA-0 → EA-8"), EA-9 is gated on transport and account steps.** P11 joins the NOW queue
 > without replacing or rewriting other admitted work.
 
 # MISSION — External AI Access + Bidirectional Project Intelligence
