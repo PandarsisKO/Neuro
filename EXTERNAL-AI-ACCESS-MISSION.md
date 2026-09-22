@@ -1013,3 +1013,337 @@ ChatGPT should be free to use its own multimodal and conversational strengths. N
 project's accumulated intelligence when needed and quietly absorb durable new knowledge when the conversation
 creates it. **Neither system should redundantly repeat work the other has already done.** The result is a fast,
 concise, natural ChatGPT experience backed by Neuro's persistent research, evidence, relationships and memory.
+
+
+---
+
+# FROZEN ARCHITECTURE — 2026-09-22 (§38–§67)
+
+**Source note.** §1–§37 are historical context: the original brief, the 2026-09-11 amendment, and the
+2026-09-11-session's repository observations. This section is the authoritative, self-contained frozen architecture
+for External AI Access / P11, developed in a parallel architecture review and reconciled here against the repo at
+commit `09a8439c` (`release: 0.63.95`). **Where this section and §1–§37 disagree, this section governs**, the same
+precedence rule §20 and the 2026-09-11 amendment already established for their own predecessors. **P11 remains
+PARKED.** This is documentation only; nothing below is built, and nothing here admits P11 into the active queue.
+Historical §1–§37 are kept for the worked scenarios and repository observations they still usefully record, not as
+a second, competing spec.
+
+## §38 Core product boundary
+
+ChatGPT, Claude and future LLM clients own the live conversation, immediate reasoning, multimodal understanding,
+drafting, rewriting, tone, translation, and OCR/transcription when they already performed it, plus conversational
+follow-up. Neuro owns durable project intelligence: sources, evidence, findings, Claims, research state, facts,
+constraints, requirements, decisions, rejected options, rationale, counterpart positions, chronology, plan state,
+provenance, and persistent relationships.
+
+**Principle: ChatGPT handles the moment. Neuro remembers what the moment means to the project.** Neither side
+repeats cognition the other already performed.
+
+## §39 Structured external interface
+
+New P11 operations return versioned structured JSON. Markdown-string MCP responses are not the durable machine
+contract. Existing MCP tools remain compatibility wrappers over the structured contract, not the contract itself.
+
+Every external response should carry, where applicable: `schema_version · project_id · project_revision · as_of ·
+truncated · next_cursor · data`.
+
+Core service functions live below MCP, matching §14's existing layering rule:
+
+```text
+Core Neuro service -> REST/API -> MCP/client adapters
+```
+
+## §40 External identity and ACL
+
+Named external identities, revocable credentials, and per-project permissions. Possession of an external credential
+never implies access to every project (§11's core requirement, restated as a hard boundary here).
+
+Presets remain **Read Only · Read + Contribute · Owner** (§11). Read + Contribute may search/read evidence, add
+sources/correspondence, submit processed material, and record permitted user-authored state. It may not delete
+projects/sources, change budgets/settings, administer access, or approve research findings unless explicitly
+granted.
+
+**Actor identity and client identity are separate.** Neuro must be able to distinguish "Gio using ChatGPT" from
+"Kyle using ChatGPT" — the credential identifies the client connection, not necessarily which person is at the
+keyboard.
+
+## §41 Disclosure policy is separate from ACL
+
+Project access does not imply permission to disclose every object in that project. `authorize()` returns both
+operation permissions and the disclosure policy. Read-assembly functions receive that policy and construct only
+from permitted material. **Never retrieve everything and filter restricted material at egress** — the policy is an
+input to assembly, not a post-hoc filter.
+
+Disclosure is enforced inside: `open_project · get_project_changes · search_project · consult_project ·
+get_evidence · timeline/chronology queries · future read paths`.
+
+Data classes, at minimum: `standard · correspondence · financial · tax · identity · restricted`. Unclassified
+external-disclosure state is restrictive by default. A client-declared class may only make material *more*
+restrictive, never downgrade it — only an authorized owner can lower a classification, and that change is audited.
+
+## §42 Sensitivity propagates through provenance
+
+Source filtering alone is insufficient. Findings, Claims, Tensions, open Questions, plan-derived state, and
+project-change events inherit the most restrictive relevant disclosure floor from the evidence/state they depend
+upon, via the provenance link §4, §26 and §33 already require Neuro to keep. **A derived artifact may not be
+disclosed more broadly than its contributing material.**
+
+P11 v1 may conservatively withhold a derived artifact entirely rather than compute a disclosure-safe subset.
+Re-deriving a narrowed version from only the evidence a given identity is permitted to see is a **future
+optimisation**, filed here so it is not mistaken for a v1 requirement or a design ceiling.
+
+## §43 Legacy sensitivity backfill
+
+Do not classify by platform alone. Existing material provably acquired anonymously or publicly — no authenticated
+session, cookies, private browser capture, or user-private input involved — may backfill to `standard`.
+Authenticated, session-scoped, browser-private, or user-private material becomes `restricted`, regardless of
+platform. Material whose acquisition provenance cannot establish either case **stays restricted/unclassified for
+external disclosure** — uncertainty defaults closed, consistent with §41's classification rule.
+
+**EA-0 (§66) defines and tests this backfill.**
+
+## §44 Project change ledger
+
+One narrow, append-only project-change ledger, rather than specialised history tables for every object. Conceptual
+fields:
+
+```text
+id AUTOINCREMENT
+project_id
+event_type
+object_type
+object_id
+actor_id
+external_client_id
+intake_id / request_id
+before
+after
+disclosure_floor
+created_at
+```
+
+Existing domain tables remain authoritative current state. **The ledger is not event sourcing and must never become
+a second state model.** It provides the external sync cursor, chronology, actor attribution, state-transition
+history, auditability, conflict context, and change feeds.
+
+Each ledger row's `disclosure_floor` (§42) is the maximum — most restrictive — sensitivity of every field its
+`before`/`after` payload exposes, so an event cannot become readable to a lower-clearance identity merely because
+the event record itself was not separately classified.
+
+## §45 Ledger mutation invariant
+
+Ledger append happens through a single mutation choke point, inside the same database transaction as the
+authoritative state change. Correct ordering:
+
+```text
+BEGIN
+read only the small tracked before-fields
+perform mutation
+compare exact tracked old/new values
+append event when appropriate
+COMMIT
+```
+
+After commit: materiality / Decision Impact classification, cache invalidation, notification/sync preparation.
+**Never perform expensive loops, inference, network work, or large diff construction while holding the write
+transaction.** `before`/`after` contain only bounded decision-relevant state — never whole rows, source bodies,
+transcript excerpts, or giant JSON.
+
+## §46 Exact no-op suppression
+
+Derived recomputation that lands on identical tracked values creates no project-change event. An idempotent retry
+with the same request identity (§11's `client_request_id` / file hash / `external_message_id`) creates no duplicate
+event. Internal maintenance work — job heartbeats, usage rows, caches, worker state, and similar operational
+mutations — does not belong in the project-intelligence ledger at all.
+
+Derive the ledgered event taxonomy primarily from the state already fingerprinted by `conversation_delta_revision()`
+(`db.py`) plus user facts/decisions, because that existing code deliberately excludes irrelevant job churn.
+
+## §47 Explicit user reaffirmation exception
+
+§46's no-op suppression is for *incidental* recomputation landing on an unchanged value. An **explicit user
+reaffirmation** is meaningful even when the current-state value is unchanged. Example: the seller applies new
+pressure, and Gio says *"I understand. We are still staying at 10%."* The current decision remains 10%, but Neuro
+records a `decision_reaffirmed` event with actor, context, timestamp and rationale when available — the underlying
+decision row is left unchanged, not overwritten or duplicated.
+
+Summary: derived same-value recomputation = no event · idempotent retry = no event · explicit user reaffirmation =
+chronology event, current-state row unchanged.
+
+## §48 Semantic external delta
+
+External clients must not synchronise on "rows were touched" — reassessment is not itself intelligence change.
+Example: 56 Claims reassessed, 54 unchanged, 2 genuinely changed — only the 2 changed Claims enter the semantic
+change stream. Materiality and Decision Impact ordering happen after commit, over actual changed events. One global
+ledger ID sequence can provide filtered/scoped views rather than five separate physical counters.
+
+Delta responses are bounded, impact-ordered and cursor-based. A large overnight research run should surface as
+something like *"56 reassessed · 3 materially changed · 1 could change an active decision"* rather than dumping 56
+refreshed objects. `conversation_delta_revision()` remains useful as a cheap change/fingerprint token but is not
+itself a diff log.
+
+## §49 Durable user state model
+
+Current `project_facts` (`db.py`) is insufficient for multi-person automatic sync. The eventual additive model must
+support, conceptually: `actor_id · external_client_id · rationale · status · effective_at · supersedes_fact_id ·
+explicitness · client_request_id`. A changed decision supersedes prior state rather than leaving contradictory
+"current" facts. Preserve history. Distinguish individual preference from project decision.
+
+## §50 Auto-sync boundary
+
+Explicit durable user state may commit directly: *"We are staying at 10%." · "Agreed, do that." · "Change it to
+7.5%."* Inferred durable state is proposed/reviewable: *"Maybe we should be more flexible." · "I'm worried about
+retention."* Presentation chatter is not project memory: *"Make it shorter." · "Use a warmer tone."* — matching §30's
+existing durable/not-durable split. User acceptance can promote an assistant recommendation into an explicit user
+decision without requiring the user to restate the whole recommendation (§30's existing rule).
+
+## §51 Optimistic concurrency
+
+Important external state writes may carry the project/change revision they were based on. If Kyle and Gio change
+the same state concurrently, Neuro must not silently use last-writer-wins — return a conflict with current state and
+proposed state when appropriate. Evidence/source ingestion generally does not require the same conflict semantics;
+project truth does.
+
+## §52 External Intake Event
+
+One external conversation turn may contain multiple distinct things — screenshot, PDF, spreadsheet, correspondence,
+user decision, AI interpretation. Keep those objects distinct but group them under one durable intake event carrying
+actor/client/project/request/provenance/idempotency state. `source_captures` (`db.py`, `ingest.py`, `api.py`) is the
+architectural precedent: one canonical source may already correspond to several meaningful capture/intake events.
+The Project Inbox (§8) may be a view rather than a second queue. Orphaned/incomplete intakes surface as
+`needs_review`; they must never disappear silently.
+
+## §53 Raw and processed ingestion
+
+Both paths supported, as §22 already establishes: **Path A** — raw material → Neuro extraction → Neuro knowledge
+system. **Path B** — raw material already understood by an external AI → structured extraction → Neuro knowledge
+system. One Neuro persistent knowledge architecture, several extraction producers (§21). Do not OCR, transcribe,
+parse or refetch merely to reproduce work the external LLM already performed.
+
+Preserve: original material when practical · extracted representation · structured information ·
+provenance/locators · producer · extraction method · confidence where applicable · interpretation kept separately.
+Source, extraction and interpretation never collapse (§23). AI interpretation is never evidence merely because an
+AI generated it.
+
+## §54 Multimodal processed-material contract
+
+The processed-material schema (§24's `add_processed_material`) must be capable of representing: screenshots/images
+with visible text and regions · PDFs with page-bounded text · URLs with canonical URL/headings/text ·
+correspondence metadata/body/thread information · spreadsheets with structured values plus original workbook when
+Neuro features require formulas (§25e) · audio/video with timestamped transcript segments, optional speaker
+identity, language and confidence.
+
+A separate public `add_processed_media` convenience tool may be a fast-follow; the v1 schema must not require a
+retrofit to support it.
+
+## §55 Artifact transport abstraction
+
+Keep intake metadata/processed JSON separate from large binary transport. Conceptually:
+
+```text
+create_intake
+add_processed_material
+attach_artifact(intake_id, artifact_ref)
+finalize_intake
+```
+
+`artifact_ref` can resolve through supported transport mechanisms — multipart REST upload, temporary client file
+handle, supported MCP resource, signed temporary URL, or future attachment reference. The domain model must not
+hardcode one client's file-transfer mechanism.
+
+Signed/remote refs are an SSRF boundary: allowlisted ref kinds, existing validated/safe fetch machinery, no
+internal/link-local access or unsafe redirects, streaming size enforcement, resolved-byte hashing and normal Neuro
+dedupe. Finalization is idempotent: repeating the same request ID returns the original result rather than
+duplicating the intake.
+
+## §56 Read interface
+
+Keep the stable external surface small. Conceptually: `list_projects · open_project · get_project_changes ·
+search_project · get_evidence · consult_project · add_intake / processed-material operations · sync_project_state ·
+get_intake_status`, eventually `get_project_timeline`. Existing detailed MCP operations (§19's 17 tools) may remain
+for compatibility.
+
+## §57 Project orientation and revisions
+
+`open_project` returns compact orientation, client/server capabilities, disclosure constraints and
+revision/cursor information in one inexpensive structured call — the same "one inexpensive call" requirement §5
+already places on `get_project_context`. Do not require ten tiny discovery calls. Do not run a model just to orient
+a client (§14's existing performance rule).
+
+## §58 `consult_project` semantics
+
+A compact deterministic/stored intelligence packet — not Neuro native chat, and not a newly generated advisory
+answer. It may contain stored state and named deterministic derivations Neuro already owns: current user/project
+position · relevant constraints · relevant research state · changed intelligence · tensions/watch-outs · current
+plan implications · unresolved questions · evidence availability. Derived values identify their basis/version where
+appropriate — a Planner recommendation returns as `stored_plan_recommendation` with the plan/version that owns it.
+ChatGPT/Claude performs the immediate final reasoning, consistent with §27's packet and §28's "ChatGPT synthesises"
+rule.
+
+## §59 Read/write decisions per turn
+
+Every external turn independently asks the two questions §29 already poses: does the LLM need new Neuro
+information, and did this turn create durable project information Neuro should remember. Read/write/both/neither
+are all valid answers. Once project information has been retrieved, presentation transformations continue locally
+until substantive reasoning or project state changes (§29's local-continuation rule).
+
+## §60 Chronology
+
+Chronology storage begins in v1 because lost history cannot be reconstructed later. A rich `get_project_timeline`
+experience may be additive after the vertical slice (§65), but the ledger (§44) and actor/state-event model
+required to answer chronology must exist from the start.
+
+## §61 Revocation
+
+Revoking an external credential stops new requests and uncommitted external state mutations. Material already
+durably accepted into Neuro remains part of the project and continues through Neuro's own authorized processing
+pipeline with its original attribution. The revocation boundary itself is audited.
+
+## §62 Transport and disclosure are independent
+
+Server reachability and information disclosure are separate security questions. Current preferred direction: local
+Neuro UI/tools → local/LAN · private-network-capable clients → LAN/VPN/private connection · ChatGPT → optional
+Secure MCP Tunnel where required · public inbound Neuro endpoint → **not** P11 v1. The tunnel is optional and
+independently switchable — Neuro continues working locally if it is unavailable. Separate per-client disclosure
+rules (§41–§42) govern what project material may be sent through that connection.
+
+## §63 Capability negotiation
+
+External client capabilities vary and must not be hardcoded by vendor. Capability description may include: vision ·
+OCR · PDF understanding · table extraction · transcription · speaker diarization · web access · binary/file
+transport · read/write support. Transport capability and disclosure permission (§41) remain separate.
+
+## §64 External AI Health
+
+Do not render one generic "connected/not connected" status. Health should distinguish: transport/tunnel offline ·
+credential invalid or revoked · project unauthorized · disclosure policy denial · client capability limitation ·
+Neuro API/integration failure. Where useful, show transport, last handshake, last request, last success and last
+policy denial, without logging sensitive payloads.
+
+## §65 P11 v1 vertical slice
+
+"Full data model and contract, narrower surface" still means a real, usable end-to-end slice: external identity +
+project ACL · disclosure policy · structured project orientation · revision/change cursor · bounded semantic
+changes · project search + evidence drill-down · raw/processed intake · explicit user decision/state sync with
+actor and supersession · intake/status receipt · one real external client completing the loop. Timeline UI/query
+richness, Undo UI, a richer Project Inbox, dedicated processed-media convenience tools, and additional clients may
+follow once this slice is proven.
+
+## §66 EA-0 responsibilities
+
+**EA-0 is discovery and contract-shaping work, not implementation.** It resolves, from the current repo and current
+client capabilities: structured contract/schema versions · external identity/ACL shape · capability matrix ·
+transport options · disclosure classes/policies · legacy classification backfill (§43) · externally-observable
+event taxonomy · per-object exact equality fields · materiality/Decision Impact rules and versions ·
+processed-material envelope · artifact transport support. **It does not reopen the architecture above without
+finding a concrete contradiction in current code, and completing it does not itself admit P11 or authorise writing
+implementation code** — admission is a separate, explicit scheduling decision (§67), governed by the same rule §13
+already states: a session picking this mission up confirms with Kyle that this is the current work before writing
+code.
+
+## §67 Sequencing
+
+P11 remains PARKED behind the current NOW queue (confirmed live against `PRODUCT-SCHEDULER.md` and `HANDOFF.md`'s
+PARKED line at the commit checked for this amendment). This documentation work does not admit P11 and does not
+authorise implementation. Neither does EA-0 (§66) on its own — admission is decided separately, when Kyle reopens
+the mission.
