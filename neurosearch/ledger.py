@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 MATERIALITY_VERSION = "m1"
 MAX_PAYLOAD_BYTES = 4096
-WRITERS = ("db.py", "claims.py", "knowledge.py", "retire.py", "access.py", "facts.py", "intake.py", "ledger.py")
+WRITERS = ("db.py", "claims.py", "knowledge.py", "retire.py", "access.py", "facts.py", "intake.py", "ledger.py", "identity.py")
 
 # Explicit-chronology events: written even when the tracked value is unchanged, only ever from an explicit user act.
 FORCED = frozenset({"decision_reaffirmed"})

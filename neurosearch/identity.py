@@ -186,9 +186,12 @@ def resolve_or_create_source(cand: Candidate, project_id: str | None, *, initial
         state = NEW if created else classify(src, project_id, conn)
         attached = False
         if attach and project_id and state != ALREADY_IN_PROJECT:
+            member = conn.execute("SELECT excluded FROM project_sources WHERE project_id=? AND source_id=?", (project_id, src["id"])).fetchone()
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", (project_id, src["id"]))
             conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (db.now(), project_id))
             attached = True
+            if member is None:                      # P11 EA-2: a new member of this project (an exclusion marker stays one)
+                db._record_membership(conn, project_id, [src["id"]], "source_attached")
     res = Resolution(state=state, source=src, created=created, attached=attached, resumed=resumed)
     if created and initial_status != "proposed":
         try:

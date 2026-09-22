@@ -331,6 +331,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
                                max_items=payload.get("max_items"), progress=progress)
+    if kind == "intake_item":
+        from . import intake          # P11 EA-4/5: an external intake item, on the ordinary queue
+        return intake.process_item(payload["item_id"], progress)
     if kind == "ingest_file":
         from pathlib import Path
         path = Path(payload["path"])

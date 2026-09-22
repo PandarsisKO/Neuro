@@ -3726,7 +3726,8 @@ def api_delete_conversation(conversation_id: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------ P11 external AI access (api_external.py)
 
-from .api_external import admin_router as _p11_admin_router, ext_router as _p11_ext_router  # noqa: E402 — needs require_auth, defined above
+from .api_external import admin_router as _p11_admin_router, ext_router as _p11_ext_router, inbox_router as _p11_inbox_router  # noqa: E402
 
 app.include_router(_p11_admin_router(require_auth))
 app.include_router(_p11_ext_router())
+app.include_router(_p11_inbox_router(require_auth))

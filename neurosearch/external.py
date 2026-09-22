@@ -314,13 +314,93 @@ def consult_project(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]
     return envelope(data, auth=auth)
 
 
+# ------------------------------------------------------------------ writes (EA-4..EA-6)
+
+def _visible_fact(auth: Authorization, fact_id: Any) -> dict[str, Any]:
+    f = facts.get(int(fact_id)) if fact_id is not None else None
+    if not f or f["project_id"] != auth.project_id or access.fact_class(f) not in auth.classes:
+        raise AccessError("not_found", "no such fact in this project")       # you cannot change what you cannot see
+    return f
+
+
+def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    """§50/§51 (plan §7). Explicit state commits, inferred state is proposed, presentation chatter never arrives here.
+    Each change stands alone: a conflict on one is reported and the others still apply. Idempotent per
+    client_request_id."""
+    body = check("external.sync.v1", {k: v for k, v in args.items() if k in ("project_id", "base_revision", "intake_id", "changes")})
+    base = body.get("base_revision")
+    applied, conflicts = [], []
+    for ch in body["changes"]:
+        op = ch["op"]
+        try:
+            if op in ("record", "propose"):
+                if not ch.get("kind") or not ch.get("content"):
+                    raise AccessError("invalid", f"{op} needs kind and content")
+                expl = "inferred" if op == "propose" else ch.get("explicitness", "explicit")
+                f = facts.record(auth.project_id, ch["kind"], ch["content"], explicitness=expl, scope=ch.get("scope", "project"),
+                                 rationale=ch.get("rationale"), referent=ch.get("referent"),
+                                 disclosure_class=ch.get("disclosure_class") or "standard", client_request_id=ch["client_request_id"])
+            elif op == "reaffirm":
+                _visible_fact(auth, ch.get("fact_id"))
+                f = facts.reaffirm(int(ch["fact_id"]), rationale=ch.get("rationale"), base_cursor=base, client_request_id=ch["client_request_id"])
+            elif op == "supersede":
+                old = _visible_fact(auth, ch.get("fact_id"))
+                if not ch.get("content"):
+                    raise AccessError("invalid", "supersede needs content")
+                f = facts.supersede(int(ch["fact_id"]), ch["content"], rationale=ch.get("rationale"), base_cursor=base,
+                                    explicitness=ch.get("explicitness", "explicit"),
+                                    disclosure_class=access.merge_declared(old.get("disclosure_class"), ch.get("disclosure_class")),
+                                    client_request_id=ch["client_request_id"])
+            else:                                                              # withdraw
+                _visible_fact(auth, ch.get("fact_id"))
+                f = facts.withdraw(int(ch["fact_id"]), rationale=ch.get("rationale"), base_cursor=base)
+            applied.append({"op": op, "fact_id": f["id"], "status": f["status"], "replay": bool(f.get("idempotent_replay")),
+                            "fact": _fact_out(f)})
+        except facts.Conflict as e:
+            conflicts.append({"op": op, "client_request_id": ch["client_request_id"], **e.as_dict(),
+                              "current": _fact_out(e.current) if e.current else None})
+    return {"applied": applied, "conflicts": conflicts}
+
+
+def sync_project_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    return envelope(apply_state(auth, args), auth=auth)
+
+
+def create_intake(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    from . import intake
+    return envelope(intake.create(auth, args), auth=auth)
+
+
+def add_processed_material(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    from . import intake
+    return envelope(intake.add_processed(auth, args), auth=auth)
+
+
+def attach_artifact(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    from . import intake
+    return envelope(intake.attach(auth, args, upload=args.pop("_upload", None)), auth=auth)
+
+
+def finalize_intake(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    from . import intake
+    return envelope(intake.finalize(auth, args, apply_state=apply_state), auth=auth)
+
+
+def get_intake_status(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
+    from . import intake
+    return envelope(intake.get_status(auth, args), auth=auth)
+
+
 # ------------------------------------------------------------------ dispatcher
 
 READS: dict[str, Callable[[Authorization, dict[str, Any]], dict[str, Any]]] = {
     "open_project": open_project, "get_project_changes": get_project_changes, "search_project": search_project,
-    "get_evidence": get_evidence, "consult_project": consult_project,
+    "get_evidence": get_evidence, "consult_project": consult_project, "get_intake_status": get_intake_status,
 }
-WRITES: dict[str, Callable[[Authorization, dict[str, Any]], dict[str, Any]]] = {}      # EA-4..EA-6 register here
+WRITES: dict[str, Callable[[Authorization, dict[str, Any]], dict[str, Any]]] = {
+    "create_intake": create_intake, "add_processed_material": add_processed_material, "attach_artifact": attach_artifact,
+    "finalize_intake": finalize_intake, "sync_project_state": sync_project_state,
+}
 PROJECTLESS: dict[str, Callable[[Principal, dict[str, Any]], dict[str, Any]]] = {"list_projects": list_projects}
 
 

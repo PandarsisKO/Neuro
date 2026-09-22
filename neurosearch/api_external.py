@@ -150,6 +150,26 @@ def ext_router() -> APIRouter:
     """`/api/ext/v1/<op>` — one POST per operation, JSON in, the §39 envelope out. External credential only."""
     r = APIRouter(prefix="/api/ext/v1")
 
+    @r.post("/intakes/{intake_id}/artifacts")
+    async def ext_upload(intake_id: str, request: Request) -> JSONResponse:
+        """§55 multipart transport: the original file's bytes. Form fields: project_id, file, item_id?,
+        client_declared_class?, item_request_id?."""
+        form = await request.form()
+        f = form.get("file")
+        if f is None or not hasattr(f, "read"):
+            return JSONResponse({"schema_version": "1", "error": {"code": "invalid", "message": "multipart field 'file' is required"}}, status_code=422)
+        data = await f.read()
+        args = {"project_id": form.get("project_id"), "intake_id": intake_id, "item_id": form.get("item_id") or None,
+                "client_declared_class": form.get("client_declared_class") or None, "item_request_id": form.get("item_request_id") or None,
+                "artifact_ref": {"kind": "multipart", "filename": getattr(f, "filename", None) or "artifact"},
+                "_upload": (getattr(f, "filename", None) or "artifact", data, getattr(f, "content_type", None))}
+        secret = _bearer(request)
+        try:
+            out = await anyio.to_thread.run_sync(lambda: external.call(secret, "attach_artifact", args))
+        except external.ExternalError as e:
+            return JSONResponse(e.body(), status_code=e.status, headers={"WWW-Authenticate": "Bearer"} if e.status == 401 else None)
+        return JSONResponse(out)
+
     @r.post("/{op}")
     async def ext_call(op: str, request: Request) -> JSONResponse:
         try:
@@ -165,5 +185,17 @@ def ext_router() -> APIRouter:
             headers = {"WWW-Authenticate": "Bearer"} if e.status == 401 else None
             return JSONResponse(e.body(), status_code=e.status, headers=headers)
         return JSONResponse(out)
+
+    return r
+
+
+def inbox_router(require_auth: Callable[..., None]) -> APIRouter:
+    """The local owner's Project Inbox (§8): a view over external intakes, needs_review first."""
+    r = APIRouter(prefix="/api/projects", dependencies=[Depends(require_auth)])
+
+    @r.get("/{project_id}/inbox")
+    def project_inbox(project_id: str, limit: int = 50) -> dict[str, Any]:
+        from . import intake
+        return {"intakes": intake.inbox(project_id, limit=max(1, min(limit, 200)))}
 
     return r

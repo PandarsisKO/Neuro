@@ -920,6 +920,50 @@ CREATE TABLE IF NOT EXISTS project_change_events (
 CREATE INDEX IF NOT EXISTS ix_pce_project_id ON project_change_events(project_id, id);
 CREATE INDEX IF NOT EXISTS ix_pce_object ON project_change_events(object_type, object_id);
 CREATE INDEX IF NOT EXISTS ix_pce_unclassified ON project_change_events(materiality) WHERE materiality IS NULL;
+
+-- P11 EA-4 (§52, §55): one external turn = one intake EVENT grouping several distinct items. Idempotent on the
+-- client's own request id; an item and its processing job are created in one transaction (intake._new_item, the
+-- create_or_get_capture_ingest_request idiom). The Project Inbox is a view over these two tables, not a queue.
+CREATE TABLE IF NOT EXISTS external_intakes (
+    id                  TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    actor_id            TEXT NOT NULL,
+    client_id           TEXT NOT NULL,
+    credential_id       TEXT NOT NULL,
+    client_request_id   TEXT NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'received',   -- received | routing | queued | processing | ready | needs_review | failed
+    needs_review_reason TEXT,
+    error               TEXT,
+    base_revision       TEXT,                               -- the ledger cursor the client reasoned against (§51)
+    conversation_ref    TEXT,                               -- opaque client thread id; never parsed
+    created_at          REAL NOT NULL,
+    updated_at          REAL NOT NULL,
+    finalized_at        REAL,
+    UNIQUE(client_id, client_request_id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_intakes_project ON external_intakes(project_id, created_at);
+CREATE TABLE IF NOT EXISTS intake_items (
+    id                TEXT PRIMARY KEY,
+    intake_id         TEXT NOT NULL REFERENCES external_intakes(id) ON DELETE CASCADE,
+    kind              TEXT NOT NULL,          -- raw_artifact | processed_material | user_state | interpretation
+    material_type     TEXT,                   -- image | pdf | url | correspondence | spreadsheet | transcript | text (§54)
+    artifact_ref      TEXT,                   -- JSON {kind: multipart | signed_url | …}
+    sha256            TEXT,
+    bytes             INTEGER,
+    content_type      TEXT,
+    producer          TEXT,                   -- who extracted it (§53): the client's label, never assumed to be Neuro
+    extraction_method TEXT,
+    confidence        REAL,
+    payload           TEXT,                   -- JSON: processed material / interpretation text / retention path
+    source_id         TEXT,                   -- the Neuro source it became (may be an EXISTING one: dedupe)
+    ingest_job_id     TEXT,                   -- written in the SAME insert that creates the item
+    fact_id           INTEGER,
+    status            TEXT NOT NULL DEFAULT 'received',
+    error             TEXT,
+    created_at        REAL NOT NULL,
+    updated_at        REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_intake_items_intake ON intake_items(intake_id);
 """
 
 _local = threading.local()

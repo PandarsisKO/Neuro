@@ -101,6 +101,69 @@ async def consult_project(project_id: str, question: str, ctx: Context, since_cu
                                                 "focus": {"claim_ids": claim_ids} if claim_ids else None})
 
 
+# ------------------------------------------------------------------ writes (the contributor's own words and material)
+
+@server.tool(annotations=WRITE)
+async def sync_project_state(project_id: str, changes: list[dict[str, Any]], ctx: Context, base_revision: int | None = None) -> dict[str, Any]:
+    """Record what the user made DURABLE in this turn. Each change: {op, kind, content, fact_id, rationale, explicitness,
+    scope, referent, disclosure_class, client_request_id}.
+    op: record (an explicit statement: "We're staying at 10%") · reaffirm (fact_id; "we're STILL at 10%") · supersede
+    (fact_id + new content; "change it to 7.5%") · propose (something you inferred; stays reviewable) · withdraw.
+    kind: decision · constraint · requirement · rejected · commitment · preference · context.
+    scope: personal for one person's preference ("I personally prefer…"), project for the shared position.
+    explicitness: explicit, or accepted_recommendation WITH referent = the ONE proposal the user said yes to.
+    Never record tone/format/drafting requests. Pass base_revision = the ledger_cursor you last saw; a conflict comes
+    back instead of overwriting a collaborator. client_request_id: a fresh unique id per change, reused on retry."""
+    return await _call(ctx, "sync_project_state", {"project_id": project_id, "changes": changes, "base_revision": base_revision})
+
+
+@server.tool(annotations=WRITE)
+async def create_intake(project_id: str, client_request_id: str, ctx: Context, base_revision: int | None = None,
+                        conversation_ref: str | None = None) -> dict[str, Any]:
+    """Start one intake for material the user shared in this turn (a screenshot, PDF, email, spreadsheet, recording…).
+    Reuse the same client_request_id on retry. Then add each item, then finalize."""
+    return await _call(ctx, "create_intake", {"project_id": project_id, "client_request_id": client_request_id,
+                                              "base_revision": base_revision, "conversation_ref": conversation_ref})
+
+
+@server.tool(annotations=WRITE)
+async def add_processed_material(project_id: str, intake_id: str, material: dict[str, Any], ctx: Context,
+                                 item_request_id: str | None = None) -> dict[str, Any]:
+    """Give Neuro what YOU already read, so Neuro never reads it again: material = {material_type (image|pdf|url|
+    correspondence|spreadsheet|transcript|text), title, producer (your client's name), extraction_method (vision|ocr|
+    pdf_text|html|asr|table|manual|other), units: [{locator ("p. 3", "00:12:34", "sheet!A1", "msg:<id>"), text,
+    speaker?, start?, end?, confidence?}], correspondence?, table?, canonical_url?, confidence?, language?,
+    client_declared_class? (standard|correspondence|financial|tax|identity|restricted — say how sensitive it is)}.
+    Put only what the material SAYS here; your interpretation goes to finalize_intake as an interpretation."""
+    return await _call(ctx, "add_processed_material", {"project_id": project_id, "intake_id": intake_id, "material": material,
+                                                       "item_request_id": item_request_id})
+
+
+@server.tool(annotations=WRITE)
+async def attach_artifact(project_id: str, intake_id: str, artifact_ref: dict[str, Any], ctx: Context, item_id: str | None = None,
+                          client_declared_class: str | None = None, item_request_id: str | None = None) -> dict[str, Any]:
+    """Attach the ORIGINAL file by reference ({kind: signed_url, url, filename?, sha256?}). With item_id it is kept as
+    the original of material you already processed (Neuro does not read it again); without it Neuro reads it itself."""
+    return await _call(ctx, "attach_artifact", {"project_id": project_id, "intake_id": intake_id, "artifact_ref": artifact_ref,
+                                                "item_id": item_id, "client_declared_class": client_declared_class,
+                                                "item_request_id": item_request_id})
+
+
+@server.tool(annotations=WRITE)
+async def finalize_intake(project_id: str, intake_id: str, ctx: Context, user_state: list[dict[str, Any]] | None = None,
+                          interpretations: list[dict[str, Any]] | None = None, base_revision: int | None = None) -> dict[str, Any]:
+    """Close the intake. user_state: the same change objects as sync_project_state, for durable things the user said
+    about this material. interpretations: [{text, about_item_id?}] — YOUR reading, stored as interpretation, never as evidence."""
+    return await _call(ctx, "finalize_intake", {"project_id": project_id, "intake_id": intake_id, "user_state": user_state,
+                                                "interpretations": interpretations, "base_revision": base_revision})
+
+
+@server.tool(annotations=READ)
+async def get_intake_status(project_id: str, intake_id: str, ctx: Context) -> dict[str, Any]:
+    """Where an intake is: received → queued → processing → ready, or needs_review with the reason."""
+    return await _call(ctx, "get_intake_status", {"project_id": project_id, "intake_id": intake_id})
+
+
 def app():
     from mcp.server.transport_security import TransportSecuritySettings
     return server.streamable_http_app(streamable_http_path="/", stateless_http=True,
