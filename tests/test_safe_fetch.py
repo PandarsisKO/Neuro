@@ -295,3 +295,41 @@ def test_unsafe_ip_classification():
     for ip in ("93.184.216.34", "8.8.8.8", "2606:4700::1111", "1.1.1.1"):
         assert SF.is_unsafe_ip(ip) is None, ip
     assert SF.is_unsafe_ip("not-an-ip") == "host"
+
+
+# ---------------------------------------------------------------- P11: external file references use THIS boundary
+
+def test_p11_file_references_are_fetched_only_through_the_boundary(harness):
+    """Kyle's review, 2026-09-22: conversation sync must not become a second URL fetcher. The immediate fetch of a client
+    file reference (intake._fetch_now) is driven here through the real harness — pinned resolution, private/link-local
+    and metadata refusal, redirect re-validation at every hop, size ceilings — and then content-sniffed."""
+    from neurosearch import access, intake
+    data, ctype, final = intake._fetch_now({"url": "http://public.test/pdf"})
+    assert data.startswith(b"%PDF") and intake._validate("x.pdf", data, ctype) == "pdf" and harness["connects"][-1] == (PUBLIC_A, 80)
+    cases = {"http://public.test/redirect-private": "private", "http://public.test/redirect-metadata": "private",
+             "http://public.test/redirect-scheme": "", "http://meta.test/x": "", "http://sixlink.test/x": "private",
+             "http://mixed.test/x": "", "http://public.test/big-length": "MB", "http://127.0.0.1/x": "private"}
+    for url, words in cases.items():
+        with pytest.raises(access.AccessError) as e:
+            intake._fetch_now({"url": url})
+        assert e.value.code == "invalid" and "could not fetch" in e.value.message, url
+        assert words.lower() in e.value.message.lower(), (url, e.value.message)
+    # DNS rebinding cannot move the connection: the hop is pinned to the address that was validated
+    data, _, _ = intake._fetch_now({"url": "http://public.test/redirect-rebind"})
+    assert data and harness["connects"][-1][0] == PUBLIC_B
+    assert all(ip == PUBLIC_A or ip == PUBLIC_B for ip, _ in harness["connects"])      # nothing private was ever connected
+
+
+def test_p11_modules_have_no_second_fetch_path():
+    import ast
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / "neurosearch"
+    fetchers = {"urllib.request", "httpx", "requests", "aiohttp", "urllib3", "http.client", "socket"}
+    for name in ("intake.py", "convsync.py", "external.py", "idp.py", "oauth.py", "access.py", "mcp_external.py", "api_external.py", "facts.py"):
+        tree = ast.parse((root / name).read_text())
+        for node in ast.walk(tree):
+            mods = [a.name for a in node.names] if isinstance(node, ast.Import) else ([node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+            for m in mods:
+                assert m not in fetchers and not any(m.startswith(f + ".") for f in fetchers), f"{name} imports {m}"
+    for name in ("intake.py", "idp.py", "oauth.py"):
+        assert "safe_fetch.safe_fetch(" in (root / name).read_text(), name

@@ -39,7 +39,15 @@ def kyle(client):
     return {"s": s, "acq": acq, "acct": acct, "private": secret_p, "client": c}
 
 
-def sync(client, s, **args):
+NAMED = {"basis": "user_named", "user_text": "save it to the acquisition project"}
+
+
+def sync(client, s, sel="named", **args):
+    """Tests that write to a known project say the user named it; `sel=None` sends no basis at all."""
+    if sel == "named" and "project_id" in args:
+        args["project_selection"] = NAMED
+    elif sel not in ("named", None):
+        args["project_selection"] = sel
     r = client.post("/api/ext/v1/sync_conversation_to_project", json=args, headers={"Authorization": f"Bearer {s}"})
     return r.status_code, r.json()
 
@@ -57,38 +65,6 @@ FREEFLOW_STATE = [
     {"op": "record", "kind": "context", "content": "Make it shorter"},
     {"op": "record", "kind": "context", "content": "use a warmer tone"},
 ]
-
-
-def test_9b_late_binding_nothing_is_written_until_the_project_is_confirmed(client, kyle):
-    code, env = sync(client, kyle["s"], client_request_id="save-000001", state=FREEFLOW_STATE)
-    assert code == 200 and env["data"]["status"] == "needs_project" and env["data"]["saved"] is False
-    names = [c["name"] for c in env["data"]["candidates"]]
-    assert set(names) == {"Business Acquisition", "Accounting firm purchase"} and "Personal taxes" not in names
-    # an INFERRED hint that matches one project is suggested and confirmed, never written (review item 2)
-    code, env = sync(client, kyle["s"], client_request_id="save-000001", project_hint="business acquisition", state=FREEFLOW_STATE)
-    assert env["data"]["status"] == "confirm_project" and env["data"]["suggestion"]["name"] == "Business Acquisition"
-    assert "Save it there?" in env["data"]["ask"]
-    assert db.connect().execute("SELECT COUNT(*) FROM project_facts").fetchone()[0] == 0
-    assert db.connect().execute("SELECT COUNT(*) FROM external_intakes").fetchone()[0] == 0
-    # the USER named it → written; no transcript, chatter dropped, inferred stays a suggestion
-    code, env = sync(client, kyle["s"], client_request_id="save-000001", project_hint="the business acquisition project",
-                     project_named_by_user=True, state=FREEFLOW_STATE)
-    d = env["data"]
-    assert code == 200 and d["saved"] and d["project"]["name"] == "Business Acquisition"
-    assert d["summary"] == ("Saved to Business Acquisition: 1 decision, 1 constraint, 1 counterpart position, 1 deadline, "
-                            "1 open question, 1 suggestion to review")
-    assert d["skipped"] == {"presentation": 2, "already_known": 0} and d["needs_attention"] == []
-    pos = {f["kind"]: f for f in facts.current_position(kyle["acq"])}
-    assert pos["decision"]["content"] == "Offer a 10% seller note" and "concern" not in pos
-    assert pos["decision"]["user_text"] == "OK, let's offer a 10% seller note."        # the trace of what the user said
-    assert not any("shorter" in f["content"].lower() or "tone" in f["content"].lower()
-                   for f in db.list_facts(kyle["acq"], include_history=True))
-    ev = [e for e in ledger.events(kyle["acq"])["events"] if e["object_type"] == "fact"]
-    assert {e["actor_id"] for e in ev} == {"kyle"} and {e["external_client_id"] for e in ev} == {kyle["client"]}
-    # once confirmed, the client passes project_id and later saves go straight in
-    _, env = sync(client, kyle["s"], client_request_id="save-000011", project_id=kyle["acq"], state=[
-        {"op": "record", "kind": "commitment", "content": "Send the broker our QoE request", "user_text": "I'll send the broker the QoE request."}])
-    assert env["data"]["saved"]
 
 
 def test_review_1_explicit_label_without_the_users_words_is_only_a_suggestion(client, kyle):
@@ -113,54 +89,8 @@ def test_review_1_explicit_label_without_the_users_words_is_only_a_suggestion(cl
     assert facts.get(fid)["status"] == "active"
 
 
-def test_review_3_retry_is_silent_but_a_new_restatement_is_a_reaffirmation(client, kyle):
-    st = [{"op": "record", "kind": "decision", "content": "Stay at 10%", "rationale": "frame it around the transition",
-           "user_text": "Monday: we're staying at 10%."},
-          {"op": "record", "kind": "context", "content": "Rewrite it"}, {"op": "record", "kind": "context", "content": "give me 3 versions"}]
-    _, env = sync(client, kyle["s"], client_request_id="save-000004", project_id=kyle["acq"], state=st)
-    assert env["data"]["summary"] == "Saved to Business Acquisition: 1 decision" and env["data"]["skipped"]["presentation"] == 2
-    fid = env["data"]["facts"][0]["fact_id"]
-    _, again = sync(client, kyle["s"], client_request_id="save-000004", project_id=kyle["acq"], state=st)       # accidental retry
-    assert again["data"]["idempotent_replay"] and again["data"]["summary"] == env["data"]["summary"]
-    _, resend = sync(client, kyle["s"], client_request_id="save-000005", project_id=kyle["acq"], state=st[:1])  # same words, new save
-    assert resend["data"]["skipped"]["already_known"] == 1 and resend["data"]["summary"].endswith("Nothing new to save to Business Acquisition") \
-        or resend["data"]["summary"] == "Nothing new to save to Business Acquisition"
-    _, friday = sync(client, kyle["s"], client_request_id="save-000006", project_id=kyle["acq"], state=[
-        {"op": "record", "kind": "decision", "content": "stay at 10%.", "rationale": "new seller pressure",
-         "user_text": "Friday: we're STILL staying at 10%."}])
-    assert friday["data"]["summary"] == "Saved to Business Acquisition: 1 reaffirmation"
-    types = [e["event_type"] for e in ledger.events(kyle["acq"], object_type="fact", object_id=str(fid))["events"]]
-    assert sorted(types) == ["decision_reaffirmed", "decision_recorded"]
-    assert len([f for f in facts.current_position(kyle["acq"]) if f["kind"] == "decision"]) == 1
-
-
-def test_review_5_late_sync_cannot_silently_replace_project_truth(client, kyle):
-    with ledger.acting("kyle"):
-        ten = facts.record(kyle["acq"], "decision", "Seller note stays at 10%", disclosure_class="standard", user_text="10%.")
-    # Gio-style freeflow: 20 minutes without Neuro, then "we're doing 7.5%" as a NEW decision, no base revision
-    _, env = sync(client, kyle["s"], client_request_id="save-000030", project_id=kyle["acq"], state=[
-        {"op": "record", "kind": "decision", "content": "Seller note at 7.5%", "user_text": "We're doing 7.5%."},
-        {"op": "record", "kind": "constraint", "content": "Close before year end", "user_text": "We need to close before year end."}])
-    d = env["data"]
-    assert d["counts"] == {**d["counts"], "constraint": 1} and "decision" not in d["counts"]          # the non-conflicting part lands
-    c = d["needs_attention"][0]
-    assert c["kind"] == "conflict" and c["current"]["content"] == "Seller note stays at 10%" and c["proposed"]["content"] == "Seller note at 7.5%"
-    assert [f["content"] for f in facts.current_position(kyle["acq"]) if f["kind"] == "decision"] == ["Seller note stays at 10%"]
-    # supersede without having read Neuro → conflict, not a blind overwrite
-    _, blind = sync(client, kyle["s"], client_request_id="save-000031", project_id=kyle["acq"], state=[
-        {"op": "supersede", "fact_id": ten["id"], "content": "Seller note at 7.5%", "user_text": "We're doing 7.5%."}])
-    assert blind["data"]["needs_attention"][0]["kind"] == "conflict" and facts.get(ten["id"])["status"] == "active"
-    # after reading (consult) and confirming with the user, the change goes through with the base it read
-    base = client.post("/api/ext/v1/consult_project", json={"project_id": kyle["acq"], "question": "seller note"},
-                       headers={"Authorization": f"Bearer {kyle['s']}"}).json()["ledger_cursor"]
-    _, ok = sync(client, kyle["s"], client_request_id="save-000032", project_id=kyle["acq"], base_revision=base, state=[
-        {"op": "supersede", "fact_id": ten["id"], "content": "Seller note at 7.5%", "user_text": "Yes, change it to 7.5%."}])
-    assert ok["data"]["summary"] == "Saved to Business Acquisition: 1 change"
-    assert [f["content"] for f in facts.current_position(kyle["acq"]) if f["kind"] == "decision"] == ["Seller note at 7.5%"]
-
-
 def test_9f_ambiguous_project_is_asked_never_guessed(client, kyle):
-    code, env = sync(client, kyle["s"], client_request_id="save-000002", project_hint="the seller note deal", project_named_by_user=True,
+    code, env = sync(client, kyle["s"], client_request_id="save-000002", project_hint="the seller note deal", sel=NAMED,
                      state=[{"op": "record", "kind": "decision", "content": "Hold at 10%", "user_text": "Hold at 10%."}])
     d = env["data"]
     assert d["status"] == "needs_project" and {c["name"] for c in d["candidates"]} == {"Business Acquisition", "Accounting firm purchase"}
@@ -246,7 +176,7 @@ def test_mcp_tool_takes_files_by_reference_and_carries_the_freeflow_instructions
     tools = {t["name"]: t for t in mcp("tools/list")["result"]["tools"]}
     assert tools["sync_conversation_to_project"]["_meta"]["openai/fileParams"] == ["files"]
     res = mcp("tools/call", {"name": "sync_conversation_to_project", "arguments": {"client_request_id": "mcp-save-01", "project_hint": "Business Acquisition",
-              "project_named_by_user": True, "state": [{"op": "record", "kind": "decision", "content": "Offer 10%", "user_text": "Offer 10%."}]}})
+              "project_selection": {"basis": "user_named", "user_text": "Save it to Business Acquisition."}, "state": [{"op": "record", "kind": "decision", "content": "Offer 10%", "user_text": "Offer 10%."}]}})
     assert json.loads(res["result"]["content"][0]["text"])["data"]["summary"] == "Saved to Business Acquisition: 1 decision"
 
 
@@ -281,3 +211,108 @@ def test_review_4_a_file_reference_is_materialised_not_kept_as_the_original(clie
     assert kinds == {"material_failed"} and len(d["needs_attention"]) == 2
     st = intake.status(intake._row(d["intake_id"]))
     assert st["status"] == "needs_review"
+
+
+def test_9b_late_binding_nothing_is_written_until_the_user_chose_the_project(client, kyle):
+    code, env = sync(client, kyle["s"], client_request_id="save-000001", conversation_ref="chat-9b", state=FREEFLOW_STATE)
+    assert code == 200 and env["data"]["status"] == "needs_project" and env["data"]["saved"] is False
+    names = [c["name"] for c in env["data"]["candidates"]]
+    assert set(names) == {"Business Acquisition", "Accounting firm purchase"} and "Personal taxes" not in names
+    # inferred from a hint → suggestion and question, nothing written
+    code, env = sync(client, kyle["s"], client_request_id="save-000001", conversation_ref="chat-9b", project_hint="business acquisition",
+                     sel={"basis": "inferred"}, state=FREEFLOW_STATE)
+    assert env["data"]["status"] == "confirm_project" and env["data"]["suggestion"]["name"] == "Business Acquisition"
+    assert db.connect().execute("SELECT COUNT(*) FROM project_facts").fetchone()[0] == 0
+    assert db.connect().execute("SELECT COUNT(*) FROM external_intakes").fetchone()[0] == 0
+    # the user accepts the suggestion in their own words → written, and the words are kept with the intake
+    code, env = sync(client, kyle["s"], client_request_id="save-000001", conversation_ref="chat-9b", project_id=kyle["acq"],
+                     sel={"basis": "user_named", "user_text": "Yes, the acquisition one."}, state=FREEFLOW_STATE)
+    d = env["data"]
+    assert code == 200 and d["saved"] and d["project"]["name"] == "Business Acquisition"
+    assert d["summary"] == ("Saved to Business Acquisition: 1 decision, 1 constraint, 1 counterpart position, 1 deadline, "
+                            "1 open question, 1 suggestion to review")
+    assert d["skipped"] == {"presentation": 2, "already_known": 0} and d["needs_attention"] == []
+    sel_row = json.loads(db.connect().execute("SELECT project_selection FROM external_intakes WHERE id=?", (d["intake_id"],)).fetchone()[0])
+    assert sel_row == {"basis": "user_named", "user_text": "Yes, the acquisition one."}
+    pos = {f["kind"]: f for f in facts.current_position(kyle["acq"])}
+    assert pos["decision"]["user_text"] == "OK, let's offer a 10% seller note." and "concern" not in pos
+    ev = [e for e in ledger.events(kyle["acq"])["events"] if e["object_type"] == "fact"]
+    assert {e["actor_id"] for e in ev} == {"kyle"} and {e["external_client_id"] for e in ev} == {kyle["client"]}
+    # later in the SAME conversation: previously_confirmed is verified against that save, not trusted
+    commit = [{"op": "record", "kind": "context", "content": "Broker is Dana at Sunbelt", "user_text": "Our broker is Dana at Sunbelt."}]
+    _, ok = sync(client, kyle["s"], client_request_id="save-000011", conversation_ref="chat-9b", project_id=kyle["acq"],
+                 sel={"basis": "previously_confirmed"}, state=commit)
+    assert ok["data"]["saved"]
+    _, other_chat = sync(client, kyle["s"], client_request_id="save-000012", conversation_ref="chat-OTHER", project_id=kyle["acq"],
+                         sel={"basis": "previously_confirmed"}, state=commit)
+    assert other_chat["data"]["status"] == "confirm_project"                     # not confirmed in THAT conversation
+
+
+def test_review2_1_a_bare_project_id_is_not_a_user_choice(client, kyle):
+    st = [{"op": "record", "kind": "context", "content": "x", "user_text": "x"}]
+    for sel in (None, {"basis": "inferred"}, {"basis": "user_named"}, {"basis": "previously_confirmed"}):
+        _, env = sync(client, kyle["s"], client_request_id=f"bare-{sel and sel['basis']}-0001", project_id=kyle["acq"], sel=sel, state=st)
+        assert env["data"]["status"] == "confirm_project" and env["data"]["suggestion"]["name"] == "Business Acquisition", sel
+    assert db.connect().execute("SELECT COUNT(*) FROM project_facts").fetchone()[0] == 0
+    code, _ = sync(client, kyle["s"], client_request_id="bare-private-01", project_id=kyle["private"], state=st)
+    assert code == 404
+
+
+def test_review2_2_repeating_information_is_not_a_reaffirmation(client, kyle):
+    st = [{"op": "record", "kind": "decision", "content": "Stay at 10%", "user_text": "Monday: we're staying at 10%."},
+          {"op": "record", "kind": "context", "content": "Rewrite it"}, {"op": "record", "kind": "context", "content": "give me 3 versions"}]
+    _, env = sync(client, kyle["s"], client_request_id="save-000004", project_id=kyle["acq"], state=st)
+    assert env["data"]["summary"] == "Saved to Business Acquisition: 1 decision" and env["data"]["skipped"]["presentation"] == 2
+    fid = env["data"]["facts"][0]["fact_id"]
+    _, again = sync(client, kyle["s"], client_request_id="save-000004", project_id=kyle["acq"], state=st)           # retry
+    assert again["data"]["idempotent_replay"] and again["data"]["summary"] == env["data"]["summary"]
+    _, restated = sync(client, kyle["s"], client_request_id="save-000005", project_id=kyle["acq"], state=[             # new words, same info
+        {"op": "record", "kind": "decision", "content": "stay at 10%.", "user_text": "They're asking about ten percent again; that's what we have."}])
+    assert restated["data"]["summary"] == "Nothing new to save to Business Acquisition" and restated["data"]["skipped"]["already_known"] == 1
+    _, friday = sync(client, kyle["s"], client_request_id="save-000006", project_id=kyle["acq"], state=[              # explicit re-commitment
+        {"op": "reaffirm", "fact_id": fid, "rationale": "new seller pressure", "user_text": "We're STILL staying at 10%."}])
+    assert friday["data"]["summary"] == "Saved to Business Acquisition: 1 reaffirmation"
+    types = sorted(e["event_type"] for e in ledger.events(kyle["acq"], object_type="fact", object_id=str(fid))["events"])
+    assert types == ["decision_reaffirmed", "decision_recorded"]
+
+
+def test_review2_3_replacing_truth_needs_a_read_not_a_word_match(client, kyle):
+    with ledger.acting("kyle"):
+        ten = facts.record(kyle["acq"], "decision", "Keep seller financing at 10%", disclosure_class="standard", user_text="10%.")
+    # shares almost no words with the current decision — a lexical check would miss it; the read rule does not
+    _, env = sync(client, kyle["s"], client_request_id="save-000030", project_id=kyle["acq"], state=[
+        {"op": "record", "kind": "decision", "content": "Reduce the deferred purchase-price portion to 7.5%", "user_text": "We're doing 7.5%."},
+        {"op": "record", "kind": "constraint", "content": "Close before year end", "user_text": "We need to close before year end."}])
+    d = env["data"]
+    assert d["counts"]["constraint"] == 1 and "decision" not in d["counts"]                 # the genuinely new part lands
+    need = d["needs_attention"][0]
+    assert need["kind"] == "needs_current_state" and [c["content"] for c in need["current"]] == ["Keep seller financing at 10%"]
+    assert need["proposed"]["content"].startswith("Reduce the deferred") and need["likely_same"] == []
+    assert [f["content"] for f in facts.current_position(kyle["acq"]) if f["kind"] == "decision"] == ["Keep seller financing at 10%"]
+    # the client resolves it with the user and resends with the cursor it was given → the change goes through
+    _, ok = sync(client, kyle["s"], client_request_id="save-000031", project_id=kyle["acq"], base_revision=need["base_revision"], state=[
+        {"op": "supersede", "fact_id": ten["id"], "content": "Reduce the deferred purchase-price portion to 7.5%", "user_text": "Yes, replace the 10%."}])
+    assert ok["data"]["summary"] == "Saved to Business Acquisition: 1 change"
+    assert [f["content"] for f in facts.current_position(kyle["acq"]) if f["kind"] == "decision"] == ["Reduce the deferred purchase-price portion to 7.5%"]
+    # a stale base (someone changed a decision since) is caught the same way
+    with ledger.acting("kyle"):
+        facts.record(kyle["acq"], "decision", "Earnout capped at 12 months", disclosure_class="standard", user_text="cap it")
+    _, stale = sync(client, kyle["s"], client_request_id="save-000032", project_id=kyle["acq"], base_revision=need["base_revision"], state=[
+        {"op": "record", "kind": "decision", "content": "Hire a QoE firm", "user_text": "Let's hire a QoE firm."}])
+    assert stale["data"]["needs_attention"][0]["kind"] == "needs_current_state"
+    # supersede without having read Neuro → conflict, never a blind overwrite
+    cur = facts.current_position(kyle["acq"])[0]
+    _, blind = sync(client, kyle["s"], client_request_id="save-000033", project_id=kyle["acq"], state=[
+        {"op": "supersede", "fact_id": cur["id"], "content": "Something else", "user_text": "change it"}])
+    assert blind["data"]["needs_attention"][0]["kind"] == "conflict"
+
+
+def test_review2_3b_facts_this_grant_cannot_see_turn_a_commit_into_a_suggestion(client, kyle):
+    with ledger.acting("kyle"):
+        facts.record(kyle["acq"], "decision", "Private: walk-away price is 2.1M", disclosure_class="restricted", user_text="2.1M")
+    _, env = sync(client, kyle["s"], client_request_id="save-000040", project_id=kyle["acq"], state=[
+        {"op": "record", "kind": "decision", "content": "Offer 1.9M", "user_text": "Let's offer 1.9M."}])
+    d = env["data"]
+    assert d["counts"]["suggestions_to_review"] == 1 and "walk-away" not in json.dumps(d)
+    row = next(f for f in db.list_facts(kyle["acq"], include_history=True) if f["content"] == "Offer 1.9M")
+    assert row["status"] == "proposed"

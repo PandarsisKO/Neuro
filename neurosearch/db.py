@@ -1319,6 +1319,8 @@ MIGRATIONS = [
     # P11 EA-9 (Kyle's review): the user's own words that support a committed fact — the trace that separates "ChatGPT
     # extracted a decision" from "ChatGPT invented one". A client-labelled 'explicit' with no wording is only proposed.
     ("project_facts", "user_text", "ALTER TABLE project_facts ADD COLUMN user_text TEXT"),
+    # P11 EA-9 (Kyle's second review): WHY a late sync went to this project — the selection basis and the user's words.
+    ("external_intakes", "project_selection", "ALTER TABLE external_intakes ADD COLUMN project_selection TEXT"),
 ]
 
 

@@ -171,8 +171,13 @@ CONVERSATION_SYNC_V1: dict[str, Any] = {
     "properties": {
         "project_id": _ID,
         "project_hint": {"type": "string", "maxLength": 200},
-        "project_named_by_user": {"type": "boolean", "description": "true only if the USER named the project in their own words; "
-                                                                    "an inferred project is suggested and confirmed first"},
+        "project_selection": {
+            "type": "object", "required": ["basis"], "additionalProperties": False,
+            "description": "WHY this project: the server writes only on user_named or previously_confirmed",
+            "properties": {
+                "basis": {"enum": ["user_named", "previously_confirmed", "inferred"]},
+                "user_text": {"type": "string", "maxLength": 1000,
+                              "description": "user_named: the user's own words naming or accepting the project, quoted"}}},
         "conversation_ref": {"type": "string", "maxLength": 200},
         "client_request_id": _REQ,
         "base_revision": {"type": ["integer", "null"]},

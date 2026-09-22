@@ -40,14 +40,18 @@ INSTRUCTIONS = (
     "analysis marked as analysis). Never send the transcript, drafts, or requests about wording/tone/format. On later saves "
     "in the same conversation send only what is new since the last one.\n"
     "- CHECK: first sync the new durable material the same way, then call consult_project, then answer using both.\n"
-    "- PROJECT: if the user named a project, pass their words as project_hint with project_named_by_user=true. If you only "
-    "infer it, pass project_hint alone: Neuro answers confirm_project and you ask the user. If Neuro answers needs_project, "
-    "ask the user to choose. Never guess. Once confirmed, pass that project_id for the rest of this conversation.\n"
+    "- PROJECT: always say WHY the project was chosen with project_selection. If the user named or accepted it, basis "
+    "user_named with their words in user_text. If you only infer it, basis inferred: Neuro answers confirm_project and you "
+    "ask the user. After that, keep the same conversation_ref (one id you choose per conversation) and send basis "
+    "previously_confirmed for later saves. If Neuro answers needs_project, ask the user to choose. Never guess.\n"
     "- EVIDENCE OF WHAT THE USER SAID: for every decision/constraint/commitment etc. you save as the user's, put the user's "
-    "own words from the conversation in user_text (quote them). Without them Neuro saves it only as a suggestion. If the "
-    "user says the same thing again later (e.g. 'we're STILL at 10%'), send it with their new words: Neuro records a "
-    "reaffirmation. To change or withdraw something Neuro already holds, read it first (consult_project/open_project) and "
-    "pass that ledger_cursor as base_revision; Neuro returns a conflict instead of overwriting blind.\n"
+    "own words from the conversation in user_text (quote them). Without them Neuro saves it only as a suggestion. Only "
+    "when the user deliberately re-commits to something Neuro already holds ('we're STILL staying at 10%') send op "
+    "reaffirm with its fact_id and their words; repeating information is not a reaffirmation.\n"
+    "- BEFORE CHANGING PROJECT TRUTH: if this conversation has not read the project yet and the user decided something, "
+    "Neuro may answer needs_current_state with the current decisions/constraints of that kind. Then decide with the user "
+    "(silently if it is obvious) whether the new one replaces one of them (supersede with its fact_id) or stands beside "
+    "them, and resend with the base_revision Neuro gave. Neuro never overwrites blind.\n"
     "- Report the receipt's summary in one line; mention needs_attention only if it is not empty.\n"
     "When working inside a project from the start, open_project once, then read only when needed. Cite evidence only when "
     "asked why; use get_evidence to drill down."
@@ -91,7 +95,7 @@ async def list_projects(ctx: Context, query: str | None = None) -> dict[str, Any
 
 @server.tool(annotations=WRITE, meta={"openai/fileParams": ["files"]})
 async def sync_conversation_to_project(client_request_id: str, ctx: Context, project_id: str | None = None,
-                                       project_hint: str | None = None, project_named_by_user: bool = False,
+                                       project_hint: str | None = None, project_selection: dict[str, Any] | None = None,
                                        state: list[dict[str, Any]] | None = None,
                                        materials: list[dict[str, Any]] | None = None, analysis: list[dict[str, Any]] | None = None,
                                        files: list[dict[str, Any]] | None = None, file_links: list[dict[str, Any]] | None = None,
@@ -105,8 +109,11 @@ async def sync_conversation_to_project(client_request_id: str, ctx: Context, pro
     deadline|counterpart_position|concern|open_question|context|preference, content, user_text (the user's own words,
     quoted — required for anything saved as the user's position), rationale?, fact_id?, scope?, explicitness?,
     referent?}] — 'propose' for anything you inferred rather than the user stated; 'personal' scope for one person's
-    preference. project_named_by_user=true only when the user named the project themselves. Changing or withdrawing
-    something Neuro already holds needs base_revision from a read; a conflict comes back otherwise — show it to the user. materials: what the user shared, as you read it (same shape as add_processed_material;
+    preference. project_selection: {basis: user_named (with user_text = the user's words naming/accepting the project) |
+    previously_confirmed (a project confirmed earlier in this conversation; send the same conversation_ref) | inferred}.
+    Only user_named / previously_confirmed save; inferred returns confirm_project. A committed decision/constraint/etc.
+    in a project that already has some of that kind needs base_revision from a read: otherwise Neuro answers
+    needs_current_state with what it holds. reaffirm only on a deliberate re-commitment, with the user's words. materials: what the user shared, as you read it (same shape as add_processed_material;
     set original_available=false if you can no longer pass the file). files: files uploaded earlier in this conversation
     (they are passed by reference); file_links: [{index into files, original_of_material: index into materials}] when a
     file is the original of something you already read — Neuro keeps it and does not read it again. analysis:
@@ -119,7 +126,7 @@ async def sync_conversation_to_project(client_request_id: str, ctx: Context, pro
                                  "content_type": f.get("mime_type")}.items() if v}
         refs.append({"artifact_ref": ref, **({"original_of_material": links[i]} if links.get(i) is not None else {})})
     args = {"client_request_id": client_request_id, "project_id": project_id, "project_hint": project_hint,
-            "project_named_by_user": project_named_by_user or None, "state": state,
+            "project_selection": project_selection, "state": state,
             "materials": materials, "analysis": analysis, "files": refs or None, "conversation_ref": conversation_ref,
             "base_revision": base_revision, "archive_transcript": archive_transcript}
     return await _call(ctx, "sync_conversation_to_project", args)

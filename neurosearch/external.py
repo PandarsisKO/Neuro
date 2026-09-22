@@ -335,11 +335,11 @@ def _visible_fact(auth: Authorization, fact_id: Any) -> dict[str, Any]:
     return f
 
 
-def _changed_since(fact_id: int, base: int | None) -> bool:
-    if base is None:
-        return True
-    r = db.connect().execute("SELECT MAX(id) FROM project_change_events WHERE object_type='fact' AND object_id=?", (str(fact_id),)).fetchone()
-    return bool(r[0]) and r[0] > int(base)
+def _kind_changed_since(project_id: str, kind: str, base: int) -> bool:
+    r = db.connect().execute(
+        "SELECT 1 FROM project_change_events e JOIN project_facts f ON f.id = CAST(e.object_id AS INTEGER) "
+        "WHERE e.project_id=? AND e.object_type='fact' AND f.kind=? AND e.id>? LIMIT 1", (project_id, kind, int(base))).fetchone()
+    return r is not None
 
 
 def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
@@ -349,11 +349,17 @@ def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
       1. Committing needs the user's own words (`user_text`). 'explicit' or 'accepted_recommendation' without them is
          saved as a suggestion (proposed), never as project truth. reaffirm / supersede / withdraw — explicit acts by
          definition — are refused without them. The words are stored with the fact and on its ledger event.
-      3. A retry (same request id) is a no-op. The same content restated in NEW user words is a reaffirmation event,
-         not a skip; the same content with wording already on record is skipped.
-      5. Nothing replaces project truth blind: a new decision/constraint/… that looks like it changes an existing active
-         one, sent without a base revision (a conversation that never read Neuro) or after that fact moved, comes back
-         as a conflict with the current state. supersede / withdraw need a base revision.
+      3. A retry (same request id) is a no-op and repeated information is not an event: a `record` whose content the
+         project already holds is skipped, whatever the wording. A reaffirmation happens ONLY through an explicit
+         `reaffirm` with the user's words — it is never inferred from a restatement.
+      5. Nothing replaces project truth blind — decided by a READ, not by text similarity (Kyle's second review). A
+         committed decision/constraint/requirement/rejected option/commitment/deadline is written only if the client
+         has seen the project's current state of that kind: when active facts of that kind are visible to this grant
+         and the client sent no base revision (a conversation that never read Neuro), or one of them changed after its
+         base, nothing is written and `needs_current_state` returns the current facts plus the cursor to resend with.
+         If facts of that kind exist that this grant cannot see, the item is kept as a suggestion for the owner to
+         reconcile rather than becoming a second, unseen "current" truth. supersede / withdraw need a base revision.
+         Word overlap only annotates `likely_same` candidates; it never decides.
     Each change stands alone: one conflict or refusal does not stop the others."""
     body = check("external.sync.v1", {k: v for k, v in args.items() if k in ("project_id", "base_revision", "intake_id", "changes")})
     base = body.get("base_revision")
@@ -361,6 +367,7 @@ def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
     conflicts: list[dict[str, Any]] = []
     refused: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    needs_state: list[dict[str, Any]] = []
 
     def done(op: str, f: dict[str, Any], note: str | None = None) -> None:
         applied.append({"op": op, "fact_id": f["id"], "status": f["status"], "replay": bool(f.get("idempotent_replay")),
@@ -384,20 +391,25 @@ def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
                 if expl != "inferred" and not words:
                     expl, note = "inferred", "saved as a suggestion: no user wording supports it"
                 same = facts.identical_active(auth.project_id, ch["kind"], ch["content"])
-                if same is not None:
-                    if expl != "inferred" and same["status"] == "active" and facts.norm(words) not in facts.statements_for(same) \
-                            and access.fact_class(same) in auth.classes:
-                        f = facts.reaffirm(same["id"], rationale=ch.get("rationale"), client_request_id=req, user_text=words)
-                        done("reaffirm", f, "restated in new words: recorded as a reaffirmation")
-                    else:
-                        skipped.append({"op": op, "reason": "already_recorded", "fact_id": same["id"], "content": ch["content"]})
+                if same is not None and access.fact_class(same) in auth.classes:
+                    skipped.append({"op": op, "reason": "already_recorded", "fact_id": same["id"], "content": ch["content"]})
                     continue
-                if expl != "inferred":
-                    ov = facts.overlapping_active(auth.project_id, ch["kind"], ch["content"])
-                    if ov is not None and access.fact_class(ov) in auth.classes and _changed_since(ov["id"], base):
-                        raise facts.Conflict(ov["id"], ov, {"op": op, "kind": ch["kind"], "content": ch["content"], "user_text": words},
-                                             f"this looks like it changes the current {ov['kind']}; confirm with the user, then use "
-                                             "supersede with its fact_id and the base_revision you read")
+                if expl != "inferred" and ch["kind"] in facts.CANONICAL and ch.get("scope", "project") == "project":
+                    current = facts.active_of_kind(auth.project_id, ch["kind"])
+                    seen = [f for f in current if access.fact_class(f) in auth.classes]
+                    if seen and (base is None or _kind_changed_since(auth.project_id, ch["kind"], base)):
+                        needs_state.append({
+                            "op": op, "client_request_id": req, "kind": ch["kind"],
+                            "proposed": {"content": ch["content"], "user_text": words},
+                            "current": [_fact_out(f) for f in seen][:20],
+                            "likely_same": [f["id"] for f in seen if facts.same_topic(f["content"], ch["content"])],
+                            "base_revision": ledger.cursor(auth.project_id, auth.classes),
+                            "reason": f"the project already has a current {ch['kind']}; decide with the user whether this replaces "
+                                      f"one of them (supersede with its fact_id) or stands beside them (record again), and resend "
+                                      f"with this base_revision"})
+                        continue
+                    if len(seen) < len(current):
+                        expl, note = "inferred", (f"saved for the owner to reconcile: this project has {ch['kind']}s you can't see")
                 f = facts.record(auth.project_id, ch["kind"], ch["content"], explicitness=expl, scope=ch.get("scope", "project"),
                                  rationale=ch.get("rationale"), referent=ch.get("referent"), user_text=words,
                                  disclosure_class=ch.get("disclosure_class") or "standard", client_request_id=req)
@@ -426,7 +438,7 @@ def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
         except facts.Conflict as e:
             conflicts.append({"op": op, "client_request_id": req, **e.as_dict(),
                               "current": _fact_out(e.current) if e.current else None})
-    return {"applied": applied, "conflicts": conflicts, "refused": refused, "skipped": skipped}
+    return {"applied": applied, "conflicts": conflicts, "refused": refused, "skipped": skipped, "needs_state": needs_state}
 
 
 def sync_project_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:

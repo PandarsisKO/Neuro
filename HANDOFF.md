@@ -2874,3 +2874,33 @@ passed, 0 failed**; one named test per rule in `tests/test_ea9_convsync.py` (`te
 
 Also: an explicitly requested transcript archive now defaults to `restricted`. Still unpushed from here:
 `6cabad8`, `0fbf4f7` and this commit — Claude Code's push list in the 09-22 "EA-9 correction" entry is unchanged.
+
+## P11 EA-9 second review: selection basis, explicit-only reaffirmation, read-before-replace — 2026-09-22
+
+Kyle's second review of the conversation-sync server side. Supersedes rules 2, 3 and 5 of the previous entry; rules 1
+and 4 stand. Full suite **2,439 passed, 0 failed**; tests `test_review2_*` and 9B in `tests/test_ea9_convsync.py`,
+`test_p11_*` in `tests/test_safe_fetch.py`.
+
+1. **A project id is not a user choice.** Late sync carries `project_selection {basis, user_text}`. Only `user_named`
+   (with the user's words, stored on `external_intakes.project_selection`) or `previously_confirmed` write, and the
+   latter is verified: an earlier saved intake by the same client, same `conversation_ref`, same project, whose own
+   basis was user_named/previously_confirmed. A bare id, `inferred`, a claimed-but-unverifiable confirmation, or
+   `user_named` without words → `confirm_project`, nothing written.
+2. **Reaffirmation is explicit only.** A `record` whose content the project already holds is skipped whatever the
+   wording; `decision_reaffirmed` comes only from `op: reaffirm` + the user's words. Nothing is inferred from a
+   restatement.
+3. **Replacing truth is decided by a read, not by word overlap.** A committed canonical fact (decision / constraint /
+   requirement / rejected / commitment / deadline, project scope) is written only when the client has seen the current
+   state of that kind: if active facts of that kind are visible and there is no base revision, or one changed after it,
+   nothing is written and `needs_current_state` returns the current facts, `likely_same` candidates (word overlap —
+   annotation only) and the `base_revision` to resend with. supersede / withdraw still need a base revision. If facts of
+   that kind exist that the grant cannot see, the item becomes a suggestion for the owner rather than a second unseen
+   "current" truth (so Gio cannot silently contradict one of Kyle's private decisions; Kyle reconciles it in the UI).
+   Consequence to expect in 9B/9C: in a project that already has decisions, a late "save what matters" needs one
+   invisible read + resend for decision-like items — the MCP instructions tell the client to do that.
+4. **Fetch boundary verified.** `intake._fetch_now` is driven through the real `safe_fetch` harness: private, link-local,
+   metadata, mixed-answer and redirected-to-private destinations refused; oversized refused before reading; DNS
+   rebinding cannot move the pinned connection. A static gate asserts no P11 module imports another fetch library and
+   that intake/idp/oauth fetch only via `safe_fetch.safe_fetch(`.
+
+Unpushed from here: `6cabad8`, `0fbf4f7`, `b2877c3` and this commit.

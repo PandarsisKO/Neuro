@@ -10,13 +10,14 @@ It adds no new state model: one idempotent intake (intake.py) groups the materia
 assistant's analysis; the user's own statements go through apply_state/facts.py exactly like sync_project_state.
 The classifications stay apart — user statement ≠ evidence ≠ external extraction ≠ assistant interpretation.
 
-Late project binding (no project needed when the conversation starts; Kyle's review, 2026-09-22):
-  - project_id (the user chose it, or it was confirmed earlier in this conversation) → write;
-  - a name the USER said (`project_named_by_user`) that matches exactly one permitted project → write;
-  - an inferred hint with one clear match → `confirm_project` with that suggestion, NOTHING written;
-  - anything else → `needs_project` with the permitted candidates, NOTHING written.
-  Unpermitted projects never appear. The client keeps a confirmed binding in its own conversation context; Neuro keeps
-  no per-conversation state for it.
+Late project binding (Kyle's reviews, 2026-09-22). A project id from the client is NOT proof the user chose that project —
+the model could have inferred it. So every late sync carries its selection BASIS and only two may write:
+  - user_named            — the user named or accepted the project; their words (`user_text`) are required and kept;
+  - previously_confirmed  — verified, not trusted: an earlier save by the same client, in the same `conversation_ref`,
+                            to the same project, was itself user_named or previously_confirmed;
+  - inferred, or no basis — `confirm_project` (a suggestion and a question), NOTHING written;
+  - no match / ambiguous  — `needs_project` with the permitted candidates, NOTHING written.
+Unpermitted projects never appear.
 """
 from __future__ import annotations
 
@@ -75,16 +76,36 @@ def candidates(principal: Principal, hint: str | None) -> list[dict[str, Any]]:
     return out
 
 
-def resolve(principal: Principal, project_id: str | None, hint: str | None,
-            named_by_user: bool = False) -> tuple[str | None, str, list[dict[str, Any]]]:
-    """→ (project_id to write to, or None; 'write' | 'confirm_project' | 'needs_project'; candidates)."""
-    if project_id:
-        return project_id, "write", []
-    c = candidates(principal, hint)
-    strong = [x for x in c if x["match"] >= 2.0]
-    if hint and len(strong) == 1:
-        return (strong[0]["project_id"], "write", c) if named_by_user else (None, "confirm_project", strong)
-    return None, "needs_project", [x for x in c if x["match"] > 0][:8] or c[:8]
+def _confirmed_before(principal: Principal, project_id: str, conversation_ref: str | None) -> bool:
+    if not conversation_ref:
+        return False
+    for r in db.connect().execute("SELECT project_selection FROM external_intakes WHERE client_id=? AND conversation_ref=? AND project_id=? "
+                                  "AND receipt IS NOT NULL", (principal.client_id, conversation_ref, project_id)).fetchall():
+        if (json.loads(r["project_selection"] or "{}") or {}).get("basis") in ("user_named", "previously_confirmed"):
+            return True
+    return False
+
+
+def resolve(principal: Principal, body: dict[str, Any]) -> tuple[str | None, str, list[dict[str, Any]]]:
+    """→ (project to write to or None, 'write' | 'confirm_project' | 'needs_project', candidates or the suggestion)."""
+    sel = body.get("project_selection") or {"basis": "inferred"}
+    basis = sel["basis"]
+    permitted = {c["project_id"]: c for c in candidates(principal, body.get("project_hint"))}
+    pid = body.get("project_id")
+    if pid is not None and pid not in permitted:
+        raise AccessError("project_unauthorized", "no such project")
+    if pid is None:
+        c = list(permitted.values())
+        strong = [x for x in c if x["match"] >= 2.0]
+        if body.get("project_hint") and len(strong) == 1:
+            pid = strong[0]["project_id"]
+        else:
+            return None, "needs_project", [x for x in c if x["match"] > 0][:8] or c[:8]
+    if basis == "user_named" and (sel.get("user_text") or "").strip():
+        return pid, "write", []
+    if basis == "previously_confirmed" and _confirmed_before(principal, pid, body.get("conversation_ref")):
+        return pid, "write", []
+    return None, "confirm_project", [permitted[pid]]
 
 
 # ------------------------------------------------------------------ the sync
@@ -96,11 +117,13 @@ def _derived_id(req: str, i: int, ch: dict[str, Any]) -> str:
 
 def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope: Any) -> dict[str, Any]:
     body = check("external.conversation_sync.v1", args)
-    pid, how, cands = resolve(principal, body.get("project_id"), body.get("project_hint"), bool(body.get("project_named_by_user")))
+    pid, how, cands = resolve(principal, body)
     if pid is None:
         if how == "confirm_project":
             return envelope({"status": "confirm_project", "saved": False, "suggestion": cands[0], "candidates": cands,
-                             "ask": f"This looks like the {cands[0]['name']} project. Save it there?"})
+                             "ask": f"This looks like the {cands[0]['name']} project. Save it there?",
+                             "then": "if the user agrees, call again with project_id and project_selection "
+                                     "{basis: user_named, user_text: <their words>}"})
         return envelope({"status": "needs_project", "saved": False, "candidates": cands,
                          "ask": "Which Neuro project should this go to?" if cands else "You have no Neuro projects you can save to."})
     auth = access.authorize(principal, pid, "sync_conversation_to_project")
@@ -146,9 +169,12 @@ def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope:
                                  "client_declared_class": f.get("client_declared_class")})
         files_out.append(r["item"]["item_id"])
 
+    with db.tx() as conn:
+        conn.execute("UPDATE external_intakes SET project_selection=? WHERE id=?",
+                     (json.dumps(body.get("project_selection") or {"basis": "inferred"}), iid))
     fin = intake.finalize(auth, {"intake_id": iid, "user_state": changes or None, "interpretations": body.get("analysis") or None,
                                  "base_revision": body.get("base_revision")}, apply_state=apply_state)
-    state = fin.get("state") or {"applied": [], "conflicts": [], "refused": [], "skipped": []}
+    state = fin.get("state") or {"applied": [], "conflicts": [], "refused": [], "skipped": [], "needs_state": []}
     skipped["already_known"] += len(state.get("skipped") or [])
 
     # ---- receipt: what was saved, in the person's terms; machinery only when something needs them
@@ -174,6 +200,8 @@ def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope:
                           "proposed": c.get("proposed")})
     for r in state.get("refused") or []:
         attention.append({"kind": "needs_user_words", **r})
+    for r in state.get("needs_state") or []:
+        attention.append({**{k: v for k, v in r.items() if k != "kind"}, "kind": "needs_current_state", "fact_kind": r["kind"]})
     for i in fin.get("items") or []:
         if i["status"] == "failed":
             attention.append({"kind": "material_failed", "item_id": i["item_id"], "error": i.get("error")})

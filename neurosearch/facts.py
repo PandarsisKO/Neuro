@@ -270,22 +270,6 @@ def identical_active(project_id: str, kind: str, content: str) -> dict[str, Any]
     return next((f for f in r if norm(f["content"]) == n), None)
 
 
-def overlapping_active(project_id: str, kind: str, content: str) -> dict[str, Any] | None:
-    if kind not in CANONICAL:
-        return None
-    for f in db.connect().execute("SELECT * FROM project_facts WHERE project_id=? AND kind=? AND status='active' AND scope='project' "
-                                  "ORDER BY id DESC", (project_id, kind)).fetchall():
-        if norm(f["content"]) != norm(content) and same_topic(f["content"], content):
-            return dict(f)
-    return None
-
-
-def statements_for(fact: dict[str, Any]) -> set[str]:
-    """Every user wording already on record for this fact: its own, and each reaffirmation's."""
-    out = {norm(fact.get("user_text") or "")} if fact.get("user_text") else set()
-    for r in db.connect().execute("SELECT after FROM project_change_events WHERE object_type='fact' AND object_id=? "
-                                  "AND event_type='decision_reaffirmed'", (str(fact["id"]),)).fetchall():
-        ut = (json.loads(r["after"] or "{}") or {}).get("user_text")
-        if ut:
-            out.add(norm(ut))
-    return out
+def active_of_kind(project_id: str, kind: str) -> list[dict[str, Any]]:
+    return [dict(r) for r in db.connect().execute("SELECT * FROM project_facts WHERE project_id=? AND kind=? AND status='active' "
+                                                  "AND scope='project' ORDER BY id", (project_id, kind)).fetchall()]
