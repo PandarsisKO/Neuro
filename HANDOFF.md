@@ -3052,3 +3052,60 @@ Everything else in the EA-9 sequence stands.
 **Next for Claude Code on the Mac:** `brew install openai/tools/tunnel-client`;
 `tunnel-client init --profile local-http --tunnel-id tunnel_6ab30bc37d8c8191965aa0d5b2b46afd --mcp-server-url http://localhost:8000/ext/mcp`;
 `tunnel-client doctor --profile local-http --explain`; `tunnel-client run --profile local-http` (needs `CONTROL_PLANE_API_KEY` from Kyle). Record the doctor output and the MCP URL ChatGPT will use (→ `NEUROSEARCH_OAUTH_RESOURCE` + WorkOS Resource Indicator).
+
+## P11 EA-9 step 3 — Secure MCP Tunnel up on the Mac (2026-09-22)
+
+`tunnel-client` 0.0.14 (`brew install openai/tools/tunnel-client`). Profile `local-http` created at
+`~/.config/tunnel-client/local-http.yaml`, tunnel id from `.env` verified to match the one recorded above. The
+runtime key is read as `api_key: "env:CONTROL_PLANE_API_KEY"` — it stays in `.env` on the Mac, never in the
+profile, this file or a chat.
+
+**`tunnel-client doctor --profile local-http --explain` → RESULT ok.** Every check PASS:
+
+```
+config_source PASS profile: local-http          tunnel_id PASS tunnel_6ab30bc…b46afd
+control_plane_api_key PASS env:CONTROL_PLANE_API_KEY
+mcp_target PASS http://localhost:8000/ext/mcp
+mcp_server_reachable PASS HTTP 401 from http://localhost:8000/ext/mcp
+oauth_metadata PASS HTTP 200 from http://localhost:8000/.well-known/oauth-protected-resource
+health_listener PASS 127.0.0.1:8080        ui PASS http://127.0.0.1:8080/ui
+codex_plugin SKIP (optional, not installed)
+```
+
+The 401 is correct, not a fault: `/ext/mcp` requires auth and the tunnel client holds no token. For the same
+reason the daemon logs `failed to connect to mcp: calling "initialize": Unauthorized` once at startup — ChatGPT
+does the OAuth, the tunnel does not.
+
+**`tunnel-client run --profile local-http` → 🟢 started**, control plane authenticated, tunnel metadata fetched
+(`name: Neuro`). Admin UI `http://127.0.0.1:8080/ui`, health `…:8080/healthz`.
+
+**The MCP URL ChatGPT will use — the value step 4 must match:**
+
+```
+https://api.openai.com/v1/tunnel/tunnel_6ab30bc37d8c8191965aa0d5b2b46afd
+```
+
+**The open measurement from the step-1/2 entry, answered.** The tunnel DOES discover the protected-resource
+metadata, at both paths, fetched 200:
+`http://localhost:8000/.well-known/oauth-protected-resource/ext/mcp` and `…/oauth-protected-resource`.
+
+**But two things do not line up yet, and both are step 4's job, not defects:**
+
+1. **`NEUROSEARCH_OAUTH_ISSUER` is not set**, so Neuro is still in built-in-AS fallback mode (`oauth.py`) and its
+   PRMD advertises *itself* as the authorization server over plaintext loopback:
+   `{"resource": "http://localhost:8000/ext/mcp", "authorization_servers": ["http://localhost:8000"]}`.
+   harpoon therefore refused to register all eight discovered OAuth endpoints —
+   `base URL must use https`, `target_count: 0`. Pointing the issuer at the hosted IdP (WorkOS) makes every one
+   of those an https URL and switches Neuro to resource-server mode, which is the architecture EA-9 chose.
+   Do **not** paper over this with `--harpoon.allow-plaintext-http`.
+2. **The `resource` value will mismatch.** The PRMD currently says `http://localhost:8000/ext/mcp`; ChatGPT will
+   send the tunnel URL above. `NEUROSEARCH_OAUTH_RESOURCE` exists precisely to reconcile that and must be set to
+   the tunnel URL — **confirm against an actually observed request before trusting it**, which is the one part
+   of this that still cannot be measured without ChatGPT connecting.
+
+**Still Kyle's, unchanged:** step 4 — the WorkOS tenant, then `NEUROSEARCH_OAUTH_ISSUER` +
+`NEUROSEARCH_OAUTH_RESOURCE` in `.env`. Neither env var was set by this session; `.env` was read, never written.
+
+**Operational note:** the connector must be created/verified in ChatGPT settings *while* the daemon is running,
+and the daemon must stay up for discovery and every MCP call. It is a foreground process in this session, not yet
+a LaunchAgent — if it should survive reboots, that is a small separate decision.
