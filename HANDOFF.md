@@ -13,11 +13,12 @@ in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md`.
 | **Active effort** | `PRODUCT-SCHEDULER.md` NOW → Discovery relevance + findings review; what is left is `docs/COMPLETION-CHECKLIST-2026-09-21.md`. |
 | **Open decisions / actions** | `docs/REPO-AUDIT-2026-09-21.md` §1–2 (Kyle) and `STATE-OF-THE-APP-2026-09-21-2300.md` (agents). |
 | **Parked** | `PRODUCT-SCHEDULER.md` PARKED — subreddit/Reddit API, FRED, L-21/L-40/L-60/L-61, Field Map, T2 migration, H1–H3, P12. Do not pick up. |
-| **P11 External AI Access** | **EXECUTING (Kyle: "Begin executing the plan.", 2026-09-22).** EA-0…EA-8 built and green (`feb6140`…`b9c5575`, pushed 2026-09-22); **EA-9 gated** on transport, Gio's ChatGPT plan and Kyle-only account steps — see the 2026-09-22 "EA-0 → EA-8" entry. Plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`. Does not displace the NOW effort. |
+| **P11 External AI Access** | **Code complete and green on macOS** (EA-0…EA-9, `a42f6a8`…`d5ff0f7`, 2,435 passed / 0 failed); §43 sensitivity backfill **applied** to the live DB 2026-09-22 (2,473 standard · 59 restricted · 421 undecided-closed, idempotent). What remains is **not implementation**: Kyle's ChatGPT plan tier, Secure MCP Tunnel for `/ext/mcp`, a hosted IdP tenant + its two env vars, then 9A–9F on Kyle's account, 9G Gio, and only then release/version. Plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`. |
 | **Who is where** | Codex offline the week of 2026-09-21; its tree was adopted into `main` (`f99ab95`…`8fb5e7c`). Claude Code: the Mac, the live DB, `neurosearch` CLI, pushes. Cowork: docs, code, full suite in a Linux VM on temp DBs; never the live DB. |
-| **Last green suite** | 2,346 passed, 0 failed (2026-09-21, at 0.63.95, `release-check` PASS). Any failure is new. |
+| **Last green suite** | **2,435 passed, 0 failed** (macOS, 2026-09-22, at EA-9 `b2877c3`). Any failure is new. |
 | **GitHub sync** | Verified by `tools/git_sync_check.py --delivery` (exit 0 = delivered). `git ls-remote` is remote truth; `origin/*` is only a cache. 138 refs are physically unpublishable and are recorded with reasons in `tools/git_sync_baseline.txt` — anything else missing from GitHub is drift and fails the gate. |
-| **Unpushed** | none as of 2026-09-22 — `main`, and every branch holding unique publishable work, are on GitHub. |
+| **GitHub main** | `d5ff0f7a6f273f0118526cdf7251d45900360365` at the time of writing (EA-9 second review). `tools/git_sync_check.py --delivery` is the live source of truth; a SHA quoted in prose is not. |
+| **Unpushed** | **none.** A durable commit is `PUBLISHED`, `PUBLISH_REQUESTED` or `BLOCKED` — "committed on the Mac" is no longer a terminal state. Any session, credentialed or not, publishes via `tools/publish_request.py <sha>`. |
 | **Standing rules** | `CLAUDE.md`. Plus, from this file's own history: stage by CHANGE not by filename (`git add -p`); a frozen-value change gets a clean-worktree run; if a git command through the mount prints `unable to unlink … Operation not permitted`, check `find .git -name '*.lock' \| wc -l` before it accumulates. |
 
 ## How to add an entry
@@ -2904,3 +2905,75 @@ and 4 stand. Full suite **2,439 passed, 0 failed**; tests `test_review2_*` and 9
    that intake/idp/oauth fetch only via `safe_fetch.safe_fetch(`.
 
 Unpushed from here: `6cabad8`, `0fbf4f7`, `b2877c3` and this commit.
+
+## Correction: the EA-9 push list was cleared, and the backfill applied (2026-09-22)
+
+The 09-22 entry above ends *"Still unpushed from here: `6cabad8`, `0fbf4f7` and this commit"*. True when written;
+no longer true. Appended rather than edited, per this file's convention. What Claude Code did on the Mac:
+
+- local `main` confirmed **3 ahead / 0 behind**, tree clean
+- macOS full suite: **2,435 passed, 0 failed** — the same number the Cowork VM reported, now reproduced on the Mac
+- `neurosearch access backfill-classes` dry run, counts recorded before any write:
+  **2,473 public → `standard`** (all YouTube) · **59 private → `restricted`** · **421 undecided → restricted by
+  default**. Effective: `youtube:standard` 2473 · `web:restricted` 368 · `media:restricted` 52 ·
+  `image:restricted` 21 · `document:restricted` 18 · `youtube:restricted` 6 · `instagram:restricted` 5 ·
+  `spreadsheet:restricted` 5 · `file:restricted` 3 · `book:restricted` 1 · `community:restricted` 1
+- snapshot taken first: `data/backups/neurosearch-20260922-1459.db`
+- `--apply` run; re-run returns `public 0, private 0` — idempotent as documented. The 421 stay permanently
+  undecided by design (§43: uncertainty defaults closed), which is a finished state, not unfinished work
+- pushed `c40f15e..b2877c3`, verified GitHub main via `git ls-remote`, sync gate **PASS**, tree clean
+
+The only widening is public YouTube → `standard`. Instagram (extension-session), web captures and the 6
+cookie-acquired YouTube items stayed closed.
+
+## Publishing no longer depends on which session is running (2026-09-22)
+
+The defect this closes: a Cowork/Linux/VM session creates durable commits in the Mac checkout but has no GitHub
+credential, so the work sat until a later Claude Code session noticed it. That happened twice in one day —
+`6cabad8`/`0fbf4f7`/`b2877c3`, then `d5ff0f7` arrived mid-repair and would have sat too. Waiting to be noticed is
+not an operating model.
+
+**The boundary, measured not assumed:** publishing is HTTPS + the macOS `osxkeychain` helper (configured in
+`/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig`; the `github.com` entry is in Kyle's login
+keychain, `gh` is separately authenticated). No token is in the URL, in `.env`, or in any env var. A Linux guest
+has no Keychain and cannot execute macOS binaries, and there is no host-side bridge — so **a LaunchAgent was
+necessary**; a Mac-native shell call from the VM was not available.
+
+    uncredentialed session -> SHA-only request -> LaunchAgent (as Kyle) -> github_publish.py -> GitHub -> receipt
+
+- **`tools/github_publish.py`** publishes ONE exact SHA. It confirms the remote is `PandarsisKO/Neuro`, that the
+  object is a commit reachable from local `main`, reads GitHub's real main via `ls-remote` (never `origin/main`),
+  requires that to be an ancestor, refuses divergence and non-fast-forward, scans the range for `.env`, `data/`,
+  `VIDEOS/`, key material, credential-shaped strings and >100 MB blobs, pushes
+  `<sha>:refs/heads/main` with no `--force`, and then **re-reads the remote** and requires it to equal the request.
+  Idempotent: already-main → PASS; ancestor of main → `ALREADY_PUBLISHED_BY_LATER_COMMIT`. If local `main` has
+  moved on, only the requested SHA is published — newer commits the caller never asked about are not dragged along.
+- **`tools/publish_request.py <sha>`** is what any session calls. It writes a SHA and nothing else.
+- **`com.neurosearch.git-publisher`** (user LaunchAgent, `tools/install_git_publisher.sh`): no root, no port, no
+  listening socket, no credential in the plist, `WatchPaths`-triggered so nothing sits resident. It never commits,
+  stages, stashes, resets, merges, rebases or touches the working tree — proven by comparing `git write-tree` and
+  `git status --porcelain` across a real publish.
+- Queues are untracked: `.git-publisher/` in the repo (the only path a VM mounting just the repo can reach) and
+  `~/Library/Application Support/NeuroSearch/git-publisher/`. Receipts land beside the request that produced them.
+
+**Proven end to end on real work:** `d5ff0f7` was published through the request path, GitHub moving
+`b2877c3 → d5ff0f7` by fast-forward, receipt PASS, tree and index hashes byte-identical before and after.
+
+**`tools/git_sync_check.py` hardened.** It previously ran `git fetch` and ignored the result, so a failed refresh
+could still print PASS off a stale cache — the exact dishonesty this work exists to remove. A failed fetch or
+`ls-remote` now fails the gate and names whether the cause was credentials or the network, and "ls-remote failed"
+is never collapsed into "the branch does not exist". Publisher and gate stay separate tools: one delivers a
+commit, the other audits the repo.
+
+**`tests/test_s81_git_publisher.py` (13)** runs against a real local bare repo — no network, no credentials, no
+paid calls: fast-forward publish with the tree untouched, double request, local advancing past a pending request,
+ancestor-of-remote, divergence refused, forbidden path, credential-shaped string, commit not on main, wrong
+remote, unreachable remote blocked rather than silently fine, credential-marker classification, concurrent
+duplicate requests, and the sync gate failing loudly on an unreachable remote. **The concurrency test found a real
+defect**: two publishers racing the same SHA both passed the ancestor check against a stale read and the loser
+reported `BLOCKED_PUSH`. Losing a race is not an error — the publisher now re-reads the remote after a rejected
+push and returns PASS if the SHA arrived anyway.
+
+**Not done, deliberately:** no credential copied anywhere, no PAT created, no force, no history rewrite, no merge,
+no product code, no live-DB change, no release or version bump (this is delivery infrastructure, and the repo's
+conventions do not version it).
