@@ -1,7 +1,7 @@
 # P11 EXECUTION PLAN — External AI Access + Bidirectional Project Intelligence
 
-**Written 2026-09-22 against `origin/main` `9d08fcc` (0.63.95).** Status: **PLAN READY FOR FINAL REVIEW — implementation
-NOT started.** Authority: `EXTERNAL-AI-ACCESS-MISSION.md` §38–§67 (Frozen Architecture, accepted, not redrafted here) and
+**Written 2026-09-22 against `origin/main` `9d08fcc` (0.63.95); revised the same day with Kyle's three product rulings
+(§12).** Status: **PLAN READY FOR FINAL REVIEW — implementation NOT started.** Authority: `EXTERNAL-AI-ACCESS-MISSION.md` §38–§67 (Frozen Architecture, accepted, not redrafted here) and
 Kyle's 2026-09-22 directive. This document is the one consolidated readiness pass the directive asked for; the nine
 P11-P1…P9 questions are answered as sections 1–10 below, and the rungs EA-0…EA-9 are the execution order. Nothing in
 sections 1–10 reopens a frozen decision; where the current code shaped a choice, the code is cited.
@@ -39,10 +39,14 @@ and its REST/MCP adapters; artifact-ref resolution; External AI Health; the Acce
 ## 2. Final additive data model (all `CREATE … IF NOT EXISTS` + `ALTER … ADD COLUMN` in `db.py`, no migration tool)
 
 ```sql
--- Principals. Actor = a person. Client = an LLM product/connection. One credential binds exactly one (actor, client)
--- pair, so "Gio using ChatGPT" and "Kyle using ChatGPT" are two credentials, never a header the caller can forge.
+-- Principals. Actor = a person (or the system). Client = an LLM product/connection. One credential binds exactly one
+-- (actor, client) pair, so "Gio using ChatGPT" and "Kyle using ChatGPT" are two credentials, never a header the caller
+-- can forge. Two rows are seeded by the schema: actor 'kyle' (kind person, the local owner — stamped on user-initiated
+-- UI/CLI/extension actions the server can attribute, i.e. anything behind the legacy app token) and actor 'system'
+-- (kind system — background reassessment, nightly refresh, derived-state recomputation, job completions). Automatic
+-- work is NEVER attributed to Kyle; it carries originating_* links to the user action that caused it instead (§5).
 CREATE TABLE IF NOT EXISTS external_actors (
-    id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'person',   -- person | service
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'person',   -- person | system
     created_at REAL NOT NULL, disabled_at REAL);
 CREATE TABLE IF NOT EXISTS external_clients (
     id TEXT PRIMARY KEY, label TEXT NOT NULL,                       -- free label ("Gio's ChatGPT"), never a vendor enum
@@ -59,7 +63,7 @@ CREATE TABLE IF NOT EXISTS external_project_grants (               -- ACL, on th
     id INTEGER PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     actor_id TEXT NOT NULL REFERENCES external_actors(id),
     role TEXT NOT NULL,                                             -- read | contribute | owner   (§40 presets)
-    disclosure_classes TEXT NOT NULL DEFAULT '["standard"]',        -- JSON list of classes this actor may receive in this project (§41)
+    disclosure_classes TEXT NOT NULL DEFAULT '["standard"]',        -- JSON list of classes this actor may receive in this project (§41). A NEW grant is ALWAYS standard-only (Kyle's ruling); the owner adds correspondence/financial/tax/identity/restricted deliberately, per grant, in the Access card.
     extra_permissions TEXT NOT NULL DEFAULT '[]',                   -- JSON: approve_findings | administer_access … (explicit grants only)
     granted_by TEXT, granted_at REAL NOT NULL, revoked_at REAL, revoked_by TEXT,
     UNIQUE(project_id, actor_id));
@@ -77,7 +81,11 @@ CREATE TABLE IF NOT EXISTS disclosure_audit (                       -- only lowe
 CREATE TABLE IF NOT EXISTS project_change_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL, object_type TEXT NOT NULL, object_id TEXT NOT NULL,
-    actor_id TEXT, external_client_id TEXT, intake_id TEXT, request_id TEXT,
+    actor_id TEXT NOT NULL,                                         -- 'kyle' | 'gio' | … | 'system' — who did it (never NULL; unknown = 'system')
+    external_client_id TEXT,                                        -- NULL for local surfaces; the client row when an LLM submitted it on the actor's behalf
+    local_surface TEXT,                                             -- ui | cli | extension | mcp_legacy | job  (how a local action arrived)
+    intake_id TEXT, request_id TEXT,
+    originating_actor_id TEXT, originating_request_id TEXT,        -- for actor='system': the user action/request that caused this automatic work, when known
     before TEXT, after TEXT,                                        -- JSON of the TRACKED fields only (§45), bounded ≤ 4 KB each, enforced
     disclosure_floor TEXT NOT NULL DEFAULT 'restricted',           -- most restrictive class among the fields exposed (§44)
     materiality TEXT, decision_impact TEXT,                         -- filled POST-commit (§45/§48): none|supporting|material ; JSON of affected decisions/plan items or NULL
@@ -86,7 +94,7 @@ CREATE INDEX IF NOT EXISTS ix_pce_project_id ON project_change_events(project_id
 CREATE INDEX IF NOT EXISTS ix_pce_object ON project_change_events(object_type, object_id);
 
 -- Durable user state evolution (§49): extend project_facts, keep every existing row valid.
-ALTER TABLE project_facts ADD COLUMN actor_id TEXT;                -- NULL = local owner (the UI/CLI path)
+ALTER TABLE project_facts ADD COLUMN actor_id TEXT;                -- legacy rows NULL → rendered "Kyle (local, unattributed)"; new local rows 'kyle'; assistant-origin rows 'system'
 ALTER TABLE project_facts ADD COLUMN external_client_id TEXT;
 ALTER TABLE project_facts ADD COLUMN explicitness TEXT NOT NULL DEFAULT 'explicit';  -- explicit | accepted_recommendation | inferred
 ALTER TABLE project_facts ADD COLUMN status TEXT NOT NULL DEFAULT 'active';          -- active | superseded | proposed | rejected | withdrawn
@@ -201,7 +209,12 @@ drill-down works for processed material with no new locator grammar.
   queries and the claims/findings/tensions selectors. Derived objects: floor = most restrictive class over the
   `claim_evidence → sources` (Claims), `project_notes.source_id` (findings), tension/question → their claims, plan item
   → cited note ids (`decision_impact._plan_cited_note_ids` already walks this). v1 withholds a derived object whose
-  floor exceeds the grant entirely and counts it in `disclosure.withheld_count` (§42's conservative rule).
+  floor exceeds the grant entirely and counts it in `disclosure.withheld_count` (§42's conservative rule). Granting
+  `financial` does not make a derived object readable if it also depends on `tax` or `restricted` material — the floor
+  is the maximum over all contributing material, so that object stays withheld until every contributing class is granted.
+- **Grant defaults** (Kyle's ruling): a new grant is `["standard"]` only; each further class is an explicit owner opt-in
+  per grant, recorded as an `access_changed` ledger event. A client-declared class on intake may only raise; lowering
+  any object's class is an owner-only local operation written to `disclosure_audit`.
 - **Legacy classification backfill** (§43), a one-shot idempotent CLI `neurosearch external backfill-classes --dry-run`,
   deterministic, recorded in HANDOFF with counts: `platform IN (youtube, podcast, web) AND no source_captures row AND
   access_gate IS NULL` → `standard`/`backfill_public`; `platform = instagram` → `restricted`/`backfill_private` (extension
@@ -251,6 +264,18 @@ inside the transaction; `before`/`after` ≤ 4 KB each, enforced by truncation t
 \* `decision_reaffirmed` is the §47 exception: written even when tracked fields are unchanged, only from an explicit
 user action (`sync_project_state op=reaffirm` or the UI), never from recomputation.
 
+**Attribution rule (Kyle's ruling, 2026-09-22).** `actor_id` is never NULL and never guessed. A request that arrived
+through the legacy app token (UI, CLI, extension, legacy MCP) is attributed to `kyle` with `local_surface` set; a request
+through an external credential is attributed to that credential's actor with `external_client_id` set ("ChatGPT
+submitted this on Gio's behalf"); everything that runs from the job queue, the nightly envelope, a completion hook or a
+derived-cache rebuild is `system`, with `originating_actor_id`/`originating_request_id` carried from the job's own
+`logctx` (job/run/request ids already exist there) when a user action caused it. `logctx` gains `actor`/`surface`/
+`request_id` fields set once at the request boundary (`require_auth` / `external.authorize` / `jobs.execute`) so
+`ledger.record()` reads them rather than each call site passing them. Chronology therefore reads "Kyle approved Claim
+X" only when Kyle pressed the button, and "Neuro reassessed Claim X (caused by Kyle's refresh request)" for the pass —
+never "Kyle changed Claim X" for automatic work. The personal-preference / project-decision / system-derived
+distinction of §7 is orthogonal to this and is kept.
+
 **No-op rule (§46).** Equal tracked fields ⇒ no row. Same `(client_id, request_id)` ⇒ the original result is returned and no
 row is written (`ux_facts_request`, `external_intakes` UNIQUE). Jobs, heartbeats, usage, caches, `work_units`, invocation
 rows: never ledgered — there is no `record()` call on those paths, and a grep-gate test asserts `ledger.record` is called
@@ -267,8 +292,9 @@ only from the modules in the table.
 
 **Required test (the 56 case, `tests/test_ea2_ledger.py`):** seed 56 Claims; run the reassessment pass under
 `NEUROSEARCH_FAKE_AI=1` with the fake returning 54 identical and 2 changed statements, one of which is cited by the
-current plan; assert exactly 2 `claim_statement_changed` rows, `summary == {reassessed:56, changed:2, material:≥1,
-decision_affecting:1}`, and that `db:write_hold` on `/api/perf` recorded no hold above `WRITE_HOLD_WARN_S`.
+current plan; assert exactly 2 `claim_statement_changed` rows **with `actor_id='system'` and `originating_actor_id`
+= the requesting actor**, `summary == {reassessed:56, changed:2, material:≥1, decision_affecting:1}`, and that
+`db:write_hold` on `/api/perf` recorded no hold above `WRITE_HOLD_WARN_S`.
 
 ---
 
@@ -375,28 +401,37 @@ New test modules `tests/test_ea*.py` sort after `test_core.py`.
 | **EA-4** Intake events | `intake.py`; `external_intakes`/`intake_items`; `create_intake`/`attach_artifact` (multipart only)/`finalize_intake`/`get_intake_status`; Inbox projection endpoint; `test_ea4_intake` | multi-object linkage; orphan → needs_review; retry idempotent | Cowork | 1 day |
 | **EA-5** Processed-material ingestion | `add_processed_material` adapters (§6 table) over `ingest_text`/`store_transcript`/`sheets`/`images`; `test_ea5_processed` | zero duplicate cognition (fake-AI/transcription counters = 0); evidence drill-down reaches locators | Cowork | 1 day |
 | **EA-6** Bidirectional state sync | `sync_project_state`; acceptance/referent rule; conflicts; `finalize_intake.user_state`; `test_ea6_sync` | worked flow end to end | Cowork | 1 day |
-| **EA-7** Artifact transport + client adapters | `signed_url` + `mcp_resource` ref kinds via `safe_fetch`; capability negotiation finalised; **re-verify Claude/ChatGPT connector capabilities from official docs**; first adapter = Claude (local MCP, no tunnel); ChatGPT adapter + optional tunnel config only if §12-Q1 says v1 | `test_ea7_artifacts`; one real client connects over LAN | Cowork + Claude Code (Mac config) | 1–2 days |
+| **EA-7** Artifact transport + client adapters | `signed_url` + `mcp_resource` ref kinds via `safe_fetch`; capability negotiation finalised; **first adapter = ChatGPT** (Gio's own account): immediately before writing it, re-verify from current official OpenAI documentation what a ChatGPT connector/custom-GPT/MCP client can do (read tools, write tools, file transport, callback shape) and which transport it needs (the optional tunnel of §62, switchable, Neuro keeps working without it); anything the platform cannot do is recorded as an **external platform gate** in HANDOFF — the product target does not move to Claude and the domain model gains no ChatGPT-specific field. Second adapter = Claude (local MCP over LAN), as compatibility validation | `test_ea7_artifacts`; ChatGPT completes `open_project` → `consult_project` → `create_intake`/`finalize_intake` → `sync_project_state` against a temp project | Cowork + Claude Code (Mac/tunnel config); Kyle for the OpenAI-side account steps only | 2 days |
 | **EA-8** Access / Inbox / Health UX | Settings card: actors, clients, credentials (create/rotate/revoke, secret shown once), grants + disclosure classes; Inbox view; Health `external_ai` section; `test_s44`-style frontend gates | UI edits never restart the process; gates pass | Cowork | 1 day |
-| **EA-9** Live acceptance + release | Kyle/Gio scenarios (§10 last row); full suite; `release-check`; bump 0.64.0; State-of-the-App; HANDOFF closeout | all scenarios recorded in HANDOFF with evidence | Claude Code + Kyle | 1 day + Kyle's time |
+| **EA-9** Live acceptance + release | **Primary scenario, ChatGPT:** Gio → her own ChatGPT account → authorized shared project → orientation → substantive project-aware answer → evidence drill-down on request → processed attachment intake → explicit decision write-back → a later turn continues with no unnecessary Neuro call. Then second actor (Kyle), protected project, revocation, failure states, chronology, deltas. Claude as second client: the same loop, compatibility only. Full suite; `release-check`; bump 0.64.0; State-of-the-App; HANDOFF closeout | every scenario recorded in HANDOFF with evidence; the ChatGPT scenario is the release blocker | Claude Code + Kyle + Gio | 1 day + Kyle's/Gio's time |
 
 Stops during execution (per the directive): a genuine product decision, a security conflict, an irreversible action, a
 credential/account step only Kyle can do, or live acceptance needing Kyle's judgment. Nothing else pauses for approval.
 
 ---
 
-## 12. Unresolved product decisions — the only genuine blockers
+## 12. Product decisions — RESOLVED (Kyle, 2026-09-22)
 
-1. **First live client for EA-9.** Recommendation: **Claude** (local MCP over LAN, no tunnel) proves the loop first;
-   ChatGPT + the optional tunnel is EA-7's second adapter and can slip to a fast-follow. Alternative: ChatGPT first,
-   which makes the tunnel a v1 requirement.
-2. **Local actor identity.** UI/CLI writes today have no actor. Recommendation: one `external_actors` row `kyle`
-   (`kind=person`) is created by the Access card and stamped on local writes so chronology has a consistent author;
-   `actor_id NULL` remains valid for historical rows and is rendered as "Kyle (local)".
-3. **Default disclosure for a new grant.** Recommendation: `["standard"]` only; the owner adds `correspondence` /
-   `financial` per grant in the Access card. Gio's grant on the buying-businesses project would then need Kyle to add
-   `correspondence` before seller emails are consultable by Gio's client.
+1. **First live client: ChatGPT first, Claude second.** Gio only uses ChatGPT; the experience P11 must prove is her own
+   ChatGPT account against shared Neuro projects. EA-7 builds the ChatGPT adapter/transport first (capabilities and
+   transport re-verified from current official OpenAI documentation immediately before implementation); EA-9's
+   primary acceptance is ChatGPT on a real shared project; Claude is the second adapter and a compatibility test. The
+   service layer, schemas, ACL, disclosure, intake and ledger stay client-neutral — no ChatGPT-specific assumption
+   enters the domain model, and a platform limitation is recorded as an external gate, never used to move the target.
+2. **Local actor: Kyle for attributable user-initiated local actions; `system` for automatic Neuro work.** Approving a
+   Claim, changing a decision in the UI, importing a document → `kyle`. Background reassessment, nightly refresh,
+   derived-state recomputation → `system`, with `originating_actor_id`/`originating_request_id` preserving the causal
+   link to the user action when known. Chronology distinguishes "Kyle did this", "Gio did this", "ChatGPT submitted
+   this on Gio's behalf" and "Neuro derived/recomputed this", and never reads "Kyle changed Claim X" for an automatic
+   pass. Personal preference vs shared project decision vs system-derived state remains a separate axis (§7).
+3. **New external grant disclosure: `["standard"]` only by default; sensitive classes require explicit owner opt-in per
+   grant.** `correspondence`, `financial`, `tax`, `identity`, `restricted` never become readable merely through project
+   access; ACL and disclosure stay independent; unclassified stays closed; a client may only raise a class; only an
+   owner-level local operation lowers one, audited; derived intelligence inherits the most restrictive floor of its
+   provenance, so a `financial` grant does not unlock an object that also depends on `tax` or `restricted` material.
 
-Everything else in this document is decided by the Frozen Architecture or by the current code.
+**Unresolved product decisions: none.** Everything else in this document is decided by the Frozen Architecture or by
+the current code.
 
 ---
 
@@ -407,7 +442,7 @@ P11 PLAN READY FOR FINAL REVIEW
 
 FROZEN ARCHITECTURE        CONFIRMED (§38–§67 at 9d08fcc; not redrafted)
 REPO CONTRADICTIONS        none. One EA-0 finding: sources has no acquisition-provenance column; §43 backfill derives it (§4) and defaults closed.
-UNRESOLVED PRODUCT DECISIONS   §12 (three; each has a recommendation)
-IMPLEMENTATION             NOT STARTED
-READY TO EXECUTE           YES — on "P11 plan accepted. Begin execution."
+UNRESOLVED PRODUCT DECISIONS   none (three resolved by Kyle 2026-09-22 — §12)
+READY TO EXECUTE           YES
+IMPLEMENTATION             NOT STARTED — begins only on "P11 plan accepted. Begin execution."
 ```

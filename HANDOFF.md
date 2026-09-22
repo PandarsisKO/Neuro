@@ -2662,3 +2662,17 @@ leaves the rest NULL (= restricted).
 **Implementation: NOT started.** Next: Kyle/ChatGPT review the plan; on "P11 plan accepted. Begin execution." the
 Cowork session executes EA-0→EA-9 autonomously, Claude Code delivering at milestones. The device VM cannot run the
 Mac `.venv` (Linux vs macOS binaries) — the doc edits were link-checked only; no code changed, so no suite run is owed.
+
+## P11 plan: three product decisions resolved by Kyle — 2026-09-22
+
+Kyle's "P11 PRODUCT DECISIONS — FINAL CORRECTION", folded into `docs/P11-EXECUTION-PLAN-2026-09-22.md` §12 (now
+"RESOLVED"), §2 (schema), §4 (grant defaults), §5 (attribution rule), §11 (EA-7/EA-9): **(1) ChatGPT is the first live
+client** — Gio's own account against a shared project is EA-9's release-blocking scenario; Claude is the second
+adapter/compatibility test; the service layer stays client-neutral and any OpenAI platform limitation is an external
+gate, never a reason to move the target. **(2) Local actor** — `kyle` on attributable user-initiated local actions,
+`system` on automatic work (reassessment, nightly, derived recomputation) with `originating_actor_id`/
+`originating_request_id` links; chronology never reads "Kyle changed Claim X" for a pass. **(3) New grant disclosure**
+— `["standard"]` only; each sensitive class is an explicit owner opt-in per grant; only owner-level local operations
+lower a class, audited; derived floors inherit the most restrictive contributing class. The Frozen Architecture is
+unchanged. **Unresolved product decisions: none. Ready to execute: yes. Implementation: NOT started** — waits for
+"P11 plan accepted. Begin execution." Both P11 commits are unpushed from this session (no GitHub credentials here).
