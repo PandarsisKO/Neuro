@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AD4B Blind Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#f6f6f9; --surface:#fff; --surface-2:#fbfbfd;
+  --ink:#191b22; --muted:#6e7185; --faint:#9a9db0;
+  --line:#e3e4ed; --line-strong:#cfd1de;
+  --accent:#4c5b8a; --accent-soft:#eceffa;
+  --keep:#2e7d5b; --keep-soft:#e8f4ee;
+  --skip:#6b6e82; --skip-soft:#eeeff3;
+  --warn:#9a6b2f;
+  --shadow:0 1px 2px rgba(20,22,35,.05),0 8px 24px -12px rgba(20,22,35,.18);
+  --btn-ink:#ffffff;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#131419; --surface:#1b1d25; --surface-2:#20222b;
+    --ink:#e9eaf1; --muted:#9a9db0; --faint:#71748a;
+    --line:#2b2e39; --line-strong:#3a3e4c;
+    --accent:#8f9ed4; --accent-soft:#232839;
+    --keep:#6bbd94; --keep-soft:#1c2a24;
+    --skip:#9a9db0; --skip-soft:#242630;
+    --warn:#d4a45f;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+    --btn-ink:#14161d;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#131419; --surface:#1b1d25; --surface-2:#20222b;
+  --ink:#e9eaf1; --muted:#9a9db0; --faint:#71748a;
+  --line:#2b2e39; --line-strong:#3a3e4c;
+  --accent:#8f9ed4; --accent-soft:#232839;
+  --keep:#6bbd94; --keep-soft:#1c2a24;
+  --skip:#9a9db0; --skip-soft:#242630;
+  --warn:#d4a45f;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+  --btn-ink:#14161d;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ground); color:var(--ink);
+  font:15px/1.55 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.wrap{max-width:660px;margin:0 auto;padding:0 20px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+
+/* progress rail */
+#rail{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line)}
+#rail .bar{height:3px;background:var(--line)}
+#rail .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s ease}
+#rail .meta{max-width:660px;margin:0 auto;padding:10px 20px;display:flex;gap:12px;align-items:center;
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);letter-spacing:.02em}
+#rail .meta b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+#rail .spacer{margin-left:auto}
+.ghost{background:none;border:1px solid var(--line-strong);color:var(--muted);border-radius:6px;
+  padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;font-family:"IBM Plex Mono",monospace}
+.ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+/* intro / dropzone */
+header.intro{padding:44px 0 28px}
+header.intro .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+header.intro h1{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+header.intro p{color:var(--muted);margin:12px 0 0;max-width:56ch}
+#drop{margin-top:26px;border:1.5px dashed var(--line-strong);border-radius:10px;background:var(--surface);
+  padding:34px 24px;text-align:center;transition:border-color .15s,background .15s}
+#drop.over{border-color:var(--accent);background:var(--accent-soft)}
+#drop p{margin:0 0 14px;color:var(--muted);font-size:14px}
+.btn{background:var(--accent);color:var(--btn-ink);border:0;border-radius:7px;padding:10px 18px;
+  font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.rules{margin-top:22px;border-left:2px solid var(--line-strong);padding:2px 0 2px 16px;
+  color:var(--muted);font-size:13.5px}
+.rules b{color:var(--ink);font-weight:600}
+.rules ul{margin:8px 0 0;padding-left:18px}
+.rules li{margin:5px 0}
+
+/* card */
+.stage{padding-top:26px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+  padding:26px 26px 24px}
+.saw{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.saw::after{content:"";flex:1;height:1px;background:var(--line)}
+.card h2{font-size:23px;line-height:1.28;font-weight:600;letter-spacing:-.015em}
+.facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+.fact{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:3px 8px}
+.fact b{color:var(--ink);font-weight:500}
+.desc{margin-top:16px;color:var(--ink);font-size:14.5px;line-height:1.6;white-space:pre-wrap}
+.nodesc{margin-top:16px;color:var(--faint);font-size:13px;font-style:italic}
+
+/* actions — deliberately symmetric so neither answer is the visually easy one */
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}
+.act{border:1.5px solid var(--line-strong);background:var(--surface);border-radius:9px;padding:14px 12px;
+  font:inherit;cursor:pointer;color:var(--ink);text-align:center;transition:all .12s}
+.act .lab{font-weight:600;font-size:15px;display:block}
+.act .key{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);margin-top:3px;display:block}
+.act:hover{transform:translateY(-1px)}
+.act.keep:hover,.act.keep[aria-pressed="true"]{border-color:var(--keep);background:var(--keep-soft);color:var(--keep)}
+.act.skip:hover,.act.skip[aria-pressed="true"]{border-color:var(--skip);background:var(--skip-soft);color:var(--skip)}
+.act[aria-pressed="true"] .key{color:inherit;opacity:.75}
+.why{margin-top:12px}
+.why input{width:100%;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  border-radius:7px;padding:10px 12px;font:inherit;font-size:14px}
+.why input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.nav{display:flex;gap:10px;align-items:center;margin-top:16px;font-size:13px;color:var(--muted)}
+.nav .spacer{margin-left:auto}
+
+/* results */
+.res h2{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.headline{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:10px;padding:22px 24px;margin:20px 0 26px;box-shadow:var(--shadow)}
+.headline .big{font-family:"IBM Plex Mono",monospace;font-size:44px;font-weight:600;letter-spacing:-.03em;
+  color:var(--accent);line-height:1;font-variant-numeric:tabular-nums}
+.headline .cap{color:var(--muted);margin-top:10px;font-size:14.5px}
+.sec{margin-top:30px}
+.sec h3{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);font-weight:500}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.meter{height:5px;background:var(--line);border-radius:3px;overflow:hidden;min-width:70px}
+.meter i{display:block;height:100%;background:var(--accent)}
+.kept{border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:14px 16px;margin-bottom:9px}
+.kept .t{font-weight:600;font-size:14.5px;line-height:1.4}
+.kept .m{margin-top:7px;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}
+.score{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;background:var(--accent-soft);
+  color:var(--accent);border-radius:4px;padding:2px 7px}
+.said{font-style:italic}
+.verdict{margin-top:30px;border-radius:10px;padding:20px 22px;border:1px solid var(--line);background:var(--surface-2)}
+.verdict .tag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  font-weight:600;margin-bottom:9px}
+.verdict.close{border-left:3px solid var(--keep)} .verdict.close .tag{color:var(--keep)}
+.verdict.mid{border-left:3px solid var(--warn)} .verdict.mid .tag{color:var(--warn)}
+.verdict.act{border-left:3px solid var(--accent)} .verdict.act .tag{color:var(--accent)}
+.verdict p{margin:0;font-size:14.5px;line-height:1.6}
+.export{margin-top:30px;border-top:1px solid var(--line);padding-top:22px}
+.export .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.export textarea{width:100%;height:110px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);
+  color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px;padding:10px;resize:vertical}
+.export code{font-family:"IBM Plex Mono",monospace;font-size:12.5px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--ink);word-break:break-all}
+.note{color:var(--muted);font-size:13px;margin-top:10px}
+.warnbar{background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--warn);
+  border-radius:8px;padding:12px 16px;color:var(--muted);font-size:13.5px;margin-bottom:20px}
+@media (max-width:480px){
+  header.intro h1{font-size:25px}
+  .headline .big{font-size:36px}
+  .card{padding:20px 18px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="rail" hidden>
+  <div class="bar"><i id="railbar"></i></div>
+  <div class="meta">
+    <span>item <b id="pos">1</b> / <b id="total">30</b></span>
+    <span>judged <b id="done">0</b></span>
+    <span class="spacer"></span>
+    <button class="ghost" id="finish">see results</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <section id="intro">
+    <header class="intro">
+      <div class="eyebrow">AD4B · Neuro Search</div>
+      <h1>Blind review of what the filter rejected</h1>
+      <p>Judge each candidate on what the relevance ranker itself saw — nothing more. The scores and the
+         model's verdicts stay sealed until you finish.</p>
+    </header>
+    <div id="drop">
+      <p>Drop <span class="mono">ad4b-sample-*.json</span> here</p>
+      <button class="btn" id="pick">Choose file</button>
+      <input type="file" id="file" accept="application/json,.json" hidden>
+    </div>
+    <div class="rules">
+      <b>One question per item: would you want this in the project?</b>
+      <ul>
+        <li>You see the title, creator and length. That is what the ranker had.</li>
+        <li>Nothing leaves this page — the file is read in your browser, not uploaded.</li>
+        <li>Progress saves as you go, so you can stop and come back.</li>
+        <li><b>K</b> keep · <b>S</b> skip · <b>←</b> back · <b>→</b> forward</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="stage" class="stage" hidden>
+    <div class="card">
+      <div class="saw">what the ranker saw</div>
+      <h2 id="title"></h2>
+      <div class="facts" id="facts"></div>
+      <div id="descwrap"></div>
+    </div>
+    <div class="acts">
+      <button class="act keep" id="bKeep"><span class="lab">Keep</span><span class="key">K — I want this</span></button>
+      <button class="act skip" id="bSkip"><span class="lab">Skip</span><span class="key">S — not useful</span></button>
+    </div>
+    <div class="why"><input id="why" placeholder="why, in a few words (optional)" autocomplete="off"></div>
+    <div class="nav">
+      <button class="ghost" id="prev">← back</button>
+      <button class="ghost" id="next">forward →</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="reset">start over</button>
+    </div>
+  </section>
+
+  <section id="res" class="res" hidden></section>
+</div>
+<script>
+(function(){
+"use strict";
+var CLOSE_BELOW=0.10, ACT_ABOVE=0.25;   // set before any run, same as tools/ad4b_score.py
+var report=null, key=null, idx=0, store="";
+var $=function(id){return document.getElementById(id)};
+
+function pct(x){return Math.round(x*100)+"%"}
+function esc(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML}
+
+function save(){ try{ localStorage.setItem(store, JSON.stringify({idx:idx,
+    d:report.review_these.map(function(r){return r.review})})); }catch(e){} }
+function restore(){
+  try{
+    var raw=localStorage.getItem(store); if(!raw) return false;
+    var s=JSON.parse(raw);
+    if(!s||!s.d||s.d.length!==report.review_these.length) return false;
+    report.review_these.forEach(function(r,i){ if(s.d[i]) r.review=s.d[i]; });
+    idx=Math.min(s.idx||0, report.review_these.length-1);
+    return report.review_these.some(function(r){return typeof r.review.keep==="boolean"});
+  }catch(e){ return false; }
+}
+
+function judged(){ return report.review_these.filter(function(r){return typeof r.review.keep==="boolean"}) }
+
+function load(text){
+  var d;
+  try{ d=JSON.parse(text) }catch(e){ alert("That file isn't valid JSON."); return }
+  if(!d.review_these||!d._scoring_key){ alert("That doesn't look like an ad4b-sample file — it needs review_these and _scoring_key."); return }
+  report=d;
+  key={}; d._scoring_key.forEach(function(k){ key[k.item]=k });   // sealed until results
+  store="ad4b:"+(d.project_id||"?")+":"+(d.generated_at||"?");
+  restore();
+  $("intro").hidden=true; $("rail").hidden=false; $("total").textContent=d.review_these.length;
+  // an already-complete rubric (saved progress, or a file filled in elsewhere) goes straight to the answer
+  if(judged().length===d.review_these.length){ results(); return; }
+  render();
+}
+
+function render(){
+  $("stage").hidden=false; $("res").hidden=true;
+  var r=report.review_these[idx];
+  $("title").textContent=r.title||"(untitled)";
+  var f=[];
+  if(r.creator) f.push(["creator",r.creator]);
+  if(r.kind)    f.push(["kind",r.kind]);
+  if(r.length)  f.push(["length",r.length]);
+  if(r.published) f.push(["published",r.published]);
+  $("facts").innerHTML=f.map(function(p){return '<span class="fact">'+esc(p[0])+' <b>'+esc(p[1])+'</b></span>'}).join("");
+  var desc=(r.description||"").trim();
+  $("descwrap").innerHTML = desc
+    ? '<div class="desc">'+esc(desc)+'</div>'
+    : '<div class="nodesc">No description was stored for this item — the ranker scored it on the title alone.</div>';
+  $("why").value=r.review.why||"";
+  $("bKeep").setAttribute("aria-pressed", r.review.keep===true);
+  $("bSkip").setAttribute("aria-pressed", r.review.keep===false);
+  $("pos").textContent=idx+1;
+  var n=judged().length, t=report.review_these.length;
+  $("done").textContent=n;
+  $("railbar").style.width=(n/t*100)+"%";
+  $("finish").textContent = n===t ? "see results" : "see results ("+n+"/"+t+")";
+}
+
+function decide(keep){
+  var r=report.review_these[idx];
+  r.review.keep=keep; r.review.why=$("why").value.trim();
+  save();
+  if(idx<report.review_these.length-1){ idx++; render(); }
+  else if(judged().length===report.review_these.length){ results(); }
+  else { render(); }
+}
+function move(d){
+  report.review_these[idx].review.why=$("why").value.trim();
+  idx=Math.max(0,Math.min(report.review_these.length-1,idx+d)); save(); render();
+}
+
+function results(){
+  var t=report.review_these.length, J=judged(), n=J.length;
+  if(!n){ alert("Nothing judged yet."); return }
+  var kept=J.filter(function(r){return r.review.keep});
+  var rate=kept.length/n;
+
+  var bands={}, creators={};
+  J.forEach(function(r){
+    var k=key[r.item]||{};
+    (bands[k.band]=bands[k.band]||[]).push(!!r.review.keep);
+    var c=(k.creator||r.creator)||"(no creator)";
+    (creators[c]=creators[c]||[]).push(!!r.review.keep);
+  });
+  var bandRows=Object.keys(bands).sort(function(a,b){return parseInt(b)-parseInt(a)});
+  var credRows=Object.keys(creators).filter(function(c){return creators[c].length>=2})
+    .sort(function(a,b){
+      var ra=creators[a].filter(Boolean).length/creators[a].length, rb=creators[b].filter(Boolean).length/creators[b].length;
+      return rb-ra || creators[b].length-creators[a].length;
+    });
+  var sum=function(v){return v.filter(Boolean).length};
+
+  var vcls = rate<CLOSE_BELOW?"close":(rate<ACT_ABOVE?"mid":"act");
+  var vtag = rate<CLOSE_BELOW?"AD4B closes":(rate<ACT_ABOVE?"Real, not alarming":"The filter is costing you");
+  var vtxt = rate<CLOSE_BELOW
+    ? pct(rate)+" is below the "+pct(CLOSE_BELOW)+" bar set before this ran. The filter is not costing you meaningful material. AD4B closes: no experiment to build, no cutoff change warranted."
+    : rate<ACT_ABOVE
+    ? pct(rate)+" sits between the "+pct(CLOSE_BELOW)+" and "+pct(ACT_ABOVE)+" bars set before this ran. Worth reading the band table: loss concentrated in the highest band means widening the creator-trust nudge is the cheap fix; loss spread evenly means the score itself is the problem."
+    : pct(rate)+" is above the "+pct(ACT_ABOVE)+" bar set before this ran. The filter is costing you real material and the cutoff or the scoring prompt should change — the band and creator tables say where.";
+
+  var h='';
+  if(n<t) h+='<div class="warnbar">'+(t-n)+' of '+t+' items are still unjudged. These numbers cover the '+n+' you did judge.</div>';
+  h+='<h2>What you would have kept</h2>';
+  h+='<div class="headline"><div class="big">'+pct(rate)+'</div><div class="cap">You kept <b>'+kept.length+'</b> of the <b>'+n+'</b> candidates the relevance filter had rejected.</div></div>';
+
+  h+='<div class="sec"><h3>By score band — the highest band sits nearest the cutoff</h3><table><thead><tr><th>band</th><th>kept</th><th>rate</th><th></th></tr></thead><tbody>';
+  bandRows.forEach(function(b){
+    var v=bands[b], r2=sum(v)/v.length;
+    h+='<tr><td class="num">'+esc(b)+'</td><td class="num">'+sum(v)+' / '+v.length+'</td><td class="num">'+pct(r2)+'</td>'
+      +'<td><div class="meter"><i style="width:'+(r2*100)+'%"></i></div></td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  if(credRows.length){
+    h+='<div class="sec"><h3>By creator — 2 or more judged</h3><table><thead><tr><th>creator</th><th>kept</th><th>rate</th></tr></thead><tbody>';
+    credRows.forEach(function(c){
+      var v=creators[c];
+      h+='<tr><td>'+esc(c)+'</td><td class="num">'+sum(v)+' / '+v.length+'</td><td class="num">'+pct(sum(v)/v.length)+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+
+  if(kept.length){
+    h+='<div class="sec"><h3>What you kept, and what the model said about it</h3>';
+    kept.sort(function(a,b){return (key[b.item]||{}).score-(key[a.item]||{}).score}).forEach(function(r){
+      var k=key[r.item]||{};
+      h+='<div class="kept"><div class="t">'+esc(r.title||"(untitled)")+'</div><div class="m">'
+        +'<span class="score">'+esc(k.score)+'</span>'
+        +'<span>'+esc(k.creator||r.creator||"")+'</span>'
+        +'<span class="said">model: '+esc(k.model_said||"(no reason given)")+'</span>'
+        +(r.review.why?'<span>you: '+esc(r.review.why)+'</span>':'')
+        +'</div></div>';
+    });
+    h+='</div>';
+  }
+
+  h+='<div class="verdict '+vcls+'"><div class="tag">'+esc(vtag)+'</div><p>'+esc(vtxt)+'</p></div>';
+
+  h+='<div class="export"><h3 class="mono" style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:12px">Save the filled rubric</h3>'
+    +'<div class="row"><button class="btn" id="dl">Download JSON</button><button class="ghost" id="cp">Copy to clipboard</button></div>'
+    +'<p class="note">Then run the canonical scorer — it is the number of record, and it writes nothing:</p>'
+    +'<p><code>.venv/bin/python tools/ad4b_score.py --in &lt;path to the saved file&gt;</code></p>'
+    +'<textarea id="json" readonly spellcheck="false"></textarea></div>';
+
+  $("stage").hidden=true; $("res").hidden=false; $("res").innerHTML=h;
+  $("railbar").style.width="100%"; $("done").textContent=n;
+
+  var out=JSON.stringify(report,null,2);
+  $("json").value=out;
+  $("dl").onclick=function(){
+    var name=(report.project_id?"ad4b-filled-"+report.project_id.slice(0,8):"ad4b-filled")+".json";
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([out],{type:"application/json"}));
+    a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000);
+  };
+  $("cp").onclick=function(){
+    var ta=$("json"); ta.select(); ta.setSelectionRange(0,out.length);
+    var ok=false; try{ ok=document.execCommand("copy") }catch(e){}
+    if(!ok && navigator.clipboard){ navigator.clipboard.writeText(out).then(function(){$("cp").textContent="copied"}); return }
+    $("cp").textContent = ok ? "copied" : "select the box and copy";
+  };
+}
+
+/* wiring */
+$("pick").onclick=function(){ $("file").click() };
+$("file").onchange=function(e){ var f=e.target.files[0]; if(f) f.text().then(load) };
+var dz=$("drop");
+["dragenter","dragover"].forEach(function(ev){ dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.add("over")}) });
+["dragleave","drop"].forEach(function(ev){ dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.remove("over")}) });
+dz.addEventListener("drop",function(e){ var f=e.dataTransfer.files[0]; if(f) f.text().then(load) });
+$("bKeep").onclick=function(){decide(true)};
+$("bSkip").onclick=function(){decide(false)};
+$("prev").onclick=function(){move(-1)};
+$("next").onclick=function(){move(1)};
+$("finish").onclick=results;
+$("reset").onclick=function(){
+  if(!confirm("Clear every judgement for this file and start from item 1?")) return;
+  try{ localStorage.removeItem(store) }catch(e){}
+  report.review_these.forEach(function(r){ r.review={keep:null,why:""} });
+  idx=0; render();
+};
+/* A page written by `ad4b_blind_sample.py --html` carries its rubric inline: no file step.
+   The payload tag is injected at the end of the document, i.e. AFTER this script, so it does not exist yet while
+   this script is being evaluated -- wait for the parse to finish before looking for it. */
+function boot(){
+  var emb=document.getElementById("embedded");
+  if(emb && (emb.textContent||"").trim()){ load(emb.textContent); }
+}
+if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded",boot); } else { boot(); }
+
+document.addEventListener("keydown",function(e){
+  if(!report || $("stage").hidden) return;
+  if(e.target.tagName==="INPUT"){ if(e.key==="Enter"){e.preventDefault();$("why").blur()} return }
+  var k=e.key.toLowerCase();
+  if(k==="k"){e.preventDefault();decide(true)}
+  else if(k==="s"){e.preventDefault();decide(false)}
+  else if(e.key==="ArrowLeft"){e.preventDefault();move(-1)}
+  else if(e.key==="ArrowRight"){e.preventDefault();move(1)}
+});
+})();
+</script>
+<script id="embedded" type="application/json">{"generated_at": "2026-09-21T17:03:11-0700", "project_id": "c752ed152ec942dd97b9a94c3f1b3b96", "question": "For each item: would you want this in the project? Judge ONLY from what is shown \u2014 title, creator, description, length, date. That is all the relevance ranker saw. Set review.keep to true or false and add one line in review.why. Do not scroll to _scoring_key until you are done.", "population": {"total_rejected_and_scored": 7772, "by_band": {"0-19": 4144, "20-34": 2589, "35-44": 1039}}, "sampling": {"per_band": 10, "seed": 44, "sampled": 30}, "review_these": [{"item": 1, "title": "The Man Who Calls BS On AI: They\u2019re LYING About AI, 2027 Is When It All Breaks! | Ed Zitron", "creator": "The Diary Of A CEO", "description": "Tech critic Ed Zitron exposes the AI bubble, why OpenAI and Anthropic are burning billions, the fake AI boom, and why the crash could wipe out the ENTIRE economy!\n\nEd Zitron is a British AI critic and one of the most cited voices warning that the AI industry is one giant bubble. He hosts the 'Better Offline' podcast, reaching over a million monthly downloads, and writes the newsletter 'Where's Your Ed At'. He is the founder and CEO of the primary research firm EZPR, and is currently writing his upcoming book, 'The Hater's Guide To Silicon Valley\u2019 (out Q2 2027).\n\nHe explains: \n\u25a0 Why he believes", "length": "147m", "published": "2026-08-27", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 2, "title": "Makers vs Managers, Dealing with Stress and The Role of a CEO", "creator": "Nick Huber - Sweaty Startup", "description": "In this clip, I talked with Chris about how most people don\u2019t know what they\u2019re capable of, mainly because they\u2019ve never pushed themselves hard enough to find out. We got into the idea that stress, decision-making, and delegation are all muscles, and you build them by doing hard things. We also talked about the difference between being a hands-on operator and a hands-off manager, and why I think you can\u2019t manage what you don\u2019t understand. \n\nOrder my book on Amazon: https://www.amazon.com/Sweaty-Startup-Doing-Boring-Things/dp/006338762X\n\nSubscribe to my newsletter https://www.nickhuber.com/news", "length": "4m", "published": "2025-04-30", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 3, "title": "International Macroeconomics CH7\u2013 IS-LM-FX Model and Macroeconomic Policies, Feenstra (Part 2)", "creator": "FinanceKid", "description": "Chapter 7 Part 2: IS-LM-FX Model and Macroeconomic Policies \n- Explaining the demand equation in an open economy\n- Goods market and money market equilibrium\n- IS and LM curves\n- The short run IS-LM-FX model\n- Stabilization policy\n\nIf you are interested in borrowing the slides used in this video, feel free to comment below once you subscribe to the channel. If you have any questions, please comment below as well.\n\nFor those interested in the course or the reading materials I am working off, please check out the 2nd edition of the International Economics textbook by Robert C. Feenstra; \n\nhttps:/", "length": "18m", "published": "2017-05-06", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 4, "title": "The Simple Way to Build Custom Actions for GPTs Without Coding (OpenAI Custom GPTs)", "creator": "Liam Ottley", "description": "Want an AI Makeover for YOUR Business?\n\ud83d\udc49\ud83c\udffb https://bit.ly/aimakeover\n\nFollow me on Instagram to see behind the scenes:\n\ud83e\udd33\ud83c\udffc https://instagram.com/liamottley\n\n\ud83d\udee0 MY TECH STACK\n\nHostinger (agent & web hosting): https://hostinger.com/liamvps\nHyperagent (AIOS workspace): https://www.hyperagent.com/liam\nOspry (AI lead gen): https://www.ospry.ai?fpr=liam41\nGlaido (voice transcription): https://get.glaido.com/liam-ottley\nFirecrawl (web scraping): https://firecrawl.link/liam-ottley\nSupadata (video scraping): https://supadata.ai/?ref=liam\nApify (all other scraping): https://apify.com?fpr=8txghh\nElevenLabs ", "length": "12m", "published": "2024-03-19", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 5, "title": "Secretly Lucrative Candle Side-Hustle!! ($500 Startup)", "creator": "UpFlip", "description": "Kajabi is offering a 30-day free trial to start your own business -- https://kajabi.com/upflip \n\nColina Bruce's journey began at the kitchen table, $500, and candles that sold within just three hours of launch!! Let\u2019s dive into this side-hustle turned $564K/Year candle business. Not only does Noir Lux Candle Co. sell candles, but Colina Bruce has also diversified into three more streams of income that most candle makers overlook!\n\nBut the real question for us is, how did Colina Bruce go from no experience to the go-to premium candle maker according to publications like the Oprah magazine? What", "length": "36m", "published": "2024-03-25", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 6, "title": "One of America\u2019s Largest 3D Print Farms Started in a Closet!", "creator": "UpFlip", "description": "Download the CFO's Guide to AI and Machine Learning for FREE at https://NetSuite.com/UpFlip\n\nFrom a single 3D printer stashed in his closet to a thriving $6M business, Kason Knight\u2019s journey in the 3D printing industry is anything but ordinary. After being laid off during the oil and gas downturn, this former mechanical engineer leveraged his experience with 3D printing to create a groundbreaking business opportunity.\n\nWhat started as a modest 3D printing business serving his previous employer quickly evolved into iSolids, a company that's achieved 130% year-over-year growth. His strategic shi", "length": "33m", "published": "2025-05-19", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 7, "title": "The Flourishing Future of Women\u2019s Sports | Kate Johnson | TED", "creator": "TED", "description": "Women's sports are surging in popularity around the world, with record-breaking viewership, attendance and revenue growth. And yet, social media algorithms still skew towards covering men's sports. Olympic rower Kate Johnson, who now leads global marketing strategy for sports and entertainment at Google, unpacks why this is still happening \u2014 and what it will take to level the playing field for women\u2019s sports. (Recorded at TEDSports Indianapolis 2025 on September 10, 2025)\n\nJoin us in person at a TED conference: https://tedtalks.social/events\nBecome a TED Member to support our mission: https://", "length": "12m", "published": "2025-11-06", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 8, "title": "I'm 44. If You're 20 or 30, Watch This", "creator": "Dan Martell", "description": "\u25b8\u25b8 Subscribe to The Martell Method Newsletter: https://bit.ly/3XEBXez\n\n\u25b8\u25b8 Watch these 25 minutes if you want to scale a business you don\u2019t grow to hate: https://www.youtube.com/watch?v=7PDn091o6_E&list=UULFA-mWX9CvCTVFWRMb9bKc9w&index=6\n\n\u25b8\u25b8 Get My New Book (Buy Back Your Time): https://bit.ly/3pCTG78\n\nAt the time of this recording, I\u2019m a 44 year old multi-millionaire.\n\nBut if I could go back and give my 20 year self some advice on how to get rich a lot faster\u2026\n\nI would tell myself these 20 things.\n\nThis advice will take you way further and way faster, especially if you\u2019re in your 20s.\n\nI don\u2019t", "length": "14m", "published": "2025-01-14", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 9, "title": "Would YOU Buy This Launderette Business For \u00a3187K?", "creator": "Jonathan Jay", "description": "Don't get in a spin. Learn how to buy a business and clean up - https://bit.ly/3VRmViX\n\nWould you buy this established launderette business for \u00a3187K?\n\nCan you see what I see? Would you buy this #business or would you pass?\n\nWatch the video as I break down the details in the listing and decide whether it\u2019s a deal or no deal.\n\n#businessacquisition #buyingabusiness #wouldyoubuythisbusiness #businessacquisition #wouldyoubuythisbusiness #wybtb #business #laundryservices #launderette #laundry \n\n***\nMy solicitor of choice for business acquisition:\nJMW\nJohn Andrews\n03452 412494\njohnandrews.deallawyer", "length": "1m", "published": "2024-10-11", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 10, "title": "How The Law Allows Us To Legally Cheat Taxes", "creator": "Legacy Investing Show", "description": "", "length": "1m", "published": "2025-12-29", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 11, "title": "The NEW AI Agent Approach for Accounting Firms", "creator": "Jason On Firms Podcast", "description": "\ud83d\ude80 Get smarter faster by learning with other firm owners: https://www.rlz.io/\n\ud83d\udce9 Want a simple way to keep up with accounting firm and AI? I break it down every week in my newsletter: https://www.jasononfirms.com/newsletter\n\n\n\u260e\ufe0f Leave me a voicemail at (1)516-980-4968!\n\ud83d\udce7\u00a0Email me! jason@jasononfirms.com\n\n\nIn this episode, I explore the sudden rise of AI agent platforms built specifically for accounting firms and ask whether Claude will remain the long-term home for firm-built agents. I compare launches from Ramp, Digits, Pilot, Puzzle, Mercury, Canopy, and Double, then answer a listener question", "length": "56m", "published": "2026-06-23", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 12, "title": "Personal Financial Planning \u2013 Ho & Robinson; Chapter 4", "creator": "FinanceKid", "description": "Personal Financial Planning \u2013 Ho & Robinson; Chapter 4\n\nPlease like and subscribe to my channel for more content every week. If you have any questions, please comment below.\n\nFor those interested in the course or the reading materials I am working off, please check out the 4th edition Personal Financial Planning textbook. Amazon does not sell the 5th edition I am using; \n\nhttps://www.amazon.ca/Personal-Financial-Planning-Robinson-Chris/dp/1553220935\n\nFor those who may be interested in finance and investing, I suggest you check out my Seeking Alpha profile where I write about the market and dif", "length": "29m", "published": "2017-02-21", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 13, "title": "Tips on how to make Google notice your business website | Ep 401 - The Sweaty Startup", "creator": "Nick Huber - Sweaty Startup", "description": "In this clip, join Nick, and Barrett on how to get found on Google with SEO! They cover the fundamentals of link building and why it matters for growing SMB and RE businesses.\n\nIf you are interested in SEO for your company, check us out at https://www.boldseo.com\n\nThanks for watching!\n\nLike this video? I think you\u2019ll love my newsletter.\nI write a long form essay on how to build wealth and succeed to 250K+ readers each week. Subscribe here: https://www.nickhuber.com/newsletter\n\nWant to see all of my companies? Click here: https://www.nickhuber.com/portfolio\n\nWant more of my content? I\u2019m @Sweaty", "length": "15m", "published": "2024-09-18", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 14, "title": "Billionaire Entrepreneur: \u201cAmerica Will Collapse Without A Recession\u201d | Joe Lonsdale", "creator": "BigDeal by Codie Sanchez ", "description": "My new book Own Or Be Owned, out September 18, is my playbook for building a business so good it runs without you. Get your ticket to the launch event here: https://contrarianthinking.biz/oobo_bigdeal\n\nIn this episode, Codie Sanchez sits down with billionaire entrepreneur Joe Lonsdale. Co-founder of Palantir and numerous billion-dollar companies, Joe shares insights on building massive enterprises, investing in revolutionary ideas, and creating meaningful impact. They discuss everything from the roots of Palantir, leadership in tough times, the future of the U.S. economy, to the importance of ", "length": "85m", "published": "2024-10-01", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 15, "title": "You may have to hold off on selling if you haven\u2019t met this criteria.", "creator": "Leo Landaverde", "description": "", "length": "1m", "published": "2026-04-21", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 16, "title": "Watch This If You Make $150K \u270d\ud83c\udffc", "creator": "Legacy Investing Show", "description": "", "length": "1m", "published": "2026-05-24", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 17, "title": "The Mindset Shift That Made Me Millions | Robert Herjavec", "creator": "BigDeal by Codie Sanchez ", "description": "You've been telling yourself the same story. That you need more money to start. That you need the perfect plan before you move. That fear is the reason you're stuck. Here's the truth: the only thing holding you back is the belief that something outside of you has to change before you can begin.\n\nRobert Herjavec went from arriving in America with nothing to building and selling companies worth hundreds of millions of dollars. He's one of the most recognizable faces on Shark Tank, and in this episode, he breaks down the exact mindset shifts that turned urgency into wealth, why most people quit b", "length": "69m", "published": "2026-07-22", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 18, "title": "The 10% Rule", "creator": "Action Academy", "description": "A simple framework for anyone building something: expect to pay 10% of your target income as the price of admission.", "length": "0m", "published": "2026-06-15", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 19, "title": "Build A WhatsApp AI Agent In 10 Minutes (n8n Tutorial)", "creator": "Michele Torti", "description": "Get my 1-1 support to Start and Scale your AI Agency: https://bit.ly/4p06VJ3\nGet the FREE n8n Workflow Template from this video: https://www.skool.com/the-ai-automation-circle\n\nBuild A WhatsApp AI Agent In 10 Minutes (n8n Tutorial)\n\nIn this video, I\u2019m going to show you exactly how to connect your WhatsApp account to n8n to build a fully functional personal assistant agent that can execute tasks for you.\n\nWe'll cover:\n- How to set up your Meta Developer account and generate the necessary API keys.\n- The step-by-step process of connecting WhatsApp Business Cloud to n8n triggers.\n- Building an AI", "length": "0m", "published": "2025-11-23", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 20, "title": "Watch This if you\u2019re Trying To Hire an Accounting Unicorn", "creator": "Jason On Firms Podcast", "description": "Systematize your firm with this video https://www.youtube.com/watch?v=T8rQzr3ogkM\n\n\ud83d\udc4d My recommendations (or not) of 100+ Apps for Accounting Firms:\n https://jasononline.link/zxk\n\n\ud83d\udccc Join my newsletter to get must-read weekly AI updates for accounting firms: https://jasononline.link/p9F\n\n\ud83e\udd1d\u00a0Make the connections to take your firm to the next level. Join my private community of 500+ tax & bookkeeping firm owners:\nhttps://jasononline.link/x3G\n\n\ud83d\udcb0 Today's Sponsors\nTeamUp http://hireteamup.com/jason\nClientHub https://www.clienthub.app/\n\n\ud83d\udde3\ufe0f Continue the discussion on social!\nTwitter https://twitter.com/", "length": "23m", "published": "2025-04-28", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 21, "title": "IRS Audited Me When I Made $500K and Paid $0 Taxes", "creator": "Legacy Investing Show", "description": "", "length": "0m", "published": "2026-04-21", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 22, "title": "#buyingabusiness #buyabusiness #business #cashflow #money #leolandaverde", "creator": "Leo Landaverde", "description": "", "length": "0m", "published": "2025-10-20", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 23, "title": "Secretly Profitable Service You\u2019ve Never Heard Of!", "creator": "UpFlip", "description": "A special thanks to Fiverr for sponsoring this episode. Head to https://Fvrr.co/upflip to check out the services available and use code UPFLIP for 10% off your first order!\n\nFrom a $300 investment in epoxy and basic tools to saving homeowners over $17 million in repair costs, Ty' McBride\u2019s journey in wood restoration is a testament to seeing opportunity where others saw demolition.\n\nGrowing up in a construction family, Ty learned the trade from the ground up, starting with cleanup duties at his grandfather's sites. But it wasn't until a devastating 2013 tornado that he discovered his true call", "length": "35m", "published": "2025-05-06", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 24, "title": "How content generates media cash flow \ud83d\udcb8  #shorts #contentcreation #wealthbuilding", "creator": "Kenny Finance", "description": "Find out how media can transform content into a steady cash flow.", "length": "2m", "published": "2025-01-23", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 25, "title": "The Secret to Higher Self-Respect", "creator": "Leila Hormozi", "description": "Guilt controls more decisions than most people realize. In my latest BUILD episode, I reveal how guilt can limit ambition, fill calendars with endless obligations, and prevent people from making decisions aligned with their values\n\nCurious to know what you think?\n---------------------------------------------------------------------------------------------------------\nGet the unfiltered memos I send my team as we scale Acquisition.com to $1B+: https://leilahormozi.com\nWant to learn how to scale your business? You can get my free personalized roadmap here: https://www.acquisition.com/roadmap\n\nIf", "length": "0m", "published": "2026-08-28", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 26, "title": "Things Don't Get Easier. You Just Get Better.", "creator": "Action Academy", "description": "Zach Bishkin on balancing business and family: the 4 to 7 witching hour is non-negotiable. Be with your kids, be with your wife, put them down, then get back to work.", "length": "0m", "published": "2026-06-07", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 27, "title": "REAL growth happens outside of your comfort zone #shorts", "creator": "Walker Deibel", "description": "Growth happens outside your comfort zone\u2014but step too far, and you risk getting overwhelmed. Walker Deibel explains how finding the right balance, especially regarding debt, is key in business acquisitions. Your comfort with debt depends on your understanding and fluency in the acquisition game. Learn how to push your boundaries without losing control.\n\nFull video linked \u27a1\ufe0f Balancing Fun and Risk in Acquisitions\n\ud83d\udc49Subscribe at @BuyThenBuild \n.\n.\n.\n#acquisition #buythenbuild #business #businessacquisitions #businessgrowth #businesstips #ceo #entrepreneurmindset #entrepreneurship #growth #growthm", "length": "0m", "published": "2024-08-20", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 28, "title": "How to Be So Productive That It Makes You Dangerous", "creator": "Dan Martell", "description": "\u25b8\u25b8 Subscribe to The Martell Method Newsletter: https://bit.ly/3XEBXez\n\n\u25b8\u25b8 Get My New Book (Buy Back Your Time): https://bit.ly/3pCTG78\n\nWorking 18-hour days isn\u2019t productivity; it\u2019s burnout. I\u2019ve built teams and companies generating millions, and it wasn\u2019t from grinding nonstop. It was from building a system that made me unstoppable. In this video, I\u2019ll show you the exact roadmap.", "length": "7m", "published": "2025-08-19", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 29, "title": "How to Build Claude Subagents Better Than 99% of People", "creator": "Nate Herk | AI Automation", "description": "My FREE AI OS Course: https://www.skool.com/ai-automation-society/about?el=claude-code-subagents&hcategory=youtube-videos&utm_campaign=free-group\nFull courses + unlimited support: https://www.skool.com/ai-automation-society-plus/about?el=claude-code-subagents&hcategory=youtube-videos&utm_campaign=ais-plus\nApply for my YT podcast: https://podcast.nateherk.com/apply\nWork with me: https://uppitai.com/\n\nMy Tools\ud83d\udcbb\nFREE MONTH voice to text: https://get.glaido.com/nate\nCode NATEHERK for 10% off VPS (annual plan): https://www.hostinger.com/vps/claude-code-hosting\n\nSubagents are one of the most powerfu", "length": "26m", "published": "2026-06-09", "kind": "video", "review": {"keep": null, "why": ""}}, {"item": 30, "title": "How Emotional Intelligence Unlock Your Greatest Potential In Business With Itamar Marani", "creator": "Jaryd Krause - Buying Online Businesses", "description": "Do you want to unlock your greatest potential in business and achieve incredible results?\n\nIn this special podcast episode, Jaryd Krause has invited Itamar Marani, who will share his expertise in emotional intelligence.\n\nHe's unique journey defied conventional education. He skipped university, immersing himself in real-world learning. At 18, he joined an elite Israeli Special Forces unit, engaging in a decade-long tenure in international counter-terrorism. In 2008, he became the youngest graduate of Israel's Air Marshal program. With a Brazilian Jiu Jitsu black belt, he excelled globally and l", "length": "50m", "published": "2023-10-11", "kind": "video", "review": {"keep": null, "why": ""}}], "_scoring_key": [{"item": 1, "candidate_id": "c5af748bedcf4f5490c31cf37c64b547", "score": 28, "band": "20-34", "model_said": "AI industry macro critique, context not tactics", "url": "https://www.youtube.com/watch?v=Lf5oqGOCRCM", "creator": "The Diary Of A CEO"}, {"item": 2, "candidate_id": "167b76039ebf4669940da25e1fcbf6b8", "score": 42, "band": "35-44", "model_said": "Delegation/stress as skill, operator discipline", "url": "https://www.youtube.com/watch?v=M7Xg7UF3cNA", "creator": "Nick Huber - Sweaty Startup"}, {"item": 3, "candidate_id": "25c621f11d0f43f884b958d92bbff136", "score": 4, "band": "0-19", "model_said": "Macro econ lecture, too academic/unrelated", "url": "https://www.youtube.com/watch?v=gbf5fqvt600", "creator": "FinanceKid"}, {"item": 4, "candidate_id": "92b22ef3eadc4c319b49834217134068", "score": 28, "band": "20-34", "model_said": "No-code GPT automation tutorial, tangential skill", "url": "https://www.youtube.com/watch?v=vxDNxUTG9tE", "creator": "Liam Ottley"}, {"item": 5, "candidate_id": "e7936f4e612f4b459dd825239946703b", "score": 18, "band": "0-19", "model_said": "Build story, low transfer", "url": "https://www.youtube.com/watch?v=DceUFX6bSXA", "creator": "UpFlip"}, {"item": 6, "candidate_id": "760e4073a06949cbbe372846feee680e", "score": 25, "band": "20-34", "model_said": "Built business story, some ops insight", "url": "https://www.youtube.com/watch?v=D_Tk9aoEBHM", "creator": "UpFlip"}, {"item": 7, "candidate_id": "89a66487a63443e2a2b77faf7608014c", "score": 8, "band": "0-19", "model_said": "Sports marketing topic, unrelated to acquisitions", "url": "https://www.youtube.com/watch?v=R4_trBh25Vk", "creator": "TED"}, {"item": 8, "candidate_id": "a1642aac8b474ac68f8e275025f08a61", "score": 20, "band": "20-34", "model_said": "General advice listicle, no business method", "url": "https://www.youtube.com/watch?v=EURFO3RzvuU", "creator": "Dan Martell"}, {"item": 9, "candidate_id": "f0e41523c8a4469681fd0ff064ee4104", "score": 38, "band": "35-44", "model_said": "Deal evaluation walkthrough method, laundromat example", "url": "https://www.youtube.com/watch?v=0bAcFAMQjzo", "creator": "Jonathan Jay"}, {"item": 10, "candidate_id": "978ae0bdbd0b40178bac64fb29805338", "score": 14, "band": "0-19", "model_said": "Clickbait tax framing, no substance", "url": "https://www.youtube.com/shorts/p5mZwn6gPvo", "creator": "Legacy Investing Show"}, {"item": 11, "candidate_id": "d23f5cef26564246b8d8f0d2e91731ee", "score": 42, "band": "35-44", "model_said": "AI agent platforms comparison, automation interest", "url": "https://www.youtube.com/watch?v=mcCVkNeldBg", "creator": "Jason On Firms Podcast"}, {"item": 12, "candidate_id": "e1d9263bff73410681da66bfade06561", "score": 22, "band": "20-34", "model_said": "Personal finance textbook chapter, generic", "url": "https://www.youtube.com/watch?v=ypAeN8U6wbg", "creator": "FinanceKid"}, {"item": 13, "candidate_id": "aed97ae112de4e8dace671775d9a4535", "score": 42, "band": "35-44", "model_said": "SEO fundamentals for SMB marketing", "url": "https://www.youtube.com/watch?v=mW1G1TokLk4", "creator": "Nick Huber - Sweaty Startup"}, {"item": 14, "candidate_id": "801695e987b248d391c6a0ba41339a90", "score": 28, "band": "20-34", "model_said": "Macro/economy talk, little actionable", "url": "https://www.youtube.com/watch?v=c1GL6Wnyi84", "creator": "BigDeal by Codie Sanchez "}, {"item": 15, "candidate_id": "ba80b0cda632419d9a689c4aa35da98e", "score": 25, "band": "20-34", "model_said": "Selling readiness criteria, thin broker short", "url": "https://www.youtube.com/shorts/JMjws5zROOs", "creator": "Leo Landaverde"}, {"item": 16, "candidate_id": "d63a9f5a8e7549ec80c554531965bbc5", "score": 18, "band": "0-19", "model_said": "Thin short income clip", "url": "https://www.youtube.com/shorts/-XWvDm3axhs", "creator": "Legacy Investing Show"}, {"item": 17, "candidate_id": "eaf0bc5de6df4b489f2f86cec17b6fe3", "score": 35, "band": "35-44", "model_said": "Entrepreneur mindset interview, generic lessons", "url": "https://www.youtube.com/watch?v=XUFHs8FGrAA", "creator": "BigDeal by Codie Sanchez "}, {"item": 18, "candidate_id": "b445beecb3894787a9d4a4aa5464684e", "score": 35, "band": "35-44", "model_said": "Pricing-for-income framework, short but conceptually relevant", "url": "https://www.youtube.com/shorts/zybOy2ea01o", "creator": "Action Academy"}, {"item": 19, "candidate_id": "f9c994a425934cfda7fe56b9302ffd4a", "score": 10, "band": "0-19", "model_said": "Sub-minute technical build teaser", "url": "https://www.youtube.com/shorts/7JCBrImtoqk", "creator": "Michele Torti"}, {"item": 20, "candidate_id": "21942cab8c664bf7a6c82314e202d6a1", "score": 38, "band": "35-44", "model_said": "Hiring difficulty discussion, delegation topic", "url": "https://www.youtube.com/watch?v=wc04RePGrTo", "creator": "Jason On Firms Podcast"}, {"item": 21, "candidate_id": "60e12623c50d48e1a2cc49dc794e808e", "score": 18, "band": "0-19", "model_said": "Clickbait tax teaser, no method", "url": "https://www.youtube.com/shorts/lnTLJuRC8mU", "creator": "Legacy Investing Show"}, {"item": 22, "candidate_id": "a9ac06853d7c4d65b4700d7e6c463dcf", "score": 8, "band": "0-19", "model_said": "Hashtag-spam short, no substance", "url": "https://www.youtube.com/shorts/mQlz6kUXGI0", "creator": "Leo Landaverde"}, {"item": 23, "candidate_id": "a325a8b9d14f4785a0fd9ff75f3ff33a", "score": 32, "band": "20-34", "model_said": "Service business bootstrapped story", "url": "https://www.youtube.com/watch?v=KFMxBkH3MHs", "creator": "UpFlip"}, {"item": 24, "candidate_id": "33ff566e04864945a64dfdc4f56643fa", "score": 14, "band": "0-19", "model_said": "Content creator cash flow, unrelated", "url": "https://www.youtube.com/shorts/xwriZC0-0jc", "creator": "Kenny Finance"}, {"item": 25, "candidate_id": "770aa00478e04dd585cc1e6e20e30448", "score": 18, "band": "0-19", "model_said": "Guilt self-respect mindset filler", "url": "https://www.youtube.com/shorts/5cMzf4Od5ZM", "creator": "Leila Hormozi"}, {"item": 26, "candidate_id": "1fe51df9626441c09c274fd897c22e8d", "score": 20, "band": "20-34", "model_said": "Work-family balance mindset, brief", "url": "https://www.youtube.com/shorts/g9yUCxyXatc", "creator": "Action Academy"}, {"item": 27, "candidate_id": "899c68ab48d74433906b7309593ee4af", "score": 38, "band": "35-44", "model_said": "Short clip on debt comfort in acquisitions", "url": "https://www.youtube.com/shorts/RTd8l238Hhs", "creator": "Walker Deibel"}, {"item": 28, "candidate_id": "d7166debfa984357940fae317f19314c", "score": 40, "band": "35-44", "model_said": "Productivity system, operator discipline", "url": "https://www.youtube.com/watch?v=reR_EtTCkW4", "creator": "Dan Martell"}, {"item": 29, "candidate_id": "d88c22934e6b43f2a0a4759e820e5543", "score": 35, "band": "35-44", "model_said": "Claude subagent automation skill for delegation", "url": "https://www.youtube.com/watch?v=e18sdZLwP7o", "creator": "Nate Herk | AI Automation"}, {"item": 30, "candidate_id": "db24541755034f3586f287d03cb02507", "score": 32, "band": "20-34", "model_said": "Long-form emotional intelligence/mindset for owners", "url": "https://www.youtube.com/watch?v=C7pdD7BDkuk", "creator": "Jaryd Krause - Buying Online Businesses"}]}</script>
+
+</html>
