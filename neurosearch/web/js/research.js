@@ -1603,6 +1603,7 @@ globalThis.P11_STATE = { ok: 'working', never_used: 'not connected yet', revoked
   capability_missing: 'client lacks a needed capability', invalid: 'sent a malformed request', conflict: 'hit a conflict', rate_limited: 'rate limited', error: 'Neuro error' };
 globalThis.p11Load = async function p11Load() {
   const pid = state.project.id;
+  p11LoadReview();
   try {
     const [acc, hl, ib] = await Promise.all([api('/api/access'), api('/api/access/client-health'), api(`/api/projects/${pid}/inbox`)]);
     const grants = acc.grants.filter(g => g.project_id === pid && !g.revoked_at);
@@ -1625,6 +1626,22 @@ globalThis.p11Load = async function p11Load() {
       return `<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag">${esc(i.status.replace('_', ' '))}</span> ${esc(i.by || '')} via ${esc(i.via || '')} · ${p11Ago(i.created_at)}${i.needs_review_reason ? ` · <b>${esc(i.needs_review_reason)}</b>` : ''}<div class="muted" style="margin-left:12px">${items || 'no items'}</div>${reading}</div>`;
     }).join('') || '<div class="muted">Nothing received yet.</div>';
   } catch (e) { $('#p11People').innerHTML = `<div class="muted">could not load access — ${esc(String(e && e.message || e))}</div>`; }
+}
+globalThis.p11LoadReview = async function p11LoadReview() {
+  try {
+    const r = await api(`/api/projects/${state.project.id}/facts/review`);
+    $('#p11Review').innerHTML = r.facts.map(f => `<div style="padding:4px 0;border-bottom:1px solid var(--line)">
+      <span class="tag">${esc(f.kind)}</span> ${esc(f.content)}
+      <div class="muted" style="margin-left:12px">${f.explicitness === 'inferred' ? 'suggested by their AI' : 'said by'} ${esc(f.actor_name || f.actor_id || 'someone')}${f.client_label ? ' via ' + esc(f.client_label) : ''}${f.user_text ? ` — “${esc(f.user_text)}”` : ''}</div>
+      ${f.review_reason ? `<div class="muted" style="margin-left:12px">Why it waited: ${esc(f.review_reason)}</div>` : ''}
+      <div style="margin-left:12px"><a href="#" onclick="p11Review(${f.id}, true);return false">accept</a> · <a href="#" class="muted" onclick="p11Review(${f.id}, false);return false">reject</a></div>
+    </div>`).join('') || '<div class="muted">Nothing waiting.</div>';
+  } catch (e) { $('#p11Review').innerHTML = `<div class="muted">could not load — ${esc(String(e && e.message || e))}</div>`; }
+}
+globalThis.p11Review = async function p11Review(id, accept) {
+  await post(`/api/projects/${state.project.id}/facts/${id}/review`, { accept });
+  p11LoadReview();
+  api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || []));
 }
 globalThis.p11AddPerson = async function p11AddPerson() {
   const name = $('#p11Name').value.trim();

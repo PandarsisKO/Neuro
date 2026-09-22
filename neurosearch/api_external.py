@@ -199,12 +199,36 @@ def inbox_router(require_auth: Callable[..., None]) -> APIRouter:
     """The local owner's Project Inbox (§8): a view over external intakes, needs_review first."""
     r = APIRouter(prefix="/api/projects", dependencies=[Depends(require_auth)])
 
+    @r.get("/{project_id}/facts/review")
+    def facts_for_review(project_id: str) -> dict[str, Any]:
+        """Proposed user state waiting for the owner: who said it, through which client, how explicitly, their words,
+        and — owner-only — why it was held."""
+        from . import db
+        rows = [dict(r) for r in db.connect().execute(
+            "SELECT f.*, a.name AS actor_name, c.label AS client_label FROM project_facts f "
+            "LEFT JOIN external_actors a ON a.id=f.actor_id LEFT JOIN external_clients c ON c.id=f.external_client_id "
+            "WHERE f.project_id=? AND f.status='proposed' ORDER BY f.created_at", (project_id,)).fetchall()]
+        return {"facts": [{k: r.get(k) for k in ("id", "kind", "content", "explicitness", "user_text", "rationale", "actor_id",
+                                                  "actor_name", "client_label", "review_reason", "created_at")} for r in rows]}
+
+    @r.post("/{project_id}/facts/{fact_id}/review")
+    def review_fact(project_id: str, fact_id: int, body: ReviewIn) -> dict[str, Any]:
+        from . import facts
+        f = facts.get(fact_id)
+        if not f or f["project_id"] != project_id:
+            raise HTTPException(404, "no such fact")
+        return facts.set_proposal(fact_id, body.accept)
+
     @r.get("/{project_id}/inbox")
     def project_inbox(project_id: str, limit: int = 50) -> dict[str, Any]:
         from . import intake
         return {"intakes": intake.inbox(project_id, limit=max(1, min(limit, 200)))}
 
     return r
+
+
+class ReviewIn(BaseModel):
+    accept: bool
 
 
 class InviteIn(BaseModel):

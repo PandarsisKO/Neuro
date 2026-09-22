@@ -387,7 +387,7 @@ def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
                 expl = "inferred" if op == "propose" else ch.get("explicitness", "explicit")
                 if expl == "accepted_recommendation" and not (ch.get("referent") or "").strip():
                     raise AccessError("invalid", "an accepted recommendation must name the ONE proposal the user accepted (referent)")
-                note = None
+                note = hold = None
                 if expl != "inferred" and not words:
                     expl, note = "inferred", "saved as a suggestion: no user wording supports it"
                 same = facts.identical_active(auth.project_id, ch["kind"], ch["content"])
@@ -409,9 +409,13 @@ def apply_state(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
                                       f"with this base_revision"})
                         continue
                     if len(seen) < len(current):
-                        expl, note = "inferred", (f"saved for the owner to reconcile: this project has {ch['kind']}s you can't see")
+                        # Kyle, 2026-09-22: held for the OWNER, not downgraded — explicitness stays what the person did.
+                        # The reason is internal; the collaborator is told only that the change is held for review.
+                        hold = (f"held for owner review: this {ch['kind']} was committed by a collaborator whose access "
+                                f"does not include {len(current) - len(seen)} current {ch['kind']}(s) it may conflict with")
+                        note = "held for review"
                 f = facts.record(auth.project_id, ch["kind"], ch["content"], explicitness=expl, scope=ch.get("scope", "project"),
-                                 rationale=ch.get("rationale"), referent=ch.get("referent"), user_text=words,
+                                 rationale=ch.get("rationale"), referent=ch.get("referent"), user_text=words, hold_for_review=hold,
                                  disclosure_class=ch.get("disclosure_class") or "standard", client_request_id=req)
                 done(op, f, note)
                 continue

@@ -74,7 +74,9 @@ def _event_for(kind: str, status: str, scope: str) -> str:
 def record(project_id: str, kind: str, content: str, *, explicitness: str = "explicit", scope: str = "project",
            rationale: str | None = None, referent: str | None = None, disclosure_class: str | None = None,
            client_request_id: str | None = None, effective_at: float | None = None, origin: str = "user",
-           user_text: str | None = None) -> dict[str, Any]:
+           user_text: str | None = None, hold_for_review: str | None = None) -> dict[str, Any]:
+    """`hold_for_review` (an internal reason): store an explicit statement as `proposed` WITHOUT changing its
+    explicitness — status is where it stands in the project, explicitness is what the person did (Kyle, 2026-09-22)."""
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
     if explicitness not in EXPLICITNESS:
@@ -90,14 +92,16 @@ def record(project_id: str, kind: str, content: str, *, explicitness: str = "exp
     existing = _by_request(who.get("client_id"), client_request_id)
     if existing:
         return {**existing, "idempotent_replay": True}
-    status = "proposed" if explicitness == "inferred" else "active"
+    status = "proposed" if (explicitness == "inferred" or hold_for_review) else "active"
     t = time.time()
     with db.tx() as conn:
         cur = conn.execute(
             "INSERT INTO project_facts (project_id, kind, content, origin, created_at, actor_id, external_client_id, explicitness, status, "
-            "scope, rationale, effective_at, client_request_id, disclosure_class, updated_at, user_text) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "scope, rationale, effective_at, client_request_id, disclosure_class, updated_at, user_text, review_reason) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (project_id, kind, content, origin, t, who.get("actor_id"), who.get("client_id"), explicitness, status, scope,
-             rationale, effective_at or t, client_request_id, disclosure_class, t, (user_text or "").strip()[:4000] or None))
+             rationale, effective_at or t, client_request_id, disclosure_class, t, (user_text or "").strip()[:4000] or None,
+             hold_for_review))
         fid = cur.lastrowid
         after = {"kind": kind, "content": content[:1000], "status": status, "scope": scope, "explicitness": explicitness}
         if user_text:
@@ -181,7 +185,9 @@ def withdraw(fact_id: int, *, rationale: str | None = None, base_cursor: int | N
 
 
 def set_proposal(fact_id: int, accept: bool) -> dict[str, Any]:
-    """A person reviews an inferred proposal. Accepting makes it the project's position; rejecting keeps it as history."""
+    """The owner reviews a proposal. Only its STATUS changes: author, client, explicitness, user_text and referent stay
+    exactly as recorded, so an explicit collaborator decision stays explicit and theirs, and an inferred suggestion stays
+    inferred. Who reviewed it is the acting actor on the review event."""
     f = get(fact_id)
     if not f:
         raise LookupError("no such fact")
@@ -189,10 +195,11 @@ def set_proposal(fact_id: int, accept: bool) -> dict[str, Any]:
         return f
     new = "active" if accept else "rejected"
     with db.tx() as conn:
-        conn.execute("UPDATE project_facts SET status=?, explicitness=CASE WHEN ?='active' THEN 'accepted_recommendation' ELSE explicitness END, "
-                     "updated_at=? WHERE id=?", (new, new, time.time(), fact_id))
-        ledger.record(conn, f["project_id"], event_type=_RECORDED.get(f["kind"], "fact_recorded") if accept else "fact_proposal_rejected",
-                      object_type="fact", object_id=fact_id, before={"status": "proposed"}, after={"status": new, "content": f["content"][:1000]},
+        conn.execute("UPDATE project_facts SET status=?, updated_at=? WHERE id=?", (new, time.time(), fact_id))
+        ledger.record(conn, f["project_id"], event_type="fact_proposal_accepted" if accept else "fact_proposal_rejected",
+                      object_type="fact", object_id=fact_id, before={"status": "proposed"},
+                      after={"status": new, "content": f["content"][:1000], "kind": f["kind"], "author": f.get("actor_id"),
+                             "explicitness": f.get("explicitness")},
                       floor={f.get("disclosure_class") or "restricted"})
     return get(fact_id)  # type: ignore[return-value]
 

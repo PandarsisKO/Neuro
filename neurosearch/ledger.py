@@ -148,12 +148,13 @@ PASS_EVENTS = frozenset({"claims_reassessed"})     # maintenance summaries: coun
 MATERIAL_EVENTS = frozenset({"claim_created", "claim_status_changed", "claim_statement_changed", "decision_recorded",
                              "decision_changed", "decision_reaffirmed", "decision_withdrawn", "constraint_recorded",
                              "requirement_recorded", "rejected_option_recorded", "commitment_recorded", "plan_version_created",
-                             "fact_changed", "deadline_recorded"})
+                             "fact_changed", "deadline_recorded", "fact_proposal_accepted"})
 SUPPORTING_EVENTS = frozenset({"claim_assessment_changed", "claim_evidence_added", "source_attached", "source_removed",
                                "source_ready", "finding_status_changed", "question_opened", "question_status_changed",
                                "plan_item_status_changed", "brief_changed", "fact_proposed", "fact_recorded",
                                "preference_recorded", "intake_finalized", "intake_needs_review", "tension_status_changed",
-                               "counterpart_position_recorded", "concern_recorded", "open_question_recorded"})
+                               "counterpart_position_recorded", "concern_recorded", "open_question_recorded",
+                               "fact_proposal_rejected"})
 DECISION_EVENTS = frozenset({"decision_recorded", "decision_changed", "decision_reaffirmed", "decision_withdrawn",
                              "constraint_recorded", "requirement_recorded", "plan_version_created"})
 

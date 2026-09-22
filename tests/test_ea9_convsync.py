@@ -307,12 +307,12 @@ def test_review2_3_replacing_truth_needs_a_read_not_a_word_match(client, kyle):
     assert blind["data"]["needs_attention"][0]["kind"] == "conflict"
 
 
-def test_review2_3b_facts_this_grant_cannot_see_turn_a_commit_into_a_suggestion(client, kyle):
+def test_review2_3b_facts_this_grant_cannot_see_hold_the_commit_for_the_owner(client, kyle):
     with ledger.acting("kyle"):
         facts.record(kyle["acq"], "decision", "Private: walk-away price is 2.1M", disclosure_class="restricted", user_text="2.1M")
     _, env = sync(client, kyle["s"], client_request_id="save-000040", project_id=kyle["acq"], state=[
         {"op": "record", "kind": "decision", "content": "Offer 1.9M", "user_text": "Let's offer 1.9M."}])
     d = env["data"]
-    assert d["counts"]["suggestions_to_review"] == 1 and "walk-away" not in json.dumps(d)
+    assert d["counts"]["changes_for_review"] == 1 and d["counts"]["suggestions_to_review"] == 0 and "walk-away" not in json.dumps(d)
     row = next(f for f in db.list_facts(kyle["acq"], include_history=True) if f["content"] == "Offer 1.9M")
-    assert row["status"] == "proposed"
+    assert (row["status"], row["explicitness"]) == ("proposed", "explicit")          # held, not downgraded (test_ea9_owner_review)

@@ -180,10 +180,14 @@ def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope:
     # ---- receipt: what was saved, in the person's terms; machinery only when something needs them
     counts: dict[str, int] = {}
     proposed = []
+    held = 0
     for a in state["applied"]:
         f = a["fact"]
         if a["status"] == "proposed":
-            proposed.append(f["content"])
+            if f["explicitness"] == "inferred":
+                proposed.append(f["content"])          # something the client inferred: a suggestion
+            else:
+                held += 1                              # the person said it; it waits for the owner (no reason disclosed)
             continue
         k = "reaffirmation" if a["op"] == "reaffirm" else ("change" if a["op"] == "supersede" else f["kind"])
         counts[k] = counts.get(k, 0) + 1
@@ -191,6 +195,8 @@ def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope:
     parts = [f"{n} {LABEL.get(k, (k, k + 's'))[0 if n == 1 else 1]}" for k, n in counts.items()]
     if n_mat:
         parts.append(f"{n_mat} processed material{'s' if n_mat != 1 else ''}")
+    if held:
+        parts.append(f"{held} project change{'s' if held != 1 else ''} for review")
     if proposed:
         parts.append(f"{len(proposed)} suggestion{'s' if len(proposed) != 1 else ''} to review")
     name = (db.get_project(pid) or {}).get("name")
@@ -207,7 +213,7 @@ def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope:
             attention.append({"kind": "material_failed", "item_id": i["item_id"], "error": i.get("error")})
     receipt = {"status": "saved", "saved": True, "project": {"project_id": pid, "name": name},
                "summary": (f"Saved to {name}: " + ", ".join(parts)) if parts else f"Nothing new to save to {name}",
-               "counts": {**counts, "materials": n_mat, "analysis": len(body.get("analysis") or []), "suggestions_to_review": len(proposed),
+               "counts": {**counts, "materials": n_mat, "analysis": len(body.get("analysis") or []), "suggestions_to_review": len(proposed), "changes_for_review": held,
                           "files": len(files_out)},
                "skipped": skipped, "needs_attention": attention, "intake_id": iid, "intake_status": fin["status"],
                "facts": [{"op": a["op"], **a["fact"]} for a in state["applied"]],
