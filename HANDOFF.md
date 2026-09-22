@@ -3041,3 +3041,14 @@ so bring-up also sets **`NEUROSEARCH_OAUTH_SCOPE`** to the scope AuthKit issues 
 off while it is unset). No public Neuro endpoint.
 
 Everything else in the EA-9 sequence stands.
+
+## P11 EA-9 live setup — steps 1–2 done (Claude Desktop, 2026-09-22)
+
+- **ChatGPT Developer mode: ON** (Kyle's personal account, Settings → Security and login; "Enforce CSP in developer mode" left off/unchanged).
+- **Kyle's ChatGPT plan now shows Pro, not Plus.** Documented: Pro = read/fetch only for custom MCP. Still a live probe — record exactly what ChatGPT exposes; if no write tools, log `account_tier_write_unavailable` and continue read-side scenarios. No Neuro change.
+- **Secure MCP Tunnel created:** name `Neuro`, id **`tunnel_6ab30bc37d8c8191965aa0d5b2b46afd`**, org Personal (`org-IAKPxT1QCY67bS6aly…`), ChatGPT workspace `e88136b7-25a3-47b3-92d1-123ae834cc74` (Kyle's; the Create button stays disabled until a workspace is selected — relevant to 9G: Gio's workspace must be added to this tunnel or a new one).
+- Tunnel ID is not a secret. The runtime key (Restricted: Tunnels Read + Use) is created by Kyle and goes only into the Mac's local config as `CONTROL_PLANE_API_KEY` — never into a chat or this repo.
+
+**Next for Claude Code on the Mac:** `brew install openai/tools/tunnel-client`;
+`tunnel-client init --profile local-http --tunnel-id tunnel_6ab30bc37d8c8191965aa0d5b2b46afd --mcp-server-url http://localhost:8000/ext/mcp`;
+`tunnel-client doctor --profile local-http --explain`; `tunnel-client run --profile local-http` (needs `CONTROL_PLANE_API_KEY` from Kyle). Record the doctor output and the MCP URL ChatGPT will use (→ `NEUROSEARCH_OAUTH_RESOURCE` + WorkOS Resource Indicator).
