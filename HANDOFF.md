@@ -3014,3 +3014,9 @@ Project settings, grants himself the test projects, and 9A starts.
 **Risk for 9G, recorded now so it is not a surprise:** a tunnel is discoverable only by the Platform orgs / workspaces
 it is associated with. Gio's own ChatGPT will need that association (her personal Platform org, or a shared
 workspace). Verify when Kyle's flow is stable; it may be the real Gio blocker, not her plan.
+
+**Publisher defect found on first Cowork use (for Claude Code):** `tools/publish_request.py pick_queue()` prefers
+`~/Library/Application Support/...`, which is writable inside the Linux VM too, so a VM request lands in a queue the Mac
+agent never sees (stays `PENDING`). Workaround used: `HOME=/proc/nonexistent python3 tools/publish_request.py <sha>` →
+repo `.git-publisher/` → receipt PASS for `98cf0bc`. Suggested fix: choose the repo queue whenever `sys.platform !=
+"darwin"`.
