@@ -13,10 +13,11 @@ in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md`.
 | **Active effort** | `PRODUCT-SCHEDULER.md` NOW → Discovery relevance + findings review; what is left is `docs/COMPLETION-CHECKLIST-2026-09-21.md`. |
 | **Open decisions / actions** | `docs/REPO-AUDIT-2026-09-21.md` §1–2 (Kyle) and `STATE-OF-THE-APP-2026-09-21-2300.md` (agents). |
 | **Parked** | `PRODUCT-SCHEDULER.md` PARKED — subreddit/Reddit API, FRED, L-21/L-40/L-60/L-61, Field Map, T2 migration, H1–H3, P12. Do not pick up. |
-| **P11 External AI Access** | **EXECUTING (Kyle: "Begin executing the plan.", 2026-09-22).** EA-0…EA-8 built and green (`feb6140`…`b9c5575`, unpushed); **EA-9 gated** on transport, Gio's ChatGPT plan and Kyle-only account steps — see the 2026-09-22 "EA-0 → EA-8" entry. Plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`. Does not displace the NOW effort. |
+| **P11 External AI Access** | **EXECUTING (Kyle: "Begin executing the plan.", 2026-09-22).** EA-0…EA-8 built and green (`feb6140`…`b9c5575`, pushed 2026-09-22); **EA-9 gated** on transport, Gio's ChatGPT plan and Kyle-only account steps — see the 2026-09-22 "EA-0 → EA-8" entry. Plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`. Does not displace the NOW effort. |
 | **Who is where** | Codex offline the week of 2026-09-21; its tree was adopted into `main` (`f99ab95`…`8fb5e7c`). Claude Code: the Mac, the live DB, `neurosearch` CLI, pushes. Cowork: docs, code, full suite in a Linux VM on temp DBs; never the live DB. |
 | **Last green suite** | 2,346 passed, 0 failed (2026-09-21, at 0.63.95, `release-check` PASS). Any failure is new. |
-| **Unpushed** | none as of 2026-09-21 — `origin/main` carries the 0.63.95 release. |
+| **GitHub sync** | Verified by `tools/git_sync_check.py --delivery` (exit 0 = delivered). `git ls-remote` is remote truth; `origin/*` is only a cache. 138 refs are physically unpublishable and are recorded with reasons in `tools/git_sync_baseline.txt` — anything else missing from GitHub is drift and fails the gate. |
+| **Unpushed** | none as of 2026-09-22 — `main`, and every branch holding unique publishable work, are on GitHub. |
 | **Standing rules** | `CLAUDE.md`. Plus, from this file's own history: stage by CHANGE not by filename (`git add -p`); a frozen-value change gets a clean-worktree run; if a git command through the mount prints `unable to unlink … Operation not permitted`, check `find .git -name '*.lock' \| wc -l` before it accumulates. |
 
 ## How to add an entry
@@ -2725,3 +2726,68 @@ Enterprise/Edu get read+write; help-center article: full write is a Business/Ent
 **Claude Code, on the Mac (no Kyle decision needed):** pull + run the full suite on macOS; `neurosearch access
 backfill-classes` (dry run) and report the counts here, then `--apply` (materialises the same rule reads already
 use — no behaviour change); push. Release-check + version bump wait for EA-9.
+
+## The Git/GitHub operating model, repaired (2026-09-22)
+
+The trigger was a false diagnosis of my own. An audit on 09-21 reported six branches as "local-only", including
+`codex/subreddit-integrated`. GitHub already had it. **The method was wrong, not the data**: the audit used
+`git rev-parse --abbrev-ref <branch>@{u}`, which reports a branch's CONFIGURED UPSTREAM. A branch created without
+`-u` has no upstream even when an identical remote branch exists, so five branches reported `NONE` and were called
+missing. `git ls-remote` is remote truth; `refs/remotes/origin/*` is only a cache of it.
+
+**The fetch configuration was never broken.** `remote.origin.fetch` was already `+refs/heads/*:refs/remotes/origin/*`
+and the cache already held all 8 remote heads. Nothing needed repairing there, and nothing was changed. What was
+missing were safe defaults, now set locally: `fetch.prune=true`, `remote.pushDefault=origin`, `push.default=simple`,
+`push.autoSetupRemote=true`, `pull.ff=only`. Nothing that pushes automatically.
+
+**Branch audit, by reachability and patch-equivalence rather than commit counts.** "Commits not on origin/main" is
+not evidence of unique work — a branch cut from an old base inflates it. `git cherry` tells the truth:
+
+| branch | classification | raw ahead | genuinely absent |
+|---|---|---|---|
+| `codex/subreddit-delivery` | EXACT_REMOTE | 0 | 0 |
+| `codex/subreddit-integrated` | EXACT_REMOTE (`c8428618` both sides) | 0 | 0 |
+| `codex/subreddit-r1` | REACHABLE_ELSEWHERE (contained in integrated + delivery) | 0 | 0 |
+| `codex/subreddit-continuation` | UNIQUE_LOCAL → **pushed** | 2 | 2 |
+| `codex/subreddit-scan-lifecycle` | UNIQUE_LOCAL → **pushed** | 4 | 4 |
+| `design/w1-step3-rerank-disclosure` | UNIQUE_LOCAL → **BLOCKED** | 600 | 6 |
+| `refactor/frontend-css` | UNIQUE_LOCAL → **BLOCKED** | 535 | 6 |
+| `main` | local ahead, clean fast-forward → **pushed** | 10 | 10 |
+
+PARKED status was not treated as a reason to leave work on one machine; the two `codex/*` branches were published
+despite the mission being parked, because that is a backup question, not a scheduling one.
+
+**The real finding, and it is not small: the repo's entire tagged history is unpublishable.** All 136 tags resolve
+into a pre-purge lineage that is on no GitHub ref — 766 commits reachable from local refs and from no `origin` ref.
+That lineage carries the screen recordings `HANDOFF.md`'s custody note excludes from Git:
+
+```
+1,369,449,027 bytes (1.37 GB)  VIDEOS/Screen Recording 2026-09-03 at 12.08.20 PM.mov
+  956,472,203 · 441,246,535 · 301,754,569 · 156,078,762 bytes
+```
+
+GitHub's hard limit is 100 MB per file. That is what the `RPC failed; HTTP 500` on the two blocked branches
+actually was — verified by resolving the blob, not inferred. So `git push origin --tags` was **not** run: it would
+either fail identically, or succeed and drag 1.37 GB of deliberately-excluded video into GitHub. Failing and
+succeeding are both wrong, so the tags stay local and are recorded rather than quietly dropped. Remediation —
+`git-filter-repo` to strip >100 MB blobs, or Git LFS, then publish under new names — rewrites history and needs
+Kyle's explicit approval. It is a separate mission.
+
+**`tools/git_sync_check.py`** answers one question after a delivery: does GitHub contain everything this repo
+considers durable? It re-fetches before judging (never trusting the cache), verifies `origin`, compares `main` to
+`origin/main`, finds commits reachable locally but from no `origin` ref, finds tags missing or pointing elsewhere on
+GitHub, reports the active branch's upstream and ahead/behind, and exits nonzero on anything that makes
+"synchronized" false. `tools/git_sync_baseline.txt` records the 138 physically-unpublishable refs with the measured
+reason; anything not listed there is drift and fails. A gate that fails permanently on known history would be
+ignored, which is worse than no gate — but the baseline is a reviewable list, not a mute button.
+
+**Also carried in this push, and it is not mine:** local `main` was 10 commits ahead of GitHub with P11 EA-0…EA-8
+built (`a42f6a8`…`cf34a812`), including application code and `docs: re-open P11 — ACTIVE / FINAL READINESS`. Another
+session did that work; I neither authored nor reviewed it. It is published here because it was unique durable work
+existing on one machine, which is precisely what this repair exists to end. **P11's scheduling status is Kyle's
+call, not a consequence of this backup.**
+
+**Deliberately not done:** no force-push, no history rewrite, no branch deleted, no feature branch merged to `main`,
+no `--all` push, no product code or live DB touched. Safe cleanup candidates, left intact: `codex/subreddit-r1`
+(fully contained in two remote branches). The two blocked branches must NOT be deleted — they are the only copy of
+their 6 absent patches each.

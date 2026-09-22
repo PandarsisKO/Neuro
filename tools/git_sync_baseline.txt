@@ -1,0 +1,109 @@
+# Refs that CANNOT be published to GitHub, with the reason. Read by tools/git_sync_check.py.
+#
+# This file is not a way to silence a sync failure. Every line records a ref whose history is
+# physically unpublishable, and adding a line is a deliberate, reviewable act. Anything not listed
+# here that is missing from GitHub is drift, and the gate fails on it.
+#
+# WHY THIS FILE EXISTS (measured 2026-09-22)
+# ------------------------------------------------------------------------------------------------
+# The repo's pre-purge history contains the screen recordings that `HANDOFF.md`'s custody note
+# excludes from Git/GitHub. The largest is 1,369,449,027 bytes:
+#
+#     VIDEOS/Screen Recording 2026-09-03 at 12.08.20 PM.mov   1.37 GB
+#     (plus blobs of 956 MB, 441 MB, 302 MB and 156 MB)
+#
+# GitHub's hard limit is 100 MB per file, so pushing any ref whose history reaches those blobs fails
+# with `RPC failed; HTTP 500` -- observed directly when pushing the two branches below. At some point
+# the history was re-created without that media and the clean lineage became origin/main; the old
+# lineage was never published and cannot be without a history rewrite (git-filter-repo) or Git LFS.
+#
+# Publishing them is also forbidden on its own terms: HANDOFF.md says "Do not add VIDEOS/, data/ or
+# _to_delete/ to a snapshot." Succeeding would be as wrong as failing.
+#
+# REMEDIATION, when someone authorizes it: rewrite the legacy lineage with git-filter-repo to strip
+# blobs over 100 MB, or migrate them to Git LFS, then publish the rewritten refs under new names.
+# That is a separate mission -- it rewrites history and needs Kyle's explicit approval. Until then the
+# 2026-09-22 repair's finding stands: this material is backed up on the Mac only.
+
+# --- branches whose unique history reaches the oversized blobs ------------------------------------
+# Verified 2026-09-22: 6 genuinely-absent patches each (the other ~570/~510 commits are
+# patch-equivalent to work already on origin/main), but the push fails on blob size, not commit count.
+refs/heads/design/w1-step3-rerank-disclosure
+refs/heads/refactor/frontend-css
+
+# --- the 136 legacy milestone/rung/release tags ---------------------------------------------------
+# Every one resolves into the same pre-purge lineage: 766 commits reachable from local refs but from
+# no origin ref, carrying the blobs above. Verified per-tag, e.g. v0.63.35 -> 354 unreachable commits
+# including the 1.37 GB blob; mission-f-complete -> 49. They are real delivery history and are NOT
+# scratch tags, which is exactly why they are recorded here instead of quietly dropped.
+#
+# Tags created from 0.63.95 onward live on the clean lineage and MUST be pushed -- they are not
+# baselined, so the gate will fail if one is missing.
+refs/tags/v0.5*
+refs/tags/v0.60*
+refs/tags/v0.61*
+refs/tags/v0.62*
+refs/tags/v0.63.[0-9]
+refs/tags/v0.63.[12][0-9]
+refs/tags/v0.63.3[0-5]
+refs/tags/accel-price-on-the-button
+refs/tags/accelerate-l3
+refs/tags/account-gate-fix
+refs/tags/background-pause-s10
+refs/tags/bootstrap-r1-r3
+refs/tags/browser-b1
+refs/tags/browser-b2
+refs/tags/browser-b3
+refs/tags/bump-job-s1
+refs/tags/caption-recovery-s8
+refs/tags/check-now-s1
+refs/tags/claim-triage-r6a
+refs/tags/claims-cancel-s1
+refs/tags/claims-comparison-arm
+refs/tags/claims-r7
+refs/tags/claims-slow-lane
+refs/tags/claims-yields-worker
+refs/tags/deep-d1
+refs/tags/drawer-s3
+refs/tags/expansion-g1-g3
+refs/tags/expansion-g4
+refs/tags/expansion-g4-verified
+refs/tags/expansion-g5
+refs/tags/expansion-g5-1
+refs/tags/expansion-g6
+refs/tags/expansion-g7
+refs/tags/findings-s4
+refs/tags/first-wave-by-ranking
+refs/tags/grouped-views-s6-r8
+refs/tags/hardening-complete
+refs/tags/honest-progress-s9
+refs/tags/lane-backfill-s1
+refs/tags/local-ai-l1
+refs/tags/local-ai-l4
+refs/tags/local-model-declared
+refs/tags/low-lane-s1
+refs/tags/mission-e-complete
+refs/tags/mission-f-complete
+refs/tags/model-decision-engine
+refs/tags/pool-s5
+refs/tags/portable-answers-c0
+refs/tags/priority-lane-s1
+refs/tags/probe-model-pin-s1
+refs/tags/publication-g6p1
+refs/tags/publication-g6p2
+refs/tags/r1-streaming-answers
+refs/tags/research-r1
+refs/tags/research-r2
+refs/tags/rung-g-complete
+refs/tags/rung-i-complete
+refs/tags/rung-j-complete
+refs/tags/shared-yield
+refs/tags/skipped-metadata-s7
+refs/tags/sonnet-4.6-baseline
+refs/tags/speed-r0
+refs/tags/speed-r2a
+refs/tags/speed-r2b
+refs/tags/speed-r2c
+refs/tags/spend-rate-ceiling
+refs/tags/stale-s1
+refs/tags/value-s2
