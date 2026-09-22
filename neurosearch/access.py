@@ -539,3 +539,31 @@ def backfill_classes(*, apply: bool = False) -> dict[str, Any]:
             c.execute(f"UPDATE sources SET disclosure_class='restricted', disclosure_origin='backfill_private' WHERE disclosure_class IS NULL AND id IN "
                       f"(SELECT s.id FROM sources s WHERE s.disclosure_class IS NULL AND {eff}!='standard' AND {private_pred})")
     return out
+
+
+# ------------------------------------------------------------------ §64 External AI Health (diagnostic, never payloads)
+
+def health(since_s: float = 86400) -> list[dict[str, Any]]:
+    """Per client: which person, transport, last request / success / refusal and the refusal's CODE — so "not
+    connected" is never one undifferentiated state (transport vs credential vs project vs disclosure vs capability)."""
+    conn = db.connect()
+    t = time.time()
+    out = []
+    for c in conn.execute("SELECT * FROM external_clients ORDER BY label").fetchall():
+        creds = [dict(r) for r in conn.execute("SELECT id, actor_id, last_used_at, revoked_at, expires_at FROM external_credentials WHERE client_id=?", (c["id"],)).fetchall()]
+        people = sorted({r["actor_id"] for r in creds})
+        last = conn.execute("SELECT operation, outcome, created_at FROM external_requests WHERE client_id=? ORDER BY id DESC LIMIT 1", (c["id"],)).fetchone()
+        ok = conn.execute("SELECT MAX(created_at) FROM external_requests WHERE client_id=? AND outcome='ok'", (c["id"],)).fetchone()[0]
+        deny = conn.execute("SELECT operation, outcome, detail, created_at FROM external_requests WHERE client_id=? AND outcome!='ok' "
+                            "ORDER BY id DESC LIMIT 1", (c["id"],)).fetchone()
+        n = conn.execute("SELECT COUNT(*), SUM(outcome!='ok') FROM external_requests WHERE client_id=? AND created_at>?", (c["id"], t - since_s)).fetchone()
+        active = [r for r in creds if r["revoked_at"] is None or r["revoked_at"] > t]
+        state = ("revoked" if creds and not active else "never_used" if not last else
+                 ("ok" if last["outcome"] == "ok" else last["outcome"]))
+        out.append({"client_id": c["id"], "label": c["label"], "transport": c["transport"], "people": people,
+                    "capabilities": json.loads(c["capabilities"] or "{}"), "state": state,
+                    "credentials": {"active": len(active), "revoked": len(creds) - len(active)},
+                    "last_request": dict(last) if last else None, "last_success_at": ok,
+                    "last_refusal": dict(deny) if deny else None,
+                    "requests_24h": int(n[0] or 0), "refusals_24h": int(n[1] or 0)})
+    return out

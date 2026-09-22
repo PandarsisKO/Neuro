@@ -132,6 +132,10 @@ def admin_router(require_auth: Callable[..., None]) -> APIRouter:
 
     invite_routes(r)
 
+    @r.get("/client-health")
+    def external_health() -> dict[str, Any]:
+        return {"clients": access.health()}
+
     @r.get("/backfill")
     def backfill_preview() -> dict[str, Any]:
         return access.backfill_classes(apply=False)

@@ -104,7 +104,7 @@ globalThis.showView = function showView(v, push = true) {
   if (v === 'findings') loadNotes();
   if (v === 'research') loadResearch();
   if (v === 'plan') loadPlan();
-  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadExcludes(); loadBudget(); loadHealth(); }
+  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadExcludes(); loadBudget(); loadHealth(); p11Load(); }
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }
 

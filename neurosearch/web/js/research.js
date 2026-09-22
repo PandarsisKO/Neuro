@@ -1546,7 +1546,17 @@ globalThis.deleteProject = async function deleteProject() { if (!confirm('Delete
 
 // ---- facts ----
 globalThis.renderFacts = function renderFacts(facts) {
-  $('#facts').innerHTML = facts.map(f => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span class="grow">${esc(f.content)}</span><a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`).join('') || '<div class="muted">none yet</div>';
+  // P11: who said it (a person, never "Neuro" for their words) and whether collaborators' AI clients may see it
+  $('#facts').innerHTML = facts.map(f => {
+    const who = f.actor_id && f.actor_id !== 'kyle' && f.actor_id !== 'system' ? ` <span class="muted">— ${esc(f.actor_id)}</span>` : '';
+    const shared = f.disclosure_class && f.disclosure_class !== 'restricted';
+    const share = `<a href="#" class="muted" title="${shared ? 'People you shared this project with can see this' : 'Only you can see this'}" onclick="p11ShareFact(${f.id}, ${shared ? 'false' : 'true'});return false">${shared ? 'shared' : 'private'}</a>`;
+    return `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span class="grow">${esc(f.content)}${who}</span>${share}<a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`;
+  }).join('') || '<div class="muted">none yet</div>';
+}
+globalThis.p11ShareFact = async function p11ShareFact(id, share) {
+  await post(`/api/access/facts/${id}/class`, { disclosure_class: share ? 'standard' : 'restricted', reason: share ? 'shared from Decisions' : 'made private from Decisions' });
+  const p = await api('/api/projects/' + state.project.id); renderFacts(p.facts);
 }
 // ---- Discovery exclude list (S75) ----
 // The table, the filter and the endpoints shipped without anywhere to reach them: the only way to add an
@@ -1579,6 +1589,83 @@ globalThis.addExclude = async function addExclude() {
 globalThis.delExclude = async function delExclude(id) {
   await del(`/api/excludes/${id}`);
   loadExcludes();
+}
+
+// ---- P11: people using this project from their own AI client ----
+globalThis.P11_CLASSES = ['standard', 'correspondence', 'financial', 'tax', 'identity', 'restricted'];
+globalThis.p11Ago = function p11Ago(t) {
+  if (!t) return 'never';
+  const s = Math.max(0, Date.now() / 1000 - t);
+  return s < 90 ? 'just now' : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+}
+globalThis.P11_STATE = { ok: 'working', never_used: 'not connected yet', revoked: 'disconnected', auth_invalid: 'credential not accepted',
+  auth_revoked: 'credential revoked', project_unauthorized: 'asked for a project it was not given', forbidden: 'tried to write with read-only access',
+  capability_missing: 'client lacks a needed capability', invalid: 'sent a malformed request', conflict: 'hit a conflict', rate_limited: 'rate limited', error: 'Neuro error' };
+globalThis.p11Load = async function p11Load() {
+  const pid = state.project.id;
+  try {
+    const [acc, hl, ib] = await Promise.all([api('/api/access'), api('/api/access/client-health'), api(`/api/projects/${pid}/inbox`)]);
+    const grants = acc.grants.filter(g => g.project_id === pid && !g.revoked_at);
+    const names = Object.fromEntries(acc.actors.map(a => [a.id, a.name]));
+    $('#p11People').innerHTML = grants.map(g => {
+      const clients = hl.clients.filter(c => c.people.includes(g.actor_id));
+      const boxes = P11_CLASSES.map(c => `<label class="muted" style="margin-right:8px"><input type="checkbox" ${g.disclosure_classes.includes(c) ? 'checked' : ''} ${c === 'standard' ? 'disabled' : ''} onchange="p11SetClass('${g.actor_id}', '${c}', this.checked)"> ${c}</label>`).join('');
+      const conn = clients.map(c => `<div class="muted" style="margin-left:12px">${esc(c.label)} · ${esc(P11_STATE[c.state] || c.state)} · last used ${p11Ago(c.last_success_at)}${c.last_refusal ? ` · last refusal: ${esc(P11_STATE[c.last_refusal.outcome] || c.last_refusal.outcome)} ${p11Ago(c.last_refusal.created_at)}` : ''}${c.credentials.active ? ` · <a href="#" onclick="p11Disconnect('${c.client_id}');return false">disconnect</a>` : ''}</div>`).join('')
+        || '<div class="muted" style="margin-left:12px">No AI client connected yet.</div>';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
+        <div class="row"><b class="grow">${esc(names[g.actor_id] || g.actor_id)}</b>
+          <select class="w-auto" onchange="p11SetRole('${g.actor_id}', this.value)"><option value="contribute" ${g.role === 'contribute' ? 'selected' : ''}>read and contribute</option><option value="read" ${g.role === 'read' ? 'selected' : ''}>read only</option></select>
+          <button class="small" onclick="p11Invite('${g.actor_id}')">Connection code</button>
+          <a href="#" class="muted" onclick="p11Remove('${g.actor_id}');return false">remove</a></div>
+        <div class="mt-1">${boxes}</div><div id="p11Code-${g.actor_id}"></div>${conn}</div>`;
+    }).join('') || '<div class="muted">Nobody else. This project is yours alone.</div>';
+    $('#p11Inbox').innerHTML = ib.intakes.map(i => {
+      const items = i.items.filter(x => x.kind !== 'interpretation').map(x => `${esc(x.material_type || x.kind.replace('_', ' '))} (${esc(x.status)})`).join(', ');
+      const reading = i.interpretations.map(t => `<div class="muted" style="margin-left:12px">their AI's reading, not evidence: ${esc(t)}</div>`).join('');
+      return `<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag">${esc(i.status.replace('_', ' '))}</span> ${esc(i.by || '')} via ${esc(i.via || '')} · ${p11Ago(i.created_at)}${i.needs_review_reason ? ` · <b>${esc(i.needs_review_reason)}</b>` : ''}<div class="muted" style="margin-left:12px">${items || 'no items'}</div>${reading}</div>`;
+    }).join('') || '<div class="muted">Nothing received yet.</div>';
+  } catch (e) { $('#p11People').innerHTML = `<div class="muted">could not load access — ${esc(String(e && e.message || e))}</div>`; }
+}
+globalThis.p11AddPerson = async function p11AddPerson() {
+  const name = $('#p11Name').value.trim();
+  if (!name) { $('#p11Msg').textContent = 'type their name first'; return; }
+  const acc = await api('/api/access');
+  let actor = acc.actors.find(a => a.kind === 'person' && a.name.toLowerCase() === name.toLowerCase());
+  if (!actor) actor = await post('/api/access/actors', { name });
+  await api('/api/access/grants', { method: 'PUT', body: JSON.stringify({ project_id: state.project.id, actor_id: actor.id, role: $('#p11Role').value }) });
+  $('#p11Name').value = ''; $('#p11Msg').textContent = `${name} added with standard material only. Give them a connection code when they're ready to connect.`;
+  p11Load();
+}
+globalThis.p11Grant = async function p11Grant(actorId, patch) {
+  const acc = await api('/api/access');
+  const g = acc.grants.find(x => x.project_id === state.project.id && x.actor_id === actorId);
+  if (!g) return;
+  if (patch.role) await api('/api/access/grants', { method: 'PUT', body: JSON.stringify({ project_id: g.project_id, actor_id: actorId, role: patch.role, classes: g.disclosure_classes }) });
+  if (patch.classes) await api('/api/access/grants/classes', { method: 'PUT', body: JSON.stringify({ project_id: g.project_id, actor_id: actorId, classes: patch.classes }) });
+  p11Load();
+}
+globalThis.p11SetRole = function p11SetRole(actorId, role) { return p11Grant(actorId, { role }); }
+globalThis.p11SetClass = async function p11SetClass(actorId, cls, on) {
+  const acc = await api('/api/access');
+  const g = acc.grants.find(x => x.project_id === state.project.id && x.actor_id === actorId);
+  if (!g) return;
+  const next = new Set(g.disclosure_classes); if (on) next.add(cls); else next.delete(cls); next.add('standard');
+  return p11Grant(actorId, { classes: P11_CLASSES.filter(c => next.has(c)) });
+}
+globalThis.p11Invite = async function p11Invite(actorId) {
+  const r = await post('/api/access/invites', { actor_id: actorId });
+  $(`#p11Code-${actorId}`).innerHTML = `<div class="mt-1" style="margin-left:12px">Connection code (works once, for 7 days — send it to them privately): <code style="user-select:all">${esc(r.code)}</code></div>`;
+}
+globalThis.p11Remove = async function p11Remove(actorId) {
+  if (!confirm('Stop sharing this project with them? Anything they already contributed stays.')) return;
+  await del(`/api/access/grants?project_id=${encodeURIComponent(state.project.id)}&actor_id=${encodeURIComponent(actorId)}`);
+  p11Load();
+}
+globalThis.p11Disconnect = async function p11Disconnect(clientId) {
+  if (!confirm('Disconnect this AI client? It stops working immediately; what it already sent stays.')) return;
+  const acc = await api('/api/access');
+  for (const c of acc.credentials.filter(x => x.client_id === clientId && !x.revoked_at)) await post(`/api/access/credentials/${c.id}/revoke`, { reason: 'disconnected from project settings' });
+  p11Load();
 }
 
 globalThis.addFact = async function addFact() {
