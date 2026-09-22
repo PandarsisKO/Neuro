@@ -247,3 +247,39 @@ def test_sync_gate_fails_loudly_when_the_remote_cannot_be_reached(world):
     assert "FAIL" in r.stdout
     assert "PASS" not in r.stdout.splitlines()[0]
     assert "failed" in r.stdout.lower()
+
+
+def test_a_non_macos_session_queues_where_the_mac_agent_will_look(monkeypatch, tmp_path):
+    """Found on the first real Cowork use: `~/Library/Application Support/...` is creatable inside a Linux VM,
+    so the old writability probe succeeded there and the request landed somewhere the Mac agent never reads —
+    PENDING forever, silently. Off macOS the repo queue is the only genuinely shared location."""
+    sys.path.insert(0, str(REPO / "tools"))
+    import publish_request as pr
+
+    monkeypatch.setattr(pr, "SUPPORT", tmp_path / "vm-home" / "Library/Application Support/NeuroSearch/git-publisher")
+    monkeypatch.setattr(pr, "REPO", tmp_path / "repo")
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert pr.pick_queue() == tmp_path / "repo" / ".git-publisher", "a VM must queue in the shared repo dir"
+    assert not (tmp_path / "vm-home").exists(), "a VM must not create a queue the Mac agent cannot see"
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert pr.pick_queue() == pr.SUPPORT, "on the Mac the user-private queue is still preferred"
+
+
+def test_publish_request_stays_runnable_by_a_bare_python3():
+    """Claude Desktop's Linux sandbox cannot use `.venv/bin/python` — this repo's virtualenv points at a macOS
+    interpreter, and the path existing on the shared mount makes that failure confusing rather than obvious.
+    The request side must therefore need nothing but the standard library, and must say so."""
+    import ast
+
+    text = (REPO / "tools/publish_request.py").read_text()
+    mods = set()
+    for n in ast.walk(ast.parse(text)):
+        if isinstance(n, ast.Import):
+            mods.update(a.name.split(".")[0] for a in n.names)
+        elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+            mods.add(n.module.split(".")[0])
+    extra = sorted(m for m in mods if m not in sys.stdlib_module_names)
+    assert not extra, f"publish_request.py must be stdlib-only so a bare python3 can run it; found {extra}"
+    assert "python3 tools/publish_request.py" in text, "the usage line must not send other sessions to .venv"

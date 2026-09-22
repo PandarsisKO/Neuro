@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Ask the Mac-native publisher to put an exact commit on GitHub. Safe to run from ANY session.
 
-This is what an uncredentialed session (Cowork, a Linux VM, a sandbox) calls instead of telling Kyle
-"Claude Code needs to push this". It writes a request file containing a SHA and nothing else -- no
-credential ever crosses the boundary -- and then waits for the receipt the Mac-native agent writes back.
+This is what an uncredentialed session (Cowork, Claude Desktop, a Linux VM, a sandbox) calls instead of
+telling Kyle "Claude Code needs to push this". It writes a request file containing a SHA and nothing else
+-- no credential ever crosses the boundary -- and then waits for the receipt the Mac-native agent writes back.
 
-    .venv/bin/python tools/publish_request.py <sha> [--session cowork] [--wait 120]
+    python3 tools/publish_request.py <sha> [--session claude-desktop] [--wait 120]
+
+Run it with the interpreter your own environment has. **Off the Mac, use `python3`, not `.venv/bin/python`:**
+this repo's virtualenv points at a macOS interpreter and is unusable from a Linux sandbox even though the
+path exists on the shared mount. This script is deliberately stdlib-only so a bare `python3` is enough.
 
 Exit codes: 0 published (or already published), 1 still pending when the wait elapsed, 2 refused/blocked.
 A pending exit is NOT success: the durable commit's state is PUBLISH_REQUESTED, not PUBLISHED.
@@ -27,7 +31,18 @@ OK = ("PASS", "ALREADY_PUBLISHED_BY_LATER_COMMIT")
 
 
 def pick_queue() -> Path:
-    """Prefer the user-private location; fall back to the repo-local one a mounted VM can reach."""
+    """Pick a queue the Mac-native agent will actually read.
+
+    Off macOS this MUST be the repo queue. `~/Library/Application Support/...` is happily creatable inside a
+    Linux VM -- it is just a path -- so a writability probe succeeds there and the request lands in the VM's
+    own filesystem, where the Mac LaunchAgent never sees it and it stays PENDING forever. That silent loss is
+    the exact failure this architecture exists to remove, and it was found on the first real Cowork use.
+    The repo directory is the only location both sides genuinely share.
+    """
+    if sys.platform != "darwin":
+        d = REPO / ".git-publisher"
+        (d / "requests").mkdir(parents=True, exist_ok=True)
+        return d
     try:
         (SUPPORT / "requests").mkdir(parents=True, exist_ok=True)
         probe = SUPPORT / "requests" / ".probe"
