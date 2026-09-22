@@ -402,7 +402,9 @@ def grant(project_id: str, actor_id: str, role: str, *, classes: Iterable[str] |
         raise AccessError("invalid", "unknown actor")
     cls = _check_class_list(classes if classes is not None else DEFAULT_GRANT_CLASSES)
     t = time.time()
+    before = get_grant(project_id, actor_id)
     with db.tx() as conn:
+        _ledger_access(conn, project_id, actor_id, before, {"role": role, "classes": cls, "active": True})
         conn.execute("INSERT INTO external_project_grants (project_id, actor_id, role, disclosure_classes, granted_by, granted_at, updated_at) "
                      "VALUES (?,?,?,?,?,?,?) ON CONFLICT(project_id, actor_id) DO UPDATE SET role=excluded.role, "
                      "disclosure_classes=excluded.disclosure_classes, granted_by=excluded.granted_by, updated_at=excluded.updated_at, "
@@ -412,7 +414,10 @@ def grant(project_id: str, actor_id: str, role: str, *, classes: Iterable[str] |
 
 def set_grant_classes(project_id: str, actor_id: str, classes: Iterable[str], *, by: str = "kyle") -> dict[str, Any]:
     cls = _check_class_list(classes)
+    before = get_grant(project_id, actor_id)
     with db.tx() as conn:
+        if before and before["revoked_at"] is None:
+            _ledger_access(conn, project_id, actor_id, before, {"role": before["role"], "classes": cls, "active": True})
         n = conn.execute("UPDATE external_project_grants SET disclosure_classes=?, updated_at=?, granted_by=? "
                          "WHERE project_id=? AND actor_id=? AND revoked_at IS NULL", (json.dumps(cls), time.time(), by, project_id, actor_id)).rowcount
     if not n:
@@ -421,10 +426,23 @@ def set_grant_classes(project_id: str, actor_id: str, classes: Iterable[str], *,
 
 
 def revoke_grant(project_id: str, actor_id: str, *, by: str = "kyle") -> dict[str, Any] | None:
+    before = get_grant(project_id, actor_id)
     with db.tx() as conn:
+        if before and before["revoked_at"] is None:
+            _ledger_access(conn, project_id, actor_id, before, {"role": before["role"], "classes": before["disclosure_classes"], "active": False})
         conn.execute("UPDATE external_project_grants SET revoked_at=?, revoked_by=? WHERE project_id=? AND actor_id=? AND revoked_at IS NULL",
                      (time.time(), by, project_id, actor_id))
     return get_grant(project_id, actor_id)
+
+
+def _ledger_access(conn: Any, project_id: str, actor_id: str, before: dict[str, Any] | None, after: dict[str, Any]) -> None:
+    """§61: the access boundary is audited in the project's own chronology. Floor `restricted`: who may see what is
+    the owner's business, not something a collaborator's client is sent."""
+    from . import ledger
+    b = None if not before else {"role": before["role"], "classes": before["disclosure_classes"], "active": before["revoked_at"] is None}
+    et = "access_granted" if not b or not b["active"] else ("access_revoked" if not after["active"] else "access_changed")
+    ledger.record(conn, project_id, event_type=et, object_type="access", object_id=actor_id, before=b,
+                  after={**after, "actor_id": actor_id}, floor={"restricted"})
 
 
 def get_grant(project_id: str, actor_id: str) -> dict[str, Any] | None:

@@ -23,9 +23,12 @@ app.add_typer(t4_app, name="t4")
 def _init() -> None:
     from .logctx import configure
     from .schemas import check_installation
+    from . import ledger
     configure()
     check_installation()
     db.init_db()
+    # P11: a command Kyle typed is Kyle's act; anything it hands to the queue or the nightly runs as `system`
+    ledger.bind(actor_id="kyle", surface="cli", request_id=f"cli:{db.new_id()}")
 
 
 @app.command()

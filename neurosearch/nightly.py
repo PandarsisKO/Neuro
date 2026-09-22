@@ -57,6 +57,16 @@ def run(force: bool = False) -> dict[str, Any]:
     """Run tonight's envelope once. `force=True` bypasses the due()/already-ran check (tests, or a manual
     "run it now" trigger) but NEVER the budget-off guard -- t4_nightly_budget<=0 always means "do nothing,"
     forced or not, since that is the explicit off switch."""
+    # P11 (Kyle's ruling 2): the nightly envelope is Neuro's own work, never a person's act, even when a person
+    # started it from the CLI -- who started it is kept as its cause.
+    from . import ledger
+    who = ledger.current()
+    cause = who.get("actor_id") if who.get("actor_id") != "system" else who.get("originating_actor_id")
+    with ledger.acting("system", surface="job", originating_actor_id=cause, originating_request_id=who.get("request_id")):
+        return _run(force)
+
+
+def _run(force: bool = False) -> dict[str, Any]:
     from . import t4
 
     if settings.t4_nightly_budget <= 0:

@@ -432,7 +432,11 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     providers.reset_job_route()
     after_done = False
     try:
-        result = run_job(job)
+        from . import ledger
+        # P11 (Kyle's ruling 2): a job's writes are Neuro's own work; the person/request that queued it is its cause
+        with ledger.acting("system", surface="job", request_id=f"job:{jid}", originating_actor_id=job.get("origin_actor_id"),
+                           originating_request_id=job.get("origin_request_id")):
+            result = run_job(job)
         _record_execution(jid)
         # 2026-09-15 -- `message` used to be the literal string "done" no matter what happened, so a real
         # no-op (every source already current, or an in-flight batch -- findings.py's `_skipped()`) was

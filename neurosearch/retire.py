@@ -157,10 +157,16 @@ def apply(project_id: str, *, channels: list[str] | None = None, source_ids: lis
 
     if dismiss_findings:
         with db.tx() as conn:
+            prior = [(r["id"], r["status"]) for r in conn.execute(
+                f"SELECT id, status FROM project_notes WHERE project_id=? AND source_id IN {q} AND status != 'dismissed'", [project_id, *sids])]
             cur = conn.execute(
                 f"UPDATE project_notes SET status='dismissed' WHERE project_id=? AND source_id IN {q} "
                 "AND status != 'dismissed'", [project_id, *sids])
             done["findings_dismissed"] = cur.rowcount or 0
+            from . import ledger
+            for nid, st in prior:
+                ledger.record(conn, project_id, event_type="finding_status_changed", object_type="finding", object_id=nid,
+                              before={"status": st}, after={"status": "dismissed", "reason": f"retired: {reason}"[:200]})
 
     if reject_claims:
         with db.tx() as conn:
@@ -176,6 +182,10 @@ def apply(project_id: str, *, channels: list[str] | None = None, source_ids: lis
                     "UPDATE project_claims SET status='rejected', application=?, updated_at=? WHERE id IN (%s)"
                     % ",".join("?" * len(part)),
                     [f"retired: {reason}", time.time(), *part])
+            from . import ledger
+            for cid in ids:
+                ledger.record(conn, project_id, event_type="claim_status_changed", object_type="claim", object_id=cid,
+                              before={"status": "not rejected"}, after={"status": "rejected", "reason": f"retired: {reason}"[:200]})
             done["claims_rejected"] = len(ids)
 
     if record_decision:

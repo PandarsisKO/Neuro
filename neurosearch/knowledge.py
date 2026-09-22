@@ -88,6 +88,9 @@ def add_target(project_id: str, question: str, *, topic: str | None = None, clai
                   (tid, project_id, question, (topic or claims._topic_of(question))[:80].lower(), claim_id, sufficiency,
                    json.dumps([x for x in (preferred_classes or []) if x in CLASSES] or list(NEEDS.get("practice" if sufficiency == "corroborative" else "governing"))),
                    closure or d_closure, json.dumps(closure_rule or d_rule), "open", origin, gap, t, t))
+        from . import ledger
+        ledger.record(c, project_id, event_type="question_opened", object_type="question", object_id=tid,
+                      before=None, after={"status": "open", "question": question[:500]})
     assess_target(tid)
     return get_target(tid)
 
@@ -96,7 +99,12 @@ def set_target_status(target_id: str, status: str) -> dict[str, Any] | None:
     if status not in ("open", "satisfied", "closed_by_user", "dropped"):
         raise ValueError("bad status")
     with db.tx() as c:
+        old = c.execute("SELECT project_id, status FROM project_evidence_targets WHERE id=?", (target_id,)).fetchone()
         c.execute("UPDATE project_evidence_targets SET status=?, updated_at=? WHERE id=?", (status, time.time(), target_id))
+        if old is not None:
+            from . import ledger
+            ledger.record(c, old["project_id"], event_type="question_status_changed", object_type="question", object_id=target_id,
+                          before={"status": old["status"]}, after={"status": status})
     tg = get_target(target_id)
     claims._user_changed(tg.get("project_id") if tg else None)          # 0.62.8: their own decision, not churn
     return tg
@@ -170,6 +178,9 @@ def assess_target(target_id: str) -> dict[str, Any] | None:
     with db.tx() as conn:
         conn.execute("UPDATE project_evidence_targets SET claim_id=COALESCE(claim_id, ?), current_evidence=?, gap=?, status=?, updated_at=? WHERE id=?",
                      (c["id"] if c else None, json.dumps(summary), gap, status, time.time(), target_id))
+        from . import ledger       # only the status is tracked: a re-worded gap is re-derivation, not change (§46)
+        ledger.record(conn, tg.get("project_id"), event_type="question_status_changed", object_type="question", object_id=target_id,
+                      before={"status": tg["status"]}, after={"status": status})
     return get_target(target_id)
 
 
@@ -292,6 +303,9 @@ def _upsert_tension(project_id: str, kind: str, claim_id: str | None, descriptio
         tid = db.new_id()
         c.execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, related_claim_id, description, evidence, impact, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                   (tid, project_id, kind, claim_id, related_claim_id, description, json.dumps(evidence), impact, "open", t, t))
+        from . import ledger
+        ledger.record(c, project_id, event_type="tension_opened", object_type="tension", object_id=tid,
+                      before=None, after={"kind": kind, "impact": impact, "description": description[:500]})
     return tid
 
 
@@ -314,7 +328,12 @@ def set_tension_status(tension_id: str, status: str) -> None:
         raise ValueError("bad status")
     pid = (db.connect().execute("SELECT project_id FROM research_tensions WHERE id=?", (tension_id,)).fetchone() or {})
     with db.tx() as c:
+        old = c.execute("SELECT status FROM research_tensions WHERE id=?", (tension_id,)).fetchone()
         c.execute("UPDATE research_tensions SET status=?, updated_at=? WHERE id=?", (status, time.time(), tension_id))
+        if old is not None and pid:
+            from . import ledger
+            ledger.record(c, pid["project_id"], event_type="tension_status_changed", object_type="tension", object_id=tension_id,
+                          before={"status": old["status"]}, after={"status": status})
     claims._user_changed(pid["project_id"] if pid else None)            # 0.62.8: their own decision, not churn
 
 
@@ -402,6 +421,9 @@ def detect(project_id: str) -> dict[str, int]:
         for tsn in list_tensions(project_id, status="open"):
             if tsn["kind"] in ("NOVEL", "WEAK_CONSENSUS", "STALE", "MISSING_PERSPECTIVE") and tsn["id"] not in selected:
                 conn.execute("UPDATE research_tensions SET status='dismissed', updated_at=? WHERE id=?", (time.time(), tsn["id"]))
+                from . import ledger
+                ledger.record(conn, project_id, event_type="tension_status_changed", object_type="tension", object_id=tsn["id"],
+                              before={"status": "open"}, after={"status": "dismissed", "reason": "condition no longer holds"})
                 if tsn.get("claim_id"):
                     conn.execute("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE project_id=? AND claim_id=? AND origin='tension' AND status='open'",
                                  (time.time(), project_id, tsn["claim_id"]))

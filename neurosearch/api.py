@@ -60,6 +60,39 @@ def require_auth(request: Request) -> None:
         raise HTTPException(401, "unauthorized")
 
 
+class ActorMiddleware:
+    """P11 (Kyle's ruling 2): a request that carries the LOCAL owner's token is Kyle acting; everything written while
+    serving it is attributed to him, through which surface, under one request id. External (`/api/ext/`) requests
+    are bound by their own handler from their credential; nothing else is ever attributed to a person."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        path = str(scope.get("path", ""))
+        if scope.get("type") != "http" or not (path.startswith("/api/") or path.startswith("/mcp")) or path.startswith("/api/ext/"):
+            await self.app(scope, receive, send)
+            return
+        from . import ledger
+        headers = {k.decode().lower(): v.decode(errors="replace") for k, v in scope.get("headers") or []}
+        auth = headers.get("authorization", "")
+        bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
+        cookie = None
+        for part in headers.get("cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "ns_token":
+                cookie = v
+        surface = "mcp_legacy" if path.startswith("/mcp") else ("ui" if cookie and not bearer else "api")
+        if not settings.app_token or _token_ok(bearer) or _token_ok(cookie) or (path.startswith("/mcp/") and _token_ok(path.split("/")[2] if len(path.split("/")) > 2 else None)):
+            token = ledger.bind(actor_id="kyle", surface=surface, request_id=f"req:{secrets.token_hex(6)}")
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                ledger.reset(token)
+            return
+        await self.app(scope, receive, send)
+
+
 class TokenPathMiddleware:
     """Pure-ASGI: authenticate /mcp requests via `/mcp/<token>` path or Bearer header."""
 
@@ -199,6 +232,7 @@ app.mount("/js", _NoCacheStaticFiles(directory=WEB_DIR / "js"), name="web-js")
 app.add_middleware(PerfMiddleware)
 app.add_middleware(ClientVersionMiddleware)
 app.add_middleware(TokenPathMiddleware)
+app.add_middleware(ActorMiddleware)
 # the browser extension calls the API from an extension origin; auth is the Bearer token, so open CORS is fine
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 EXT_DIR = Path(__file__).parent.parent / "extension"

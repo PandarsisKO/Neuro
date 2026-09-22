@@ -344,6 +344,9 @@ def add_claim(project_id: str, text: str, *, claim_type: str = "other", qualifie
                       freshness_class or guess_freshness(text, claim_type), status, 1 if normalized else 0, origin, origin_note_id,
                       prov.get("extraction_hash"), prov.get("model"), prov.get("prompt_version"), prov.get("schema_version"),
                       prov.get("routing"), prov.get("transport"), t, t))
+        from . import ledger
+        ledger.record(conn, project_id, event_type="claim_created", object_type="claim", object_id=cid,
+                      before=None, after={"status": status, "text": text.strip()[:500]})
     return get(cid)  # type: ignore[return-value]
 
 
@@ -445,6 +448,12 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
                            (claim_id, source_id, rev, locator, start, link, relation, (excerpt or "")[:600], cls, independent, derivative_of, task, model, t, lineage_id))
         conn.execute("UPDATE project_claims SET updated_at=? WHERE id=?", (t, claim_id))
         eid = cur.lastrowid
+        _p = conn.execute("SELECT project_id FROM project_claims WHERE id=?", (claim_id,)).fetchone()
+        if _p is not None:
+            from . import ledger
+            ledger.record(conn, _p["project_id"], event_type="claim_evidence_added", object_type="claim_evidence",
+                          object_id=f"{claim_id}:{source_id}", before=None,
+                          after={"claim_id": claim_id, "source_id": source_id, "relation": relation, "locator": locator})
         for old_id in promote_over:
             conn.execute("UPDATE claim_evidence SET independent=0, derivative_of=?, evidence_class=CASE WHEN evidence_class='authoritative' THEN evidence_class ELSE 'derivative' END WHERE id=?", (source_id, old_id))
     return dict(db.connect().execute("SELECT * FROM claim_evidence WHERE id=?", (eid,)).fetchone())
@@ -455,7 +464,12 @@ def set_status(claim_id: str, status: str, *, application: str | None = None) ->
     if status not in ("proposed", "accepted", "rejected", "superseded"):
         raise ValueError("bad status")
     with db.tx() as conn:
+        old = conn.execute("SELECT project_id, status FROM project_claims WHERE id=?", (claim_id,)).fetchone()
         conn.execute("UPDATE project_claims SET status=?, application=COALESCE(?, application), updated_at=? WHERE id=?", (status, application, time.time(), claim_id))
+        if old is not None:
+            from . import ledger
+            ledger.record(conn, old["project_id"], event_type="claim_status_changed", object_type="claim", object_id=claim_id,
+                          before={"status": old["status"]}, after={"status": status})
     assess(claim_id)
     out = get(claim_id)
     _user_changed(out.get("project_id") if out else None)
@@ -833,15 +847,30 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         with db.tx() as conn:
             conn.execute("UPDATE project_claims SET strength=?, strength_why=?, readiness=?, readiness_why=?, freshness_status=?, freshness_why=?, updated_at=? WHERE id=?",
                          (*verdict, now, claim_id))
+            # P11 §46/§48: a re-derived explanation is not a change; only the verdict fields are tracked
+            from . import ledger
+            ledger.record(conn, c.get("project_id"), event_type="claim_assessment_changed", object_type="claim", object_id=claim_id,
+                          before={"strength": current[0], "readiness": current[2], "freshness": current[4]},
+                          after={"strength": verdict[0], "readiness": verdict[2], "freshness": verdict[4]})
         return get(claim_id)
     return c
 
 
 def assess_project(project_id: str) -> int:
+    from . import ledger
+    mark = ledger.cursor(project_id)
     n = 0
     for r in db.connect().execute("SELECT id FROM project_claims WHERE project_id=? AND status!='rejected'", (project_id,)).fetchall():
         assess(r["id"])
         n += 1
+    if n:
+        # P11 §48: one summary row per pass, so an external client can be told "56 reassessed, 2 changed" without 56
+        # rows of "re-derived, same answer". Counts only (floor standard); the changed Claims have their own events.
+        changed = db.connect().execute("SELECT COUNT(*) FROM project_change_events WHERE project_id=? AND id>? AND event_type='claim_assessment_changed'",
+                                       (project_id, mark)).fetchone()[0]
+        with db.tx() as conn:
+            ledger.record(conn, project_id, event_type="claims_reassessed", object_type="project", object_id=project_id,
+                          before=None, after={"reassessed": n, "changed": int(changed)}, floor={"standard"})
     return n
 
 
@@ -1089,8 +1118,12 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                     continue
                 merge = item.get("merge_into")
                 if merge and merge in by_id and merge != cid:
-                    conn.execute("UPDATE project_claims SET status='superseded', superseded_by=?, normalized=1, extraction_hash=?, updated_at=? WHERE id=? AND status='proposed'", (merge, ih, t, cid))
+                    n_sup = conn.execute("UPDATE project_claims SET status='superseded', superseded_by=?, normalized=1, extraction_hash=?, updated_at=? WHERE id=? AND status='proposed'", (merge, ih, t, cid)).rowcount
                     conn.execute("UPDATE claim_evidence SET claim_id=? WHERE claim_id=?", (merge, cid))
+                    if n_sup:
+                        from . import ledger
+                        ledger.record(conn, by_id[cid].get("project_id"), event_type="claim_status_changed", object_type="claim", object_id=cid,
+                                      before={"status": "proposed"}, after={"status": "superseded", "superseded_by": merge})
                     continue
                 ctype = item.get("claim_type") if item.get("claim_type") in TYPES else by_id[cid]["claim_type"]
                 fresh = item.get("freshness_class") if item.get("freshness_class") in FRESHNESS else by_id[cid]["freshness_class"]
@@ -1098,6 +1131,11 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                              "schema_version=?, routing=?, transport=?, updated_at=? WHERE id=?",
                              ((item.get("text") or by_id[cid]["text"]).strip(), ctype, json.dumps(item.get("qualifiers") or {}), (item.get("topic") or by_id[cid]["topic"] or "")[:80].lower(),
                               fresh, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
+                new_text = (item.get("text") or by_id[cid]["text"]).strip()
+                if new_text != (by_id[cid]["text"] or "").strip():
+                    from . import ledger
+                    ledger.record(conn, by_id[cid].get("project_id"), event_type="claim_statement_changed", object_type="claim", object_id=cid,
+                                  before={"text": (by_id[cid]["text"] or "")[:500]}, after={"text": new_text[:500]})
                 normalized += 1
         from . import knowledge
         # requirement provenance → the decomposition target ($0): a requirement the evidence attributes to a seller/listing

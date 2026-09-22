@@ -61,6 +61,18 @@ def _production_runtime_defaults():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_inherited_actor():
+    """P11: `neurosearch.cli._init()` binds the CLI's actor for the whole process (right for a one-command process).
+    In a test process that bind would outlive the CLI test and attribute every later write to Kyle; each test starts
+    unbound (= `system`), exactly like a fresh worker thread."""
+    from neurosearch import ledger
+    token = ledger._ctx.set(None)
+    yield
+    ledger._ctx.set(None)
+    del token
+
+
 @pytest.fixture(scope="session")
 def client():
     from fastapi.testclient import TestClient

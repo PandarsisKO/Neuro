@@ -892,6 +892,34 @@ CREATE TABLE IF NOT EXISTS external_requests (
     created_at    REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_external_requests_client ON external_requests(client_id, created_at);
+
+-- P11 EA-2 (§44–§48, §60): the project change ledger. Append-only; the domain tables stay the current-state
+-- authority (this is never read back to rebuild state). Written ONLY by ledger.record(), inside the writer's own
+-- transaction, and only when a tracked field actually changed (or an explicit reaffirmation, §47). actor_id is never
+-- NULL: 'system' for automatic work, with originating_* naming the person/request that caused it (Kyle, 2026-09-22).
+CREATE TABLE IF NOT EXISTS project_change_events (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id             TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    event_type             TEXT NOT NULL,
+    object_type            TEXT NOT NULL,
+    object_id              TEXT NOT NULL,
+    actor_id               TEXT NOT NULL,
+    external_client_id     TEXT,        -- the client that submitted it on the actor's behalf; NULL for local surfaces
+    local_surface          TEXT,        -- ui | api | cli | mcp_legacy | job — how a local act arrived
+    intake_id              TEXT,
+    request_id             TEXT,
+    originating_actor_id   TEXT,
+    originating_request_id TEXT,
+    before                 TEXT,        -- JSON: tracked fields only, bounded (ledger.MAX_PAYLOAD_BYTES)
+    after                  TEXT,
+    disclosure_floor       TEXT NOT NULL DEFAULT '["restricted"]',   -- JSON list: every class before/after exposes (§44)
+    materiality            TEXT,        -- material | supporting | none — filled after commit (ledger.classify_pending)
+    decision_impact        TEXT,        -- JSON or NULL — filled after commit
+    created_at             REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_pce_project_id ON project_change_events(project_id, id);
+CREATE INDEX IF NOT EXISTS ix_pce_object ON project_change_events(object_type, object_id);
+CREATE INDEX IF NOT EXISTS ix_pce_unclassified ON project_change_events(materiality) WHERE materiality IS NULL;
 """
 
 _local = threading.local()
@@ -1164,6 +1192,23 @@ MIGRATIONS = [
     ("sources", "disclosure_origin", "ALTER TABLE sources ADD COLUMN disclosure_origin TEXT"),
     ("sources", "acquisition_provenance", "ALTER TABLE sources ADD COLUMN acquisition_provenance TEXT"),
     ("project_facts", "disclosure_class", "ALTER TABLE project_facts ADD COLUMN disclosure_class TEXT"),
+    # P11 EA-2 (§49): durable user state that can evolve — who said it, through which client, how explicitly, whether
+    # it is still the current position, what it replaced. Every pre-P11 row stays valid through the defaults:
+    # explicit, active, project-scoped, author unknown (rendered "Kyle (local, unattributed)").
+    ("project_facts", "actor_id", "ALTER TABLE project_facts ADD COLUMN actor_id TEXT"),
+    ("project_facts", "external_client_id", "ALTER TABLE project_facts ADD COLUMN external_client_id TEXT"),
+    ("project_facts", "explicitness", "ALTER TABLE project_facts ADD COLUMN explicitness TEXT NOT NULL DEFAULT 'explicit'"),
+    ("project_facts", "status", "ALTER TABLE project_facts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"),
+    ("project_facts", "scope", "ALTER TABLE project_facts ADD COLUMN scope TEXT NOT NULL DEFAULT 'project'"),
+    ("project_facts", "rationale", "ALTER TABLE project_facts ADD COLUMN rationale TEXT"),
+    ("project_facts", "effective_at", "ALTER TABLE project_facts ADD COLUMN effective_at REAL"),
+    ("project_facts", "supersedes_fact_id", "ALTER TABLE project_facts ADD COLUMN supersedes_fact_id INTEGER"),
+    ("project_facts", "client_request_id", "ALTER TABLE project_facts ADD COLUMN client_request_id TEXT"),
+    ("project_facts", "updated_at", "ALTER TABLE project_facts ADD COLUMN updated_at REAL"),
+    # P11 EA-2: the person/request that caused a job, so the job's automatic writes can say so without claiming to
+    # BE that person's act. Columns, not payload keys: the payload feeds dedupe keys and content-addressed work units.
+    ("jobs", "origin_actor_id", "ALTER TABLE jobs ADD COLUMN origin_actor_id TEXT"),
+    ("jobs", "origin_request_id", "ALTER TABLE jobs ADD COLUMN origin_request_id TEXT"),
 ]
 
 
@@ -1216,6 +1261,13 @@ def init_db() -> None:
     # P11 EA-1: the two actors every chronology needs from the first write (docs/P11-EXECUTION-PLAN-2026-09-22.md §12)
     conn.execute("INSERT OR IGNORE INTO external_actors (id, name, kind, created_at) VALUES ('kyle', 'Kyle', 'person', ?)", (now(),))
     conn.execute("INSERT OR IGNORE INTO external_actors (id, name, kind, created_at) VALUES ('system', 'Neuro (automatic)', 'system', ?)", (now(),))
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_facts_request ON project_facts(external_client_id, client_request_id) "
+                 "WHERE client_request_id IS NOT NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_facts_project_status ON project_facts(project_id, status)")
+    # P11 EA-2: a source turning ready is ledgered for every project holding it; that lookup is by source_id, which
+    # the (project_id, source_id) primary keys cannot serve. Additive, read inside the write that flips the status.
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_project_sources_source ON project_sources(source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_project_collections_collection ON project_collections(collection_id)")
     conn.commit()
     _add_job_payload_columns(conn)
     _migrate_source_analysis(conn)
@@ -1376,12 +1428,36 @@ def _note_write_hold(conn: sqlite3.Connection, t0: float, what: str) -> None:
         logging.getLogger(__name__).warning("write lock held %.1fs by %s (%s)", dt, where, what)
 
 
+def after_commit(fn: Any) -> None:
+    """P11 EA-2 (§45): run `fn` once the OUTERMOST tx()/batch() on this thread has committed — for derived work
+    (ledger materiality) that must never run under the writer's lock. Deduplicated per commit; dropped on rollback."""
+    pending = getattr(_local, "after_commit", None)
+    if pending is None:
+        pending = _local.after_commit = []
+    if fn not in pending:
+        pending.append(fn)
+
+
+def _run_after_commit() -> None:
+    pending = getattr(_local, "after_commit", None)
+    if not pending:
+        return
+    _local.after_commit = []
+    for fn in pending:
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001 — a derived follow-up never fails the write it follows
+            logging.getLogger(__name__).warning("after-commit hook %s failed: %s", getattr(fn, "__name__", fn), e)
+
+
 @contextmanager
 def tx() -> Iterator[sqlite3.Connection]:
     conn = connect()
     if getattr(_local, "batch", 0):      # inside batch(): the batch commits, not each tx
         yield conn
         return
+    depth = getattr(_local, "tx_depth", 0)
+    _local.tx_depth = depth + 1
     t0 = time.perf_counter()
     try:
         yield conn
@@ -1389,7 +1465,13 @@ def tx() -> Iterator[sqlite3.Connection]:
         conn.commit()
     except Exception:
         conn.rollback()
+        if depth == 0:
+            _local.after_commit = []
         raise
+    finally:
+        _local.tx_depth = depth
+    if depth == 0:
+        _run_after_commit()
 
 
 @contextmanager
@@ -1398,18 +1480,23 @@ def batch() -> Iterator[None]:
     once instead of hundreds of times, so API requests and other workers aren't starved."""
     _local.batch = getattr(_local, "batch", 0) + 1
     t0 = time.perf_counter()
+    outermost = False
     try:
         yield
         if _local.batch == 1:
             conn = connect()
             _note_write_hold(conn, t0, "batch")
             conn.commit()
+            outermost = True
     except Exception:
         if _local.batch == 1:
             connect().rollback()
+            _local.after_commit = []
         raise
     finally:
         _local.batch -= 1
+    if outermost and not getattr(_local, "tx_depth", 0):
+        _run_after_commit()
 
 
 def now() -> float:
@@ -1435,6 +1522,22 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------- sources
+
+def _record_source_ready(conn: sqlite3.Connection, source_id: str) -> None:
+    """P11 EA-2: new evidence became available in every project that holds this source (direct or via collection)."""
+    pids = {r[0] for r in conn.execute(
+        "SELECT project_id FROM project_sources WHERE source_id=? AND excluded=0 UNION "
+        "SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id "
+        "WHERE sc.source_id=? AND NOT EXISTS (SELECT 1 FROM project_sources ps WHERE ps.project_id=pc.project_id "
+        "AND ps.source_id=sc.source_id AND ps.excluded=1)", (source_id, source_id)).fetchall()}
+    if not pids:
+        return
+    from . import access, ledger
+    floor = {access.source_classes([source_id])[source_id]}
+    for pid in sorted(pids):
+        ledger.record(conn, pid, event_type="source_ready", object_type="source", object_id=source_id,
+                      before={"ready": False}, after={"ready": True}, floor=floor)
+
 
 def set_acquisition_provenance(source_id: str, provenance: str) -> None:
     """P11 EA-1 (§43): how a source's content was obtained, the fact the disclosure rule is built on. More private
@@ -1470,6 +1573,8 @@ def upsert_source(**fields: Any) -> dict[str, Any]:
             sets = ", ".join(f"{k}=?" for k in fields)
             conn.execute(f"UPDATE sources SET {sets} WHERE id=?", (*fields.values(), existing["id"]))
             sid = existing["id"]
+            if fields.get("status") == "ready" and existing["status"] != "ready":
+                _record_source_ready(conn, sid)
         else:
             sid = fields.get("id") or new_id()
             fields.update(id=sid, created_at=t, updated_at=t)
@@ -2667,15 +2772,18 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
                 return get_job(ex["id"])  # type: ignore[return-value]
         jid = job_id or new_id()
         assert execution_policy in EXECUTION_POLICIES, execution_policy
+        from .ledger import origin_for_job
+        o_actor, o_req = origin_for_job()
         conn.execute(
-            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane, not_before, wait_reason) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane, not_before, wait_reason, "
+            "origin_actor_id, origin_request_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
              f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else
              (f"scheduled — runs when the worker is next available, no earlier than the requested time" if not_before is not None else None),
              dependency_policy, key, execution_policy,
              lane if lane in ("normal", "slow", "priority", "low") else "normal",
-             not_before, "scheduled" if not_before is not None else None),
+             not_before, "scheduled" if not_before is not None else None, o_actor, o_req),
         )
         job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key, not_before=not_before)
     return get_job(jid)  # type: ignore[return-value]
@@ -4173,8 +4281,14 @@ def update_project(project_id: str, **fields: Any) -> dict[str, Any] | None:
     if fields:
         fields["updated_at"] = now()
         sets = ", ".join(f"{k}=?" for k in fields)
+        tracked = [k for k in ("brief", "goal", "questions") if k in fields]
         with tx() as conn:
+            old = conn.execute("SELECT brief, goal, questions FROM projects WHERE id=?", (project_id,)).fetchone()
             conn.execute(f"UPDATE projects SET {sets} WHERE id=?", (*fields.values(), project_id))
+            if old is not None and tracked:
+                from . import ledger
+                ledger.record(conn, project_id, event_type="brief_changed", object_type="project", object_id=project_id,
+                              before={k: old[k] for k in tracked}, after={k: fields[k] for k in tracked}, floor={"standard"})
     return get_project(project_id)
 
 
@@ -4243,11 +4357,38 @@ def project_source_ids(project_id: str, ready_only: bool = True) -> list[str]:
     return sorted(ids - excluded)
 
 
+def _ledger_membership(conn: sqlite3.Connection, project_id: str, source_ids: list[str], *, adding: bool) -> list[str]:
+    """P11 EA-2: which of `source_ids` this add/remove will actually change (read before the write, same tx)."""
+    ids = list(dict.fromkeys(source_ids))
+    have: dict[str, int] = {}
+    for i in range(0, len(ids), 800):
+        part = ids[i:i + 800]
+        q = ",".join("?" * len(part))
+        for r in conn.execute(f"SELECT source_id, excluded FROM project_sources WHERE project_id=? AND source_id IN ({q})", (project_id, *part)).fetchall():
+            have[r["source_id"]] = r["excluded"]
+    if adding:
+        return [s for s in ids if have.get(s, 1) == 1]          # absent, or present only as an exclusion marker
+    return [s for s in ids if have.get(s) == 0]
+
+
+def _record_membership(conn: sqlite3.Connection, project_id: str, changed: list[str], event_type: str) -> None:
+    if not changed:
+        return
+    from . import access, ledger
+    cls = access.source_classes(changed)
+    for sid in changed:
+        member = event_type == "source_attached"
+        ledger.record(conn, project_id, event_type=event_type, object_type="source_membership", object_id=sid,
+                      before={"member": not member}, after={"member": member}, floor={cls[sid]})
+
+
 def add_project_sources(project_id: str, source_ids: list[str]) -> None:
     with tx() as conn:
+        changed = _ledger_membership(conn, project_id, source_ids, adding=True)
         conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
         conn.executemany("UPDATE project_sources SET excluded=0 WHERE project_id=? AND source_id=? AND excluded=1", [(project_id, s) for s in source_ids])   # an explicit add lifts a removal
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
+        _record_membership(conn, project_id, changed, "source_attached")
 
 
 
@@ -4370,8 +4511,10 @@ def remove_project_sources(project_id: str, source_ids: list[str]) -> None:
     """Remove from THIS project and remember it: the row stays as an exclusion marker so a linked collection, a tag match
     or a retried ingest job cannot bring the source back (0.34.2 — the 'it keeps showing up' bug)."""
     with tx() as conn:
+        changed = _ledger_membership(conn, project_id, source_ids, adding=False)
         conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
         conn.executemany("UPDATE project_sources SET excluded=1, priority=0 WHERE project_id=? AND source_id=?", [(project_id, s) for s in source_ids])
+        _record_membership(conn, project_id, changed, "source_removed")
 
 
 def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
@@ -4580,11 +4723,15 @@ def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:
     """The one door every status change goes through, so stamping `reviewed_at` here covers every path -- the
     drawer, the workbench, bulk, focus review and the sweeps -- and cannot be bypassed by adding a caller."""
     with tx() as conn:
-        before = conn.execute("SELECT status FROM project_notes WHERE id=?", (note_id,)).fetchone()
+        before = conn.execute("SELECT status, project_id FROM project_notes WHERE id=?", (note_id,)).fetchone()
         conn.execute("UPDATE project_notes SET status=?, reviewed_at=?, "
                      "created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?",
                      (status, now(), status, now(), note_id))
         row = row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
+        if before is not None:
+            from . import ledger
+            ledger.record(conn, before["project_id"], event_type="finding_status_changed", object_type="finding", object_id=note_id,
+                          before={"status": before["status"] or "approved"}, after={"status": status})
     # 2026-09-21: a status crossing the dismissed line re-assesses the Claims this finding backs -- the twin of
     # the G5 source-revision hook above (`stale_by_source`). Same shape on purpose: only when it matters, a late
     # import, and never able to break the write it follows.
@@ -4775,20 +4922,39 @@ def delete_project_note(note_id: int) -> None:
 # ------------------------------------------------------ facts & plans
 
 def add_fact(project_id: str, kind: str, content: str, origin: str = "user") -> dict[str, Any]:
+    """The local write path (UI, MCP record_fact, retire). P11: attributed to whoever is acting (ledger.acting) and
+    ledgered; left unclassified for external disclosure until the owner classifies it (§41, §43)."""
+    from . import ledger
+    who = ledger.current()
+    t = now()
     with tx() as conn:
-        cur = conn.execute("INSERT INTO project_facts (project_id, kind, content, origin, created_at) VALUES (?,?,?,?,?)",
-                           (project_id, kind, content, origin, now()))
-        return dict(conn.execute("SELECT * FROM project_facts WHERE id=?", (cur.lastrowid,)).fetchone())
+        cur = conn.execute("INSERT INTO project_facts (project_id, kind, content, origin, created_at, actor_id, external_client_id, "
+                           "effective_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                           (project_id, kind, content, origin, t, who.get("actor_id"), who.get("client_id"), t, t))
+        fid = cur.lastrowid
+        from .facts import _event_for
+        ledger.record(conn, project_id, event_type=_event_for(kind, "active", "project"), object_type="fact", object_id=fid,
+                      before=None, after={"kind": kind, "content": content[:1000], "status": "active", "origin": origin},
+                      floor={"restricted"})
+        return dict(conn.execute("SELECT * FROM project_facts WHERE id=?", (fid,)).fetchone())
 
 
-def list_facts(project_id: str) -> list[dict[str, Any]]:
-    return [dict(r) for r in connect().execute(
-        "SELECT * FROM project_facts WHERE project_id=? ORDER BY created_at", (project_id,)).fetchall()]
+def list_facts(project_id: str, include_history: bool = False) -> list[dict[str, Any]]:
+    """The project's CURRENT position (P11: superseded, withdrawn, proposed and personal rows are history or
+    someone's preference, not project state). `include_history=True` returns every row."""
+    q = "SELECT * FROM project_facts WHERE project_id=?" + ("" if include_history else " AND status='active' AND scope='project'")
+    return [dict(r) for r in connect().execute(q + " ORDER BY created_at", (project_id,)).fetchall()]
 
 
 def delete_fact(fact_id: int) -> None:
     with tx() as conn:
+        old = conn.execute("SELECT * FROM project_facts WHERE id=?", (fact_id,)).fetchone()
         conn.execute("DELETE FROM project_facts WHERE id=?", (fact_id,))
+        if old is not None:
+            from . import ledger
+            ledger.record(conn, old["project_id"], event_type="fact_deleted", object_type="fact", object_id=fact_id,
+                          before={"kind": old["kind"], "content": old["content"][:1000]}, after={"deleted": True},
+                          floor={old["disclosure_class"] or "restricted"})
 
 
 # Discovery exclude list (item 2, 2026-09-20): a short, explicit "not interested in" list the user controls per
@@ -4888,6 +5054,9 @@ def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], c
             else:
                 carried = [(pid, r["key"], r["status"], r["note"], t) for r in rows]
             conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)", carried)
+        from . import ledger
+        ledger.record(conn, project_id, event_type="plan_version_created", object_type="plan", object_id=pid,
+                      before=None, after={"version": v}, floor=_plan_floor(conn, plan))
     return get_plan(pid)  # type: ignore[return-value]
 
 
@@ -4920,12 +5089,35 @@ def set_plan_status(plan_id: str, status: str) -> None:
         conn.execute("UPDATE plans SET status=?, updated_at=? WHERE id=?", (status, now(), plan_id))
 
 
+def _plan_floor(conn: sqlite3.Connection, plan: dict[str, Any]) -> set[str]:
+    """P11: a plan is disclosable only as far as every finding it cites (decision_impact's own walk of the plan)."""
+    from . import access
+    from .decision_impact import _walk_evidence_ids
+    ids: set[str] = set()
+    _walk_evidence_ids(plan, ids)
+    if not ids:
+        return {"standard"}
+    emap = plan.get("_evidence") or {}
+    note_ids = [emap[x]["note_id"] for x in ids if isinstance(emap.get(x), dict) and emap[x].get("note_id") is not None]
+    floor: set[str] = set().union(*access.note_floors(note_ids).values()) if note_ids else set()
+    if len(note_ids) < len(ids):
+        floor.add(access.UNCLASSIFIED)        # a citation this can't resolve to a finding has no provable class (§42)
+    return floor
+
+
 def set_item_status(plan_id: str, key: str, status: str, note: str | None = None) -> None:
     with tx() as conn:
+        old = conn.execute("SELECT i.status, p.project_id FROM plans p LEFT JOIN plan_items i ON i.plan_id=p.id AND i.key=? WHERE p.id=?",
+                           (key, plan_id)).fetchone()
         conn.execute("""INSERT INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)
                         ON CONFLICT(plan_id, key) DO UPDATE SET status=excluded.status,
                         note=COALESCE(excluded.note, plan_items.note), updated_at=excluded.updated_at""",
                      (plan_id, key, status, note, now()))
+        if old is not None:
+            from . import ledger
+            ledger.record(conn, old["project_id"], event_type="plan_item_status_changed", object_type="plan_item",
+                          object_id=f"{plan_id}:{key}", before={"status": old["status"] or "not_started"}, after={"status": status},
+                          floor={"standard"})
 
 
 def add_plan_updates(plan_id: str, updates: list[dict[str, Any]], origin: str | None = None) -> None:
