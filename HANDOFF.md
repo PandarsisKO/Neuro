@@ -3020,3 +3020,24 @@ workspace). Verify when Kyle's flow is stable; it may be the real Gio blocker, n
 agent never sees (stays `PENDING`). Workaround used: `HOME=/proc/nonexistent python3 tools/publish_request.py <sha>` →
 repo `.git-publisher/` → receipt PASS for `98cf0bc`. Suggested fix: choose the repo queue whenever `sys.platform !=
 "darwin"`.
+
+## P11 EA-9 account-setup corrections (Kyle, 2026-09-22) — supersede the matching lines in the entry above
+
+**1. Kyle's Plus account is a live capability PROBE, not an assumed writer.** The developer-mode warning text is not
+evidence of write support. Documented today: Business/Enterprise/Edu = full custom-MCP write/modify; Pro = read/fetch
+only; Plus full-MCP write = not documented. In 9A, in order: (i) the tunnelled custom app can be created and invoked;
+(ii) record exactly which Neuro tools ChatGPT exposes (read-only vs write-annotated); (iii) attempt ONE harmless write
+(e.g. a `context` fact on a scratch test project) only if ChatGPT presents write tools; (iv) if writes are unavailable,
+record the external platform gate **`account_tier_write_unavailable`** in HANDOFF and continue the read-side scenarios.
+Neuro's write architecture does not change in response.
+
+**2. WorkOS AuthKit configuration.** Prefer **CIMD**; enable DCR only if the live connection needs the compatibility
+fallback (record it if so). Configure the MCP tunnel/resource URL as an AuthKit **Resource Indicator** so issued access
+tokens carry `aud` = that URL. **Do not pre-assume the redirect URI**: during app creation copy the exact redirect URI
+ChatGPT displays into WorkOS (the stable `https://chatgpt.com/connector_platform_oauth_redirect` only if the live flow
+selects it), and allow the CIMD client identifier ChatGPT actually presents (possibly `https://chatgpt.com/oauth/client.json`).
+Neuro keeps validating signature, exact issuer, audience == `NEUROSEARCH_OAUTH_RESOURCE`, expiry and required scope —
+so bring-up also sets **`NEUROSEARCH_OAUTH_SCOPE`** to the scope AuthKit issues for this resource (scope enforcement is
+off while it is unset). No public Neuro endpoint.
+
+Everything else in the EA-9 sequence stands.
