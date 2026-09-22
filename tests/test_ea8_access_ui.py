@@ -64,3 +64,18 @@ def test_settings_card_is_present_and_loaded():
     assert "p11Load()" in (WEB / "js" / "home.js").read_text()
     assert "/api/access/client-health" in js and "/inbox" in js
     assert "not evidence" in js                         # the assistant's reading is labelled, never presented as a source
+
+
+def test_public_origin_serves_only_the_external_surface(client, monkeypatch):
+    monkeypatch.setattr(settings, "public_url", "https://neuro.example.net")
+    pub = {"Host": "neuro.example.net"}
+    for path in ("/", "/api/projects", "/api/access", "/mcp/", "/health", "/styles.css"):
+        r = client.get(path, headers={**pub, "Authorization": "Bearer t0k"})
+        assert r.status_code == 404, path                       # even the owner's token opens nothing here
+    assert client.get("/.well-known/oauth-protected-resource", headers=pub).status_code == 200
+    assert client.get("/.well-known/oauth-authorization-server", headers=pub).status_code == 200
+    assert client.post("/ext/mcp/", json={}, headers=pub).status_code == 401
+    assert client.post("/api/ext/v1/list_projects", json={}, headers=pub).status_code == 401
+    via_proxy = client.get("/api/projects", headers={"Host": "127.0.0.1:8000", "X-Forwarded-Host": "neuro.example.net", "Authorization": "Bearer t0k"})
+    assert via_proxy.status_code == 404
+    assert client.get("/api/projects", headers={"Authorization": "Bearer t0k"}).status_code == 200     # local use unchanged

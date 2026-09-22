@@ -60,6 +60,32 @@ def require_auth(request: Request) -> None:
         raise HTTPException(401, "unauthorized")
 
 
+class PublicOriginGuard:
+    """P11 (§62): when Neuro is reached through its public origin (NEUROSEARCH_PUBLIC_URL — a tunnel or proxy that an
+    external AI client and the person's browser use), ONLY the external surface answers there: the external MCP
+    endpoint, the external REST contract and OAuth. The local UI, the legacy API and the legacy MCP (all behind the
+    one shared local token) are never reachable through it, whatever token is presented. Requests on any other host
+    (localhost, the LAN) are untouched."""
+    ALLOWED = ("/ext/mcp", "/api/ext/", "/oauth/", "/.well-known/oauth-", "/.well-known/openid-configuration")
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") in ("http", "websocket") and settings.public_url:
+            from urllib.parse import urlparse
+            public = (urlparse(settings.public_url).netloc or "").lower()
+            host = next((v.decode(errors="replace") for k, v in scope.get("headers") or [] if k.lower() == b"host"), "").lower()
+            fwd = next((v.decode(errors="replace") for k, v in scope.get("headers") or [] if k.lower() == b"x-forwarded-host"), "").lower()
+            if public and public in (host, fwd.split(",")[0].strip()):
+                path = str(scope.get("path", ""))
+                if not any(path == a.rstrip("/") or path.startswith(a) for a in self.ALLOWED):
+                    if scope["type"] == "http":
+                        await JSONResponse({"error": "not available on this address"}, status_code=404)(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
+
+
 class ActorMiddleware:
     """P11 (Kyle's ruling 2): a request that carries the LOCAL owner's token is Kyle acting; everything written while
     serving it is attributed to him, through which surface, under one request id. External (`/api/ext/`) requests
@@ -269,6 +295,7 @@ app.add_middleware(PerfMiddleware)
 app.add_middleware(ClientVersionMiddleware)
 app.add_middleware(TokenPathMiddleware)
 app.add_middleware(ActorMiddleware)
+app.add_middleware(PublicOriginGuard)          # outermost of the three: decided before any token is read
 # the browser extension calls the API from an extension origin; auth is the Bearer token, so open CORS is fine
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 EXT_DIR = Path(__file__).parent.parent / "extension"
