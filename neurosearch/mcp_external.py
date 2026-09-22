@@ -53,6 +53,17 @@ async def _call(ctx: Context, op: str, args: dict[str, Any]) -> dict[str, Any]:
         raise ToolError(json.dumps(e.body())) from None     # deliberate: the model sees the code and message
 
 
+@server.tool(annotations=WRITE)
+async def link_account(code: str, ctx: Context, client_name: str | None = None) -> dict[str, Any]:
+    """Use this ONLY when another Neuro tool answered `account_unlinked`: ask the user for the Neuro connection code
+    they were given (it starts with nsi_) and pass it here once. It links their sign-in to their Neuro access."""
+    secret = _secret(ctx)
+    try:
+        return await anyio.to_thread.run_sync(lambda: external.link_account(secret, code, client_name))
+    except external.ExternalError as e:
+        raise ToolError(json.dumps(e.body())) from None
+
+
 @server.tool(annotations=READ)
 async def list_projects(ctx: Context) -> dict[str, Any]:
     """The Neuro projects this person has been given, with their role and what they may see."""

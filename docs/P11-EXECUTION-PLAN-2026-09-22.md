@@ -410,6 +410,15 @@ credential/account step only Kyle can do, or live acceptance needing Kyle's judg
 
 ---
 
+## 11a. EA-9 correction (Kyle, 2026-09-22, after EA-8)
+
+Neuro is not exposed publicly to solve OAuth. Default: Neuro `/ext/mcp` private through Secure MCP Tunnel; a hosted,
+established identity provider is the authorization server; Neuro is a resource server only (`idp.py`,
+`NEUROSEARCH_OAUTH_ISSUER`), binding provider identities to people through owner-issued invites (`link_account`). The
+built-in authorization server (`oauth.py`) with a narrow public forward is the fallback. ChatGPT: Business/Enterprise/
+Edu get full write; Pro is read/fetch only; web-only. EA-9 order and the open tunnel measurement: HANDOFF 2026-09-22
+"EA-9 correction".
+
 ## 12. Product decisions — RESOLVED (Kyle, 2026-09-22)
 
 1. **First live client: ChatGPT first, Claude second.** Gio only uses ChatGPT; the experience P11 must prove is her own

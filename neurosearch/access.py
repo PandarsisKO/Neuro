@@ -62,7 +62,7 @@ def effective_class_sql(alias: str = "s") -> str:
 
 class AccessError(Exception):
     """A refused external request. `code` is the Health taxonomy (§64); `status` its HTTP mapping."""
-    STATUS = {"auth_invalid": 401, "auth_revoked": 401, "project_unauthorized": 404, "forbidden": 403,
+    STATUS = {"auth_invalid": 401, "auth_revoked": 401, "account_unlinked": 403, "project_unauthorized": 404, "forbidden": 403,
               "rate_limited": 429, "invalid": 422, "capability_missing": 422, "conflict": 409, "not_found": 404}
 
     def __init__(self, code: str, message: str = ""):
@@ -123,7 +123,14 @@ def authenticate(secret: str | None) -> Principal:
     every check below — revoked, disabled, expired, rate — is made against the credential."""
     if secret and secret.startswith("nsa_"):
         from . import oauth
+        if __import__("neurosearch.idp", fromlist=["enabled"]).enabled():
+            raise AccessError("auth_invalid", "this server accepts tokens from its configured identity provider only")
         row = db.connect().execute(_CRED_SQL + "WHERE c.id=?", (oauth.resolve_access(secret),)).fetchone()
+        if row is None:
+            raise AccessError("auth_invalid", "unknown credential")
+    elif secret and __import__("neurosearch.idp", fromlist=["looks_like_jwt"]).looks_like_jwt(secret):
+        from . import idp
+        row = db.connect().execute(_CRED_SQL + "WHERE c.id=?", (idp.credential_for(secret),)).fetchone()
         if row is None:
             raise AccessError("auth_invalid", "unknown credential")
     else:
@@ -143,6 +150,18 @@ def authenticate(secret: str | None) -> Principal:
     if row["last_used_at"] is None or t - row["last_used_at"] > LAST_USED_WRITE_S:
         with db.tx() as conn:
             conn.execute("UPDATE external_credentials SET last_used_at=? WHERE id=?", (t, row["id"]))
+    return Principal(row["id"], row["actor_id"], row["client_id"], row["actor_name"], row["client_label"])
+
+
+def authenticate_credential_id(credential_id: str) -> Principal:
+    """The same checks as authenticate(), for a credential already resolved by another trusted path."""
+    row = db.connect().execute(_CRED_SQL + "WHERE c.id=?", (credential_id,)).fetchone()
+    if row is None:
+        raise AccessError("auth_invalid", "unknown credential")
+    if row["revoked_at"] is not None and row["revoked_at"] <= time.time():
+        raise AccessError("auth_revoked", row["revoke_reason"] or "credential revoked")
+    if row["actor_disabled"] is not None:
+        raise AccessError("auth_revoked", "this person's access is disabled")
     return Principal(row["id"], row["actor_id"], row["client_id"], row["actor_name"], row["client_label"])
 
 

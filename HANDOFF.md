@@ -2791,3 +2791,40 @@ call, not a consequence of this backup.**
 no `--all` push, no product code or live DB touched. Safe cleanup candidates, left intact: `codex/subreddit-r1`
 (fully contained in two remote branches). The two blocked branches must NOT be deleted — they are the only copy of
 their 6 absent patches each.
+
+## P11 EA-9 correction: Neuro stays private; a hosted identity provider does OAuth — 2026-09-22
+
+Kyle: *"Do not expose Neuro publicly yet… Treat a public forwarding tunnel into the Mac as a fallback, not the default
+architecture."* EA-0…EA-8 stand as implemented. **Withdrawn from the previous entry:** "v1 needs a public HTTPS origin"
+and "this overrides §62". §62 stands: no public inbound Neuro endpoint in v1.
+
+**Why the correction holds (OpenAI docs, re-read today):** the person's browser runs the authorize/consent step and
+ChatGPT's backend exchanges the code for a token, so the *authorization server* must be internet-reachable; Secure MCP
+Tunnel carries the MCP connection and OAuth discovery, and "the authorization server itself is not automatically
+tunneled"; OpenAI "strongly recommend[s]" an established identity provider over self-built auth and names Auth0 and
+Stytch. The AS does not have to be Neuro.
+
+**Default architecture now built (`idp.py`, full suite 2,424 passed / 0 failed):** set `NEUROSEARCH_OAUTH_ISSUER` (+
+`NEUROSEARCH_OAUTH_RESOURCE` = the MCP URL ChatGPT uses) and Neuro becomes a resource server only — it serves its
+protected-resource metadata pointing at the provider, verifies the provider's JWTs (asymmetric algs only; iss, aud,
+exp, optional `NEUROSEARCH_OAUTH_SCOPE`; JWKS discovered from the issuer and fetched through `safe_fetch`), and returns
+404 for every built-in `/oauth/*` and AS-metadata route. A provider sign-in grants nothing: its (issuer, subject) is
+bound to a Neuro person only when that person redeems an owner-issued invite through the `link_account` MCP tool (other
+tools answer `account_unlinked` with that instruction). One linked identity = one ordinary credential, so revocation,
+ACL, disclosure, attribution and audit are unchanged. The built-in AS (`oauth.py`) remains as the fallback, and
+`PublicOriginGuard` stays either way. `pyjwt[crypto]` is now declared in `pyproject.toml` (already installed as a hard
+dependency of `mcp`).
+
+**ChatGPT capability, as documented today** (replaces the earlier "docs disagree" note): Business / Enterprise / Edu —
+full custom MCP including write/modify; Pro — custom MCP read/fetch only, not full write; custom apps are web-only.
+If Gio's plan cannot invoke writes, that is a ChatGPT platform/account gate; Neuro's write path is not weakened.
+
+**EA-9 order (Kyle):** (1) Claude Code delivers EA-0…EA-8 + this commit: pull, macOS suite, `neurosearch access
+backfill-classes` dry run → counts here → `--apply`, push, clean tree; no release/version. (2) Gio's actual ChatGPT
+plan and custom-app capability. (3) Secure MCP Tunnel for `/ext/mcp` (`tunnel-client`, Platform `tunnel_id`, runtime
+key). (4) Hosted identity provider tenant (Kyle's account choice; must support DCR or CIMD, PKCE S256, `resource` →
+`aud`, allowlist `https://chatgpt.com/connector_platform_oauth_redirect`) + the two env vars. (5) Gio's end-to-end
+ChatGPT acceptance. (6) Only then release-check / version / release.
+
+**Open measurement for step 3:** whether the tunnel forwards `/.well-known/oauth-protected-resource` from the MCP
+origin and what `resource` URL ChatGPT sends — the value `NEUROSEARCH_OAUTH_RESOURCE` must match. Measured at bring-up.

@@ -243,18 +243,29 @@ def oauth_router() -> APIRouter:
     def base(request: Request) -> str:
         return oauth.base_url(str(request.base_url))
 
+    def builtin_only() -> None:
+        """With an external identity provider configured, Neuro serves NO authorization endpoints of its own."""
+        from . import idp
+        if idp.enabled():
+            raise HTTPException(404, "authorization is handled by the configured identity provider")
+
     @r.get("/.well-known/oauth-protected-resource")
     @r.get("/.well-known/oauth-protected-resource/ext/mcp")
     def prm(request: Request) -> JSONResponse:
+        from . import idp
+        if idp.enabled():                                    # resource-server mode: point at the hosted provider
+            return JSONResponse(idp.protected_resource_metadata())
         return JSONResponse(oauth.protected_resource_metadata(base(request)))
 
     @r.get("/.well-known/oauth-authorization-server")
     @r.get("/.well-known/openid-configuration")
     def asm(request: Request) -> JSONResponse:
+        builtin_only()
         return JSONResponse(oauth.authorization_server_metadata(base(request)))
 
     @r.post("/oauth/register")
     async def register(request: Request) -> JSONResponse:
+        builtin_only()
         try:
             meta = await request.json()
             return JSONResponse(oauth.register(meta if isinstance(meta, dict) else {}), status_code=201)
@@ -263,6 +274,7 @@ def oauth_router() -> APIRouter:
 
     @r.get("/oauth/authorize")
     def authorize_page(request: Request) -> HTMLResponse:
+        builtin_only()
         q = dict(request.query_params)
         try:
             c = oauth.check_authorize(q)
@@ -272,6 +284,7 @@ def oauth_router() -> APIRouter:
 
     @r.post("/oauth/authorize")
     async def authorize_submit(request: Request) -> Any:
+        builtin_only()
         form = {k: str(v) for k, v in (await request.form()).items()}
         q = {k: v for k, v in form.items() if k != "invite_code"}
         try:
@@ -286,6 +299,7 @@ def oauth_router() -> APIRouter:
 
     @r.post("/oauth/token")
     async def token(request: Request) -> JSONResponse:
+        builtin_only()
         form = {k: str(v) for k, v in (await request.form()).items()}
         try:
             return JSONResponse(oauth.token(form), headers={"Cache-Control": "no-store"})
@@ -295,6 +309,7 @@ def oauth_router() -> APIRouter:
 
     @r.post("/oauth/revoke")
     async def revoke(request: Request) -> JSONResponse:
+        builtin_only()
         form = {k: str(v) for k, v in (await request.form()).items()}
         oauth.revoke_token(form.get("token", ""))
         return JSONResponse({})

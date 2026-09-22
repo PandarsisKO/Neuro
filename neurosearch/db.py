@@ -1015,6 +1015,16 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     revoked_at      REAL
 );
 CREATE INDEX IF NOT EXISTS ix_oauth_tokens_credential ON oauth_tokens(credential_id);
+-- P11 EA-9 correction: an identity at an EXTERNAL identity provider (issuer + subject) bound to one Neuro credential.
+-- Bound only by the person redeeming an owner-issued invite; an unbound identity can do nothing but link itself.
+CREATE TABLE IF NOT EXISTS external_identities (
+    issuer        TEXT NOT NULL,
+    subject       TEXT NOT NULL,
+    credential_id TEXT NOT NULL REFERENCES external_credentials(id),
+    invite_id     TEXT,
+    linked_at     REAL NOT NULL,
+    PRIMARY KEY (issuer, subject)
+);
 """
 
 _local = threading.local()

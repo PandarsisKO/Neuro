@@ -56,6 +56,15 @@ class Settings:
     # P11 EA-7: the https origin external AI clients (and the person's browser, for the OAuth consent step) reach this
     # app at — a Secure MCP Tunnel/proxy origin. Unset = derived from each request (local/LAN use).
     public_url: str | None = field(default_factory=lambda: _env("NEUROSEARCH_PUBLIC_URL"))
+    # P11 EA-9 correction (Kyle, 2026-09-22): the DEFAULT architecture keeps Neuro private behind Secure MCP Tunnel and
+    # lets an established hosted identity provider be the authorization server. When the issuer is set, Neuro is a
+    # resource server only: it verifies the provider's JWTs (JWKS) and serves NO authorization endpoints of its own.
+    # Unset = the built-in authorization server (oauth.py), which needs its /oauth paths reachable — the fallback.
+    oauth_issuer: str | None = field(default_factory=lambda: _env("NEUROSEARCH_OAUTH_ISSUER"))
+    oauth_resource: str | None = field(default_factory=lambda: _env("NEUROSEARCH_OAUTH_RESOURCE"))   # the MCP URL ChatGPT uses; default public_url + /ext/mcp
+    oauth_audience: str | None = field(default_factory=lambda: _env("NEUROSEARCH_OAUTH_AUDIENCE"))   # default = oauth_resource
+    oauth_jwks_url: str | None = field(default_factory=lambda: _env("NEUROSEARCH_OAUTH_JWKS_URL"))   # default = from issuer metadata
+    oauth_required_scope: str | None = field(default_factory=lambda: _env("NEUROSEARCH_OAUTH_SCOPE"))
 
     # Models
     anthropic_api_key: str | None = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))

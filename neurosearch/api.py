@@ -263,12 +263,14 @@ class _ExternalCredentialGate:
         if scope.get("type") == "http":
             auth = next((v.decode(errors="replace") for k, v in scope.get("headers") or [] if k.lower() == b"authorization"), "")
             tok = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-            if not (tok.startswith("nsx_") or tok.startswith("nsa_")):
+            from . import idp
+            if not (tok.startswith("nsx_") or tok.startswith("nsa_") or (idp.enabled() and idp.looks_like_jwt(tok))):
                 from . import oauth
                 host = next((v.decode() for k, v in scope.get("headers") or [] if k.lower() == b"host"), "localhost:8000")
                 meta = oauth.base_url(f"{scope.get('scheme', 'http')}://{host}") + "/.well-known/oauth-protected-resource"
+                scope_hint = "" if idp.enabled() and not settings.oauth_required_scope else f', scope="{settings.oauth_required_scope or oauth.SCOPE}"'
                 await JSONResponse({"error": {"code": "auth_invalid", "message": "an external Neuro credential is required"}},
-                                   status_code=401, headers={"WWW-Authenticate": f'Bearer resource_metadata="{meta}", scope="neuro"'})(scope, receive, send)
+                                   status_code=401, headers={"WWW-Authenticate": f'Bearer resource_metadata="{meta}"{scope_hint}'})(scope, receive, send)
                 return
         await self.inner(scope, receive, send)
 

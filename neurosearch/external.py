@@ -457,6 +457,22 @@ def call(secret: str | None, op: str, args: dict[str, Any] | None = None) -> dic
         raise ExternalError("error", 500, f"Neuro could not complete this request (ref {rid})")
 
 
+def link_account(secret: str | None, code: str, client_name: str | None = None) -> dict[str, Any]:
+    """Resource-server mode (idp.py): bind the identity-provider sign-in behind `secret` to the Neuro person an
+    owner-issued invite names. The only operation an unlinked sign-in may perform."""
+    from . import idp
+    t0 = time.perf_counter()
+    try:
+        if not idp.enabled() or not idp.looks_like_jwt(secret):
+            raise AccessError("invalid", "linking is only used with a sign-in from this server's identity provider")
+        out = idp.link(secret, code, client_name)
+        access.record_request(None, "link_account", None, "ok", out.get("person"), int((time.perf_counter() - t0) * 1000))
+        return envelope(out)
+    except AccessError as e:
+        _audit(None, "link_account", None, e.code, e.message, t0, None)
+        raise ExternalError(e.code, e.status, e.message)
+
+
 def _audit(principal: Principal | None, op: str, project_id: str | None, code: str, msg: str, t0: float, secret: str | None) -> None:
     try:
         access.record_request(principal, op, project_id if principal else None, code, msg[:200],
