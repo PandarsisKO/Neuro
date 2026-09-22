@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+import anyio
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import access
+from . import access, external
 
 
 def _http(e: access.AccessError) -> HTTPException:
@@ -135,5 +137,33 @@ def admin_router(require_auth: Callable[..., None]) -> APIRouter:
     @r.post("/backfill")
     def backfill_apply() -> dict[str, Any]:
         return access.backfill_classes(apply=True)
+
+    return r
+
+
+def _bearer(request: Request) -> str | None:
+    h = request.headers.get("authorization", "")
+    return h[7:].strip() if h.lower().startswith("bearer ") else None
+
+
+def ext_router() -> APIRouter:
+    """`/api/ext/v1/<op>` — one POST per operation, JSON in, the §39 envelope out. External credential only."""
+    r = APIRouter(prefix="/api/ext/v1")
+
+    @r.post("/{op}")
+    async def ext_call(op: str, request: Request) -> JSONResponse:
+        try:
+            body = await request.json() if (await request.body()) else {}
+        except ValueError:
+            return JSONResponse({"schema_version": "1", "error": {"code": "invalid", "message": "body is not JSON"}}, status_code=422)
+        if not isinstance(body, dict):
+            return JSONResponse({"schema_version": "1", "error": {"code": "invalid", "message": "body must be a JSON object"}}, status_code=422)
+        secret = _bearer(request)
+        try:
+            out = await anyio.to_thread.run_sync(lambda: external.call(secret, op, body))
+        except external.ExternalError as e:
+            headers = {"WWW-Authenticate": "Bearer"} if e.status == 401 else None
+            return JSONResponse(e.body(), status_code=e.status, headers=headers)
+        return JSONResponse(out)
 
     return r

@@ -135,7 +135,11 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).warning("NEUROSEARCH_FAKE_AI=1 — every model call is served by the deterministic fakes")
     jobs.start_workers()
     try:
-        async with mcp.session_manager.run():
+        # P11: the external MCP app is rebuilt on every start -- its session manager can run once per instance, and a
+        # process (the test suite; a reload) may start the app more than once.
+        from .mcp_external import app as _fresh_ext_mcp, server as _ext_mcp
+        _EXT_MCP_GATE.inner = _fresh_ext_mcp()
+        async with mcp.session_manager.run(), _ext_mcp.session_manager.run():
             yield
     finally:
         try:
@@ -215,6 +219,31 @@ mcp_app = mcp.streamable_http_app(
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 app.mount("/mcp", mcp_app)
+
+
+class _ExternalCredentialGate:
+    """P11: the external MCP endpoint answers only callers presenting an external credential (`nsx_…`). Each tool call
+    then authenticates and authorizes that credential itself (external.call) — this gate only makes a missing or
+    malformed credential a proper 401 instead of a session that fails on its first tool."""
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") == "http":
+            auth = next((v.decode(errors="replace") for k, v in scope.get("headers") or [] if k.lower() == b"authorization"), "")
+            tok = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+            if not tok.startswith("nsx_"):
+                await JSONResponse({"error": {"code": "auth_invalid", "message": "an external Neuro credential is required"}},
+                                   status_code=401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
+                return
+        await self.inner(scope, receive, send)
+
+
+from .mcp_external import app as _ext_mcp_app  # noqa: E402
+
+_EXT_MCP_GATE = _ExternalCredentialGate(_ext_mcp_app())
+app.mount("/ext/mcp", _EXT_MCP_GATE)
 class _NoCacheStaticFiles(StaticFiles):
     """0.63.76 - the 0.60.4 fix above (NO_STORE on index.html, no-cache on styles.css) never covered `/js`, which
     is where the actual UI code lives. Starlette's default StaticFiles sends Last-Modified/ETag but no
@@ -3697,6 +3726,7 @@ def api_delete_conversation(conversation_id: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------ P11 external AI access (api_external.py)
 
-from .api_external import admin_router as _p11_admin_router  # noqa: E402 — needs require_auth, defined above
+from .api_external import admin_router as _p11_admin_router, ext_router as _p11_ext_router  # noqa: E402 — needs require_auth, defined above
 
 app.include_router(_p11_admin_router(require_auth))
+app.include_router(_p11_ext_router())
