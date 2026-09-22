@@ -31,3 +31,6 @@ INSPIRATION/
 SCREENSHOT AUDIT/
 Claude outputs/
 .*_livetest/
+
+# Mac-native git publisher runtime queue (requests/receipts; never tracked)
+.git-publisher/

@@ -33,6 +33,11 @@ from pathlib import Path
 
 EXPECTED_REMOTE_SUBSTRINGS = ("PandarsisKO/Neuro",)
 BASELINE = Path(__file__).with_name("git_sync_baseline.txt")
+# Shared with tools/github_publish.py: auth failures look different per transport and helper, and every
+# one of them must read as "credentials", never as "nothing to push" or "branch absent".
+CRED_MARKERS = ("could not read Username", "Authentication failed", "terminal prompts disabled",
+                "Permission denied", "fatal: Authentication", "invalid credentials", "403 Forbidden",
+                "remote: Support for password authentication", "Repository not found")
 
 
 def git(*args: str, check: bool = True) -> str:
@@ -78,15 +83,38 @@ def main() -> int:
         failures.append(f"origin is {url}, expected one of {EXPECTED_REMOTE_SUBSTRINGS}")
 
     # --- 2. refresh the cache from remote truth before judging anything --------------------------
+    # A failed fetch must never be silently ignored: judging the cache after a failed refresh is exactly
+    # how a gate prints PASS on stale information. Auth failure is reported as auth failure, not as
+    # "nothing to do".
     if not args.no_fetch:
-        subprocess.run(["git", "fetch", "origin", "--prune", "--tags"], capture_output=True, text=True)
+        f = subprocess.run(["git", "fetch", "origin", "--prune", "--tags"], capture_output=True, text=True)
+        if f.returncode != 0:
+            blob = (f.stderr or "") + (f.stdout or "")
+            kind = "credentials" if any(m in blob for m in CRED_MARKERS) else "remote/network"
+            print("GitHub sync: FAIL")
+            print(f"  fetch failed ({kind}): {(f.stderr or '').strip()[:300]}")
+            print("\n  Refusing to judge sync state from a stale cache after a failed refresh.")
+            return 1
 
     # --- 3. main vs origin/main ------------------------------------------------------------------
+    # ls-remote FAILING and the branch NOT EXISTING are different facts with different consequences,
+    # so they are never collapsed into one empty string.
     local_main = git("rev-parse", "--verify", "main", check=False)
     remote_main = ""
-    ls = git("ls-remote", "--heads", "origin", "main", check=False)
+    ls_proc = subprocess.run(["git", "ls-remote", "--heads", "origin", "main"],
+                             capture_output=True, text=True)
+    if ls_proc.returncode != 0:
+        blob = (ls_proc.stderr or "") + (ls_proc.stdout or "")
+        kind = "credentials" if any(m in blob for m in CRED_MARKERS) else "remote/network"
+        print("GitHub sync: FAIL")
+        print(f"  ls-remote failed ({kind}): {(ls_proc.stderr or '').strip()[:300]}")
+        print("\n  Remote truth is unavailable; this is NOT the same as 'main does not exist'.")
+        return 1
+    ls = ls_proc.stdout.strip()
     if ls:
         remote_main = ls.split("\t")[0]
+    else:
+        failures.append("origin has no 'main' branch (ls-remote succeeded and returned nothing)")
     if local_main and remote_main:
         if local_main == remote_main:
             main_state = "exact"

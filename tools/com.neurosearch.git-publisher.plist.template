@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Mac-native git publisher for Neuro Search.
+
+  Runs as Kyle's normal user. No root, no listening socket, no HTTP server, no inbound network interface,
+  and no GitHub credential in this file -- publishing uses the Mac's existing osxkeychain helper, which is
+  reachable only from this user's session. The agent wakes on WatchPaths when a request file appears,
+  drains the queue, writes a receipt and exits. It never modifies the working tree, index or any ref.
+
+  Install with: tools/install_git_publisher.sh   (substitutes __REPO__ and __PYTHON__)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.neurosearch.git-publisher</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON__</string>
+        <string>__REPO__/tools/git_publish_agent.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <!-- Wake only when a request appears. No polling, no daemon sitting resident. -->
+    <key>WatchPaths</key>
+    <array>
+        <string>__REPO__/.git-publisher/requests</string>
+        <string>__SUPPORT__/requests</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>__SUPPORT__/agent.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__SUPPORT__/agent.err.log</string>
+</dict>
+</plist>
