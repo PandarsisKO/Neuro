@@ -2828,3 +2828,19 @@ ChatGPT acceptance. (6) Only then release-check / version / release.
 
 **Open measurement for step 3:** whether the tunnel forwards `/.well-known/oauth-protected-resource` from the MCP
 origin and what `resource` URL ChatGPT sends — the value `NEUROSEARCH_OAUTH_RESOURCE` must match. Measured at bring-up.
+
+## P11 EA-9 product correction: Kyle tests first; freeflow chat + late sync built — 2026-09-22
+
+Kyle: *"KYLE TESTS CHATGPT FIRST. GIO IS NOT A DEVELOPMENT TESTER"* and *"FREEFLOW CHAT MUST WORK WITHOUT STARTING
+WITH NEURO."* Recorded as plan §11b (scenarios 9A–9G, the pre-Gio PASS gate) and a one-line product principle in the
+mission banner. Built the server side: `convsync.py` + op/tool `sync_conversation_to_project` (late project binding,
+structured catch-up handoff, no transcript unless explicitly requested, chatter backstop, dedupe, idempotent receipt),
+fact kinds `deadline`/`counterpart_position`/`concern`/`open_question`, material flag `original_available`,
+`list_projects(query)`, freeflow rules in the external MCP instructions. `tests/test_ea9_convsync.py` (8) holds the
+server halves of 9B–9F. **Full suite 2,432 passed, 0 failed.**
+
+**EA-9 now runs on Kyle's ChatGPT account.** Before 9A Kyle's actor needs a grant on each test project (Project
+settings → "People using this project from their own AI" → add "Kyle"). The previous entry's order stands with Gio
+removed from steps 1–5: (1) Mac delivery/gates, (2) **Kyle's** ChatGPT plan (Business/Enterprise/Edu = write; Pro =
+read/fetch only), (3) Secure MCP Tunnel, (4) hosted identity provider, (5) 9A–9F on Kyle's account until all PASS,
+(6) 9G Gio onboarding, (7) release. Gio's plan is checked only at 9G.

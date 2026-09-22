@@ -419,6 +419,42 @@ built-in authorization server (`oauth.py`) with a narrow public forward is the f
 Edu get full write; Pro is read/fetch only; web-only. EA-9 order and the open tunnel measurement: HANDOFF 2026-09-22
 "EA-9 correction".
 
+## 11b. EA-9 product correction (Kyle, 2026-09-22) — supersedes the EA-9 row in §11
+
+**Product principle: Neuro must be available when the user remembers it, not only when the conversation starts.** A
+person can talk freely with ChatGPT, bring Neuro in later ("@Neuro save this", "check this against Neuro", "send our
+decision to Neuro"), and synchronise what mattered without repeating themselves or putting the transcript into Neuro.
+
+Built for it (`convsync.py`, op `sync_conversation_to_project`, REST + MCP): a structured catch-up handoff — user state
+(new kinds `deadline`, `counterpart_position`, `concern`, `open_question`), processed materials (incl.
+`original_available: false` when only the extraction survives), earlier files by reference (retained as originals of
+what was already read), assistant analysis stored as analysis — through the existing intake/facts paths; late project
+binding (named/unique hint → proceed; otherwise `needs_project` with permitted candidates and nothing written);
+a presentation-chatter backstop; dedupe against what the project already holds; idempotent receipt
+("Saved to Business Acquisition: 1 decision, 1 constraint, …"). Catch-up-then-read is the client doing sync, then
+`consult_project` — two operations, no backend special case. `list_projects` takes a `query` for ranking.
+
+**Kyle is the whole development and acceptance tester. Gio is brought in only after it works.** Kyle's ChatGPT
+account (actor `kyle`, granted to the projects he tests on) runs every scenario; Gio never troubleshoots OAuth, the
+tunnel, tool calls, logs or incomplete UX. If the two accounts' plans differ in MCP capability, that is recorded and
+Gio's capability is verified only at 9G.
+
+| scenario | what passes |
+|---|---|
+| 9A Kyle baseline | connect → authenticate → link → list/open → consult → search/evidence → intake → decide/reaffirm/change → disclosure → conflict → revoke/reconnect |
+| 9B Late binding | ordinary chat with Neuro unused, then "save what matters to Neuro": project chosen only then; durable state arrives, no transcript |
+| 9C Mid-conversation catch-up | "check all of this against Neuro": new material synced first, then project intelligence read, answer uses both |
+| 9D Decision-only | options, discussion, rewrites, one explicit decision → only decision + rationale saved |
+| 9E Prior attachments | PDF/image shared before Neuro was used → passed by reference when available, as extraction when not, never re-read |
+| 9F Ambiguous project | fits two permitted projects → ChatGPT asks, never guesses |
+| 9G Gio onboarding | only after A–F: Gio connects and completes a real flow with no developer help |
+
+Also measured in 9A/9B: whether a natural "save this to Neuro" invokes the app without an explicit @mention (the
+guaranteed path is @Neuro; app selection is per message).
+
+Gate before Gio (all recorded in HANDOFF): transport · auth · project ACL · read · evidence · intake · state write
+(where the account permits) · conversation sync · revocation · UX — each PASS on Kyle's account.
+
 ## 12. Product decisions — RESOLVED (Kyle, 2026-09-22)
 
 1. **First live client: ChatGPT first, Claude second.** Gio only uses ChatGPT; the experience P11 must prove is her own

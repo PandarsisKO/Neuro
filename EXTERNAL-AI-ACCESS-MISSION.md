@@ -2,7 +2,9 @@
 > status line in this file ("PARKED", "FILED, NOT STARTED", §38's "P11 remains PARKED", §66–§67's "does not admit"): those were
 > true when written and are kept as history. The Frozen Architecture (§38–§67) is ACCEPTED and is not to be redrafted.
 > The execution plan is `docs/P11-EXECUTION-PLAN-2026-09-22.md`. **Update, same day: Kyle authorised execution; EA-0…EA-8 are
-> built (HANDOFF 2026-09-22 "EA-0 → EA-8"), EA-9 is gated on transport and account steps.** P11 joins the NOW queue
+> built (HANDOFF 2026-09-22 "EA-0 → EA-8"), EA-9 is gated on transport and account steps.**
+> **Product principle added by Kyle, 2026-09-22: Neuro must be available when the user remembers it, not only when the
+> conversation starts** — see the plan's §11b (late project binding, conversation catch-up sync, Kyle-first acceptance). P11 joins the NOW queue
 > without replacing or rewriting other admitted work.
 
 # MISSION — External AI Access + Bidirectional Project Intelligence

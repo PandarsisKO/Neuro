@@ -122,8 +122,20 @@ def _relevant(question: str, texts: list[tuple[Any, str]], k: int) -> list[Any]:
 
 def list_projects(principal: Principal, args: dict[str, Any]) -> dict[str, Any]:
     rows = access.granted_projects(principal)
-    return envelope([{"project_id": r["id"], "name": r["name"], "role": r["role"], "disclosure_classes": r["disclosure_classes"],
-                      "last_change_cursor": ledger.cursor(r["id"], r["disclosure_classes"])} for r in rows])
+    out = [{"project_id": r["id"], "name": r["name"], "role": r["role"], "disclosure_classes": r["disclosure_classes"],
+            "last_change_cursor": ledger.cursor(r["id"], r["disclosure_classes"])} for r in rows]
+    if args.get("query"):                               # late binding: best match first, permitted projects only
+        from . import convsync
+        rank = {c["project_id"]: (i, c["match"]) for i, c in enumerate(convsync.candidates(principal, str(args["query"])))}
+        out.sort(key=lambda r: rank[r["project_id"]][0])
+        for r in out:
+            r["match"] = rank[r["project_id"]][1]
+    return envelope(out)
+
+
+def sync_conversation_to_project(principal: Principal, args: dict[str, Any]) -> dict[str, Any]:
+    from . import convsync
+    return convsync.sync(principal, args, apply_state, envelope)
 
 
 def open_project(auth: Authorization, args: dict[str, Any]) -> dict[str, Any]:
@@ -401,7 +413,10 @@ WRITES: dict[str, Callable[[Authorization, dict[str, Any]], dict[str, Any]]] = {
     "create_intake": create_intake, "add_processed_material": add_processed_material, "attach_artifact": attach_artifact,
     "finalize_intake": finalize_intake, "sync_project_state": sync_project_state,
 }
-PROJECTLESS: dict[str, Callable[[Principal, dict[str, Any]], dict[str, Any]]] = {"list_projects": list_projects}
+PROJECTLESS: dict[str, Callable[[Principal, dict[str, Any]], dict[str, Any]]] = {
+    "list_projects": list_projects,
+    "sync_conversation_to_project": sync_conversation_to_project,   # resolves (or asks for) its project itself; authorizes inside
+}
 
 
 class ExternalError(Exception):

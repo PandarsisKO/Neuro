@@ -32,7 +32,7 @@ DEFAULT_GRANT_CLASSES = ("standard",)    # Kyle, 2026-09-22: a new grant is stan
 READ_OPS = frozenset({"list_projects", "open_project", "get_project_changes", "search_project", "get_evidence",
                       "consult_project", "get_intake_status", "get_project_timeline"})
 WRITE_OPS = frozenset({"create_intake", "add_processed_material", "attach_artifact", "finalize_intake",
-                       "sync_project_state"})
+                       "sync_project_state", "sync_conversation_to_project"})
 OPS_BY_ROLE = {"read": READ_OPS, "contribute": READ_OPS | WRITE_OPS, "owner": READ_OPS | WRITE_OPS}
 # Class rank for the raise-only rule (§41): a client may make material MORE restrictive, never less. Two different
 # sensitive classes are not comparable; a conflict between them resolves to `restricted` (uncertainty defaults closed).

@@ -32,7 +32,20 @@ INSTRUCTIONS = (
     "requirement, a rejected option, a commitment, or a fact; or shares material the project should keep. Record your "
     "own interpretation separately as an interpretation, never as evidence. Never infer someone else's agreement. "
     "If the user answers 'yes/agreed' to a list of several proposals, ask which one before recording anything.\n"
-    "Start with open_project once per conversation. Cite evidence only when asked why; use get_evidence to drill down."
+    "Neuro does NOT need to be involved from the start. The user may talk with you normally and only later say things like "
+    "'save this to Neuro', 'check this against Neuro', 'send our decision to Neuro'. Then:\n"
+    "- SAVE: call sync_conversation_to_project with only the durable, project-relevant state from this conversation "
+    "(decisions, reaffirmations, changes, constraints, requirements, rejected options, rationale, commitments, deadlines, "
+    "counterpart positions, concerns, open questions, material the user shared and what you extracted from it, and your own "
+    "analysis marked as analysis). Never send the transcript, drafts, or requests about wording/tone/format. On later saves "
+    "in the same conversation send only what is new since the last one.\n"
+    "- CHECK: first sync the new durable material the same way, then call consult_project, then answer using both.\n"
+    "- PROJECT: if the user named a project, pass it as project_hint. If the conversation clearly concerns one project, "
+    "propose it and confirm. If Neuro answers needs_project, ask the user to choose from the candidates. Never guess. "
+    "Once a project is chosen, keep using it for the rest of this conversation.\n"
+    "- Report the receipt's summary in one line; mention needs_attention only if it is not empty.\n"
+    "When working inside a project from the start, open_project once, then read only when needed. Cite evidence only when "
+    "asked why; use get_evidence to drill down."
 )
 
 server = MCPServer("Neuro (external)", instructions=INSTRUCTIONS)
@@ -65,9 +78,42 @@ async def link_account(code: str, ctx: Context, client_name: str | None = None) 
 
 
 @server.tool(annotations=READ)
-async def list_projects(ctx: Context) -> dict[str, Any]:
-    """The Neuro projects this person has been given, with their role and what they may see."""
-    return await _call(ctx, "list_projects", {})
+async def list_projects(ctx: Context, query: str | None = None) -> dict[str, Any]:
+    """The Neuro projects this person has been given, with their role and what they may see. Pass query (a project
+    name or what the conversation is about) to get the best matches first."""
+    return await _call(ctx, "list_projects", {"query": query})
+
+
+@server.tool(annotations=WRITE, meta={"openai/fileParams": ["files"]})
+async def sync_conversation_to_project(client_request_id: str, ctx: Context, project_id: str | None = None,
+                                       project_hint: str | None = None, state: list[dict[str, Any]] | None = None,
+                                       materials: list[dict[str, Any]] | None = None, analysis: list[dict[str, Any]] | None = None,
+                                       files: list[dict[str, Any]] | None = None, file_links: list[dict[str, Any]] | None = None,
+                                       conversation_ref: str | None = None, base_revision: int | None = None,
+                                       archive_transcript: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Use this when the user asks to save/send/add what mattered in this conversation to Neuro, or before
+    consult_project when they ask to check the conversation against Neuro. Works even if Neuro was never used earlier.
+    project_id if known; otherwise project_hint (the project they named or the topic) — if the answer is needs_project,
+    ask the user to pick from candidates and call again. client_request_id: one fresh id per save, reused on retry.
+    state: [{op: record|reaffirm|supersede|propose|withdraw, kind: decision|constraint|requirement|rejected|commitment|
+    deadline|counterpart_position|concern|open_question|context|preference, content, rationale?, fact_id?, scope?,
+    explicitness?, referent?}] — 'propose' for anything you inferred rather than the user stated; 'personal' scope for
+    one person's preference. materials: what the user shared, as you read it (same shape as add_processed_material;
+    set original_available=false if you can no longer pass the file). files: files uploaded earlier in this conversation
+    (they are passed by reference); file_links: [{index into files, original_of_material: index into materials}] when a
+    file is the original of something you already read — Neuro keeps it and does not read it again. analysis:
+    [{text}] your own reasoning, stored as analysis, never as evidence. archive_transcript only if the user explicitly
+    asked to archive the whole conversation ({text, explicit_user_request: true})."""
+    links = {int(x.get("index", -1)): x.get("original_of_material") for x in (file_links or [])}
+    refs = []
+    for i, f in enumerate(files or []):
+        ref = {k: v for k, v in {"kind": "signed_url", "url": str(f.get("download_url") or ""), "filename": f.get("file_name"),
+                                 "content_type": f.get("mime_type")}.items() if v}
+        refs.append({"artifact_ref": ref, **({"original_of_material": links[i]} if links.get(i) is not None else {})})
+    args = {"client_request_id": client_request_id, "project_id": project_id, "project_hint": project_hint, "state": state,
+            "materials": materials, "analysis": analysis, "files": refs or None, "conversation_ref": conversation_ref,
+            "base_revision": base_revision, "archive_transcript": archive_transcript}
+    return await _call(ctx, "sync_conversation_to_project", args)
 
 
 @server.tool(annotations=READ)

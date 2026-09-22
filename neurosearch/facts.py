@@ -19,11 +19,13 @@ from typing import Any
 
 from . import db, ledger
 
-KINDS = ("decision", "constraint", "requirement", "rejected", "context", "preference", "commitment")
+KINDS = ("decision", "constraint", "requirement", "rejected", "context", "preference", "commitment",
+         "deadline", "counterpart_position", "concern", "open_question")          # the last four: P11 conversation sync (a counterpart's stated position is the USER's report of it)
 EXPLICITNESS = ("explicit", "accepted_recommendation", "inferred")
 _RECORDED = {"decision": "decision_recorded", "constraint": "constraint_recorded", "requirement": "requirement_recorded",
              "rejected": "rejected_option_recorded", "commitment": "commitment_recorded", "preference": "preference_recorded",
-             "context": "fact_recorded"}
+             "context": "fact_recorded", "deadline": "deadline_recorded", "counterpart_position": "counterpart_position_recorded",
+             "concern": "concern_recorded", "open_question": "open_question_recorded"}
 
 
 class Conflict(Exception):

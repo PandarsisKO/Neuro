@@ -1314,6 +1314,8 @@ MIGRATIONS = [
     # BE that person's act. Columns, not payload keys: the payload feeds dedupe keys and content-addressed work units.
     ("jobs", "origin_actor_id", "ALTER TABLE jobs ADD COLUMN origin_actor_id TEXT"),
     ("jobs", "origin_request_id", "ALTER TABLE jobs ADD COLUMN origin_request_id TEXT"),
+    # P11 EA-9: the receipt a conversation sync returned, so a retried sync answers with the same receipt.
+    ("external_intakes", "receipt", "ALTER TABLE external_intakes ADD COLUMN receipt TEXT"),
 ]
 
 

@@ -22,7 +22,8 @@ CAPABILITIES = ("vision", "ocr", "pdf_text", "table_extraction", "web_access", "
                 "read_tools", "write_tools")
 FILE_TRANSPORTS = ("multipart", "mcp_resource", "signed_url", "none")
 ARTIFACT_REF_KINDS = ("multipart", "mcp_resource", "signed_url", "client_handle")
-FACT_KINDS = ("decision", "constraint", "requirement", "rejected", "context", "preference", "commitment")
+FACT_KINDS = ("decision", "constraint", "requirement", "rejected", "context", "preference", "commitment",
+              "deadline", "counterpart_position", "concern", "open_question")
 SYNC_OPS = ("record", "reaffirm", "supersede", "propose", "withdraw")
 EXPLICITNESS = ("explicit", "accepted_recommendation", "inferred")
 SCOPES = ("project", "personal")
@@ -95,6 +96,8 @@ MATERIAL_V1: dict[str, Any] = {
             "additionalProperties": False,
         },
         "original_ref": {"$ref": "#/$defs/artifact_ref"},
+        "original_available": {"type": "boolean", "description": "false when the client read the original but can no longer "
+                                                                 "hand it over: Neuro keeps the extraction and never claims to hold the file"},
     },
     "additionalProperties": False,
     "$defs": {},
@@ -156,7 +159,34 @@ INTERPRETATION: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+# P11 EA-9: catch-up sync of what mattered in an external conversation that did not start "inside" Neuro. Per-change
+# request ids are optional here — they are derived from the sync's own id, so a retried sync is idempotent.
+SYNC_CHANGE: dict[str, Any] = {**STATE_CHANGE, "required": ["op"]}
+CONVERSATION_SYNC_V1: dict[str, Any] = {
+    "type": "object",
+    "required": ["client_request_id"],
+    "properties": {
+        "project_id": _ID,
+        "project_hint": {"type": "string", "maxLength": 200},
+        "conversation_ref": {"type": "string", "maxLength": 200},
+        "client_request_id": _REQ,
+        "base_revision": {"type": ["integer", "null"]},
+        "state": {"type": "array", "items": SYNC_CHANGE, "maxItems": 100},
+        "materials": {"type": "array", "items": MATERIAL_V1, "maxItems": 20},
+        "files": {"type": "array", "maxItems": 20, "items": {
+            "type": "object", "required": ["artifact_ref"], "additionalProperties": False,
+            "properties": {"artifact_ref": ARTIFACT_REF_V1, "original_of_material": {"type": "integer", "minimum": 0},
+                           "client_declared_class": {"enum": list(DISCLOSURE_CLASSES)}}}},
+        "analysis": {"type": "array", "items": INTERPRETATION, "maxItems": 20},
+        "archive_transcript": {"type": "object", "required": ["text", "explicit_user_request"], "additionalProperties": False,
+                               "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 400_000},
+                                              "explicit_user_request": {"const": True}}},
+    },
+    "additionalProperties": False,
+}
+
 REGISTRY: dict[str, dict[str, Any]] = {
+    "external.conversation_sync.v1": CONVERSATION_SYNC_V1,
     "external.envelope.v1": ENVELOPE_V1,
     "external.capabilities.v1": CLIENT_CAPABILITIES_V1,
     "external.material.v1": MATERIAL_V1,
