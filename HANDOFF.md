@@ -3109,3 +3109,62 @@ metadata, at both paths, fetched 200:
 **Operational note:** the connector must be created/verified in ChatGPT settings *while* the daemon is running,
 and the daemon must stay up for discovery and every MCP call. It is a foreground process in this session, not yet
 a LaunchAgent — if it should survive reboots, that is a small separate decision.
+
+## P11 EA-9 step 4 landed — resource-server mode live, tunnel is now a LaunchAgent (2026-09-22)
+
+Kyle put both values in `.env`; this session restarted Neuro to pick them up and made the tunnel survive the
+session that started it.
+
+```
+NEUROSEARCH_OAUTH_ISSUER   = https://unbelievable-dinosaur-95-staging.authkit.app
+NEUROSEARCH_OAUTH_RESOURCE = https://api.openai.com/v1/tunnel/tunnel_6ab30bc37d8c8191965aa0d5b2b46afd
+```
+
+The resource matches the tunnel URL recorded in the step-3 entry exactly. **Restart was required, not optional:**
+`neurosearch start` reloads on `*.py` only, so a `.env` change is invisible to it. Restarted through Kyle's own
+`start.command`, which already frees a held port politely before starting; 5 jobs were queued and 0 running, and
+queued jobs are durable.
+
+**Protected-resource metadata now says what step 4 needed it to say**, at both `/.well-known/oauth-protected-resource`
+and `…/oauth-protected-resource/ext/mcp`:
+
+```json
+{"resource": "https://api.openai.com/v1/tunnel/tunnel_6ab30bc37d8c8191965aa0d5b2b46afd",
+ "authorization_servers": ["https://unbelievable-dinosaur-95-staging.authkit.app"],
+ "bearer_methods_supported": ["header"], "resource_name": "Neuro", "scopes_supported": []}
+```
+
+`scopes_supported` is empty because `NEUROSEARCH_OAUTH_SCOPE` is unset — optional, set it only if WorkOS issues a
+scope that must be demanded. **Resource-server mode is genuinely engaged**: `/oauth/authorize`, `/oauth/token`,
+`/oauth/register`, `/oauth/revoke` and `/.well-known/oauth-authorization-server` all return 404 on their real
+methods. (A bare `GET /oauth/token` answers 405, which is FastAPI refusing the method before the handler; `POST`
+is the honest test and it 404s.)
+
+**The harpoon warnings from step 3 are resolved.** Eight `base URL must use https` errors are gone. The authkit
+and `api.openai.com` hosts now log `harpoon host auto-registration skipped: not allowed` at INFO — correct, not a
+failure: they are public, so ChatGPT reaches them directly and nothing needs forwarding. `target_count: 0` is the
+right answer once the authorization server is public. **One WARN remains**, `oauth-prmd-source-0` for
+`http://localhost:8000` — the local origin the metadata was fetched from. The metadata itself reaches ChatGPT over
+the MCP channel (doctor: `oauth_metadata PASS HTTP 200`), so this is expected to be harmless, but it is the one
+thing still unproven until ChatGPT actually connects.
+
+**Tunnel installed as a user LaunchAgent** `com.neurosearch.tunnel` (`tools/install_tunnel_agent.sh`): runs as
+Kyle, `KeepAlive` since every MCP call depends on it, no root, no inbound socket beyond tunnel-client's own
+loopback admin UI, and **no credential in the plist** — `tools/tunnel_agent.py` reads `CONTROL_PLANE_API_KEY` from
+`.env` and execs. Running: pid 55959, `/healthz` live, `/readyz` 200.
+
+**Why that wrapper is Python and not the shell script written first:** launchd could not start a `/bin/bash`
+script living in the repo — `getcwd: cannot access parent directories: Operation not permitted`, exit 126. The
+repo is under `~/Desktop`, a TCC-protected location, and a launchd-spawned shell has no access to it. The
+virtualenv interpreter does, which is why `com.neurosearch.git-publisher` has always worked. **That agent was
+re-verified end to end through launchd rather than assumed** — a request file dropped in its queue was drained by
+the agent itself (receipt written, exit 0), not by a direct call. Anything else added here must use the same
+interpreter, not a shell script.
+
+**`tunnel-client doctor --profile local-http` → every substantive check PASS.** The single FAIL is
+`health_listener: bind: address already in use`, which is doctor testing whether it *could* bind 127.0.0.1:8080
+while the agent legitimately owns it — confirmed the holder is pid 55959, the agent itself. Not a fault; expected
+whenever doctor runs against a live daemon.
+
+**Next:** step 5 — create/verify the connector in ChatGPT settings while the agent is up, then 9A–9F on Kyle's
+account. The `resource` value ChatGPT actually sends still wants confirming against a real request.

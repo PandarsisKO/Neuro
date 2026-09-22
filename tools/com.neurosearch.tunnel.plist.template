@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Secure MCP Tunnel for Neuro (P11 EA-9 step 3), as Kyle's normal user.
+
+  No root. No listening socket beyond tunnel-client's own loopback admin UI (127.0.0.1:8080). No GitHub or
+  OpenAI credential in this file: the runtime key is read from .env by tools/tunnel_agent.py at exec time.
+  Runs under the venv interpreter, not /bin/bash: the repo is under ~/Desktop and a launchd-spawned shell
+  has no TCC access there (it fails at getcwd before reading the script).
+  KeepAlive because, unlike the git publisher, this one must stay up -- ChatGPT's connector discovery and every
+  MCP call go through it.
+
+  Install with: tools/install_tunnel_agent.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.neurosearch.tunnel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON__</string>
+        <string>__REPO__/tools/tunnel_agent.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>__SUPPORT__/tunnel.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__SUPPORT__/tunnel.err.log</string>
+</dict>
+</plist>
