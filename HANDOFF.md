@@ -9,13 +9,13 @@ in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md`.
 
 | | |
 |---|---|
-| **Version** | `pyproject.toml` / `neurosearch/__init__.py` / `web/js/state.js` agree (0.63.94 on 2026-09-21); extension `manifest.json` 1.9.6. Prose version numbers elsewhere are not authoritative. |
+| **Version** | `pyproject.toml` / `neurosearch/__init__.py` / `neurosearch/web/js/state.js` + `neurosearch/web/index.html` agree (0.63.95 on 2026-09-21); extension `manifest.json` 1.9.6. Prose version numbers elsewhere are not authoritative. |
 | **Active effort** | `PRODUCT-SCHEDULER.md` NOW → Discovery relevance + findings review; what is left is `docs/COMPLETION-CHECKLIST-2026-09-21.md`. |
 | **Open decisions / actions** | `docs/REPO-AUDIT-2026-09-21.md` §1–2 (Kyle) and `STATE-OF-THE-APP-2026-09-21-2300.md` (agents). |
 | **Parked** | `PRODUCT-SCHEDULER.md` PARKED — subreddit/Reddit API, FRED, L-21/L-40/L-60/L-61, Field Map, T2 migration, H1–H3, P11/P12. Do not pick up. |
 | **Who is where** | Codex offline the week of 2026-09-21; its tree was adopted into `main` (`f99ab95`…`8fb5e7c`). Claude Code: the Mac, the live DB, `neurosearch` CLI, pushes. Cowork: docs, code, full suite in a Linux VM on temp DBs; never the live DB. |
-| **Last green suite** | 2,367 passed, 0 failed (2026-09-21, before S80). Any failure is new. |
-| **Unpushed** | `origin/main` = `44bd125` (09-19). Push from Kyle's Terminal. |
+| **Last green suite** | 2,346 passed, 0 failed (2026-09-21, at 0.63.95, `release-check` PASS). Any failure is new. |
+| **Unpushed** | none as of 2026-09-21 — `origin/main` carries the 0.63.95 release. |
 | **Standing rules** | `CLAUDE.md`. Plus, from this file's own history: stage by CHANGE not by filename (`git add -p`); a frozen-value change gets a clean-worktree run; if a git command through the mount prints `unable to unlink … Operation not permitted`, check `find .git -name '*.lock' \| wc -l` before it accumulates. |
 
 ## How to add an entry
@@ -2580,3 +2580,58 @@ in the app** — L-41 cannot be judged until `nightly report` has an API and a H
 `test_repo_check`, `test_s5_ui_syntax`, `test_s50_design_drift`, `test_s44_frontend_integrity`, `test_s39` and
 `test_r4` (see the commit). Committed by change, not by filename; Claude Code's in-flight S80 files were never
 staged by this session.
+
+## 0.63.95 — the scheduler's live-DB list, run end to end (2026-09-21)
+
+`PRODUCT-SCHEDULER.md` items 1, 5 and the live-DB list, executed against the real database on Kyle's Mac.
+Seven outcomes, in the order they were run.
+
+**(a) The post-brief re-score completed.** 106/106 calls, 8,457 scores written, 685 candidates promoted to
+`available`, exit 0. **The "~$2.12" it printed is avoided cost, not billed spend.** `settings.ai_profile` is
+`local` and `rank.relevance` is `local_capable`, so the whole run went through the Claude Code transport; the
+ledger moved from $0.2141 to $0.2141. `db.health()["model_routing"]` records **no new mismatch** — every entry is
+`before_fix` with `since_fix: 0` and a `last` stamp from 09-10 — so the local provider ran the contract's model
+(Sonnet 5), exactly as 0.52.0 requires. The `claude-haiku-4-5` visible in `local_ai` is the health probe's own
+model and is not what scored anything. Anyone reading the tool's dollar line as spend will mis-plan the budget.
+
+**(b) AD4B round 3 generated**: `evals/ad4b-sample-round3.html` (+ `.json`), 30 items blind from 7,772
+rejected+scored candidates — bands 0-19: 4,144 · 20-34: 2,589 · 35-44: 1,039. The 7,772 matches the re-score's
+own "7772 still under" exactly, and the 45-49 band is empty because everything at or above the 45 cutoff was
+promoted, so this sample contains only genuinely-rejected items. Unjudged; bar stays 25%.
+
+**(c) CHR3 paid acceptance — PASS, $0.1655 of a $3 ceiling.** Conversation `25babda0…` ("CPA Deal Reveiw"), chosen
+by scanning all 40 conversations' deltas and taking the largest material one (93 material / 100 supporting).
+HTTP 200 in 35.6s. The synthetic user turn carries `meta.kind='refresh'`; the assistant turn carries 22 citations;
+`meta.refresh.selection` persisted `{"cap": 90, "selected": 90, "truncated": true, "omitted": {"material": 16,
+"supporting": 98, "comparison": 53}}`. That is `e99ccac`'s material-first rule demonstrated on live evidence: with
+a cap of 90 against 93 material units, 77 material were kept and 98 supporting were dropped rather than the
+reverse. `answer.chat` is `local_capable: False`, so this went to the paid API and is a real paid acceptance —
+the ledger moved $0.2141 → $0.3797 and the `answer` kind moved by the identical $0.1655. **The human look at the
+What's New card is still owed**; that half of the acceptance is not claimed here.
+
+**(d) D3 description backfill.** `skipped_limit`: 0 → 569 of 574, in two passes (the tool's default `--limit` is
+200, so the first run silently left 374 behind and said so). `acquired`: 21 → 708 of 841, with **39 RuntimeError
+failures, all of them web sources** (sba.gov pages, searchfunder.com, "Grants", "Person") taking the non-YouTube
+path, not videos. Note the summary line is wrong in that case: it prints "133 still have none — all of them were
+fetched" on the same line as "39 fetch(es) failed", folding real failures into the "simply has no description"
+bucket. Same class of defect as the re-score's "lowest-scored items" block, which is sorted by delta and so can
+never show what its own label promises. Neither was fixed.
+
+**(e) LP6 does not close.** `plan_updates` has **0 rows**, and the reason is upstream: no project has a plan at
+all — all three return `plan: None`. There is no Claim id to report. Consistent with the other two readings
+tonight: the delta endpoint's own comment says it "never writes plan_updates (that is an explicit 'Review plan
+impact')", and all 40 conversation deltas reported `plan_impacts: 0`.
+
+**(f) The Morning Report has nothing to report, and the reason is not the missing surface.** `neurosearch nightly
+report` → *"No overnight report for nightly-2026-09-21: no envelope record in kv for this id"*, because
+`nightly status` says the envelope is **OFF** (`NEUROSEARCH_T4_NIGHTLY_BUDGET_USD=0.0`) and has never run. L-41
+is recorded as "no API and no surface in the app"; that is true but not binding. `GET /api/nightly/report` and a
+Home card would render an empty state until that budget is set. (Also: the command is reachable as
+`.venv/bin/neurosearch nightly report`; `python -m neurosearch.cli nightly report` reports no such command.)
+
+**(g) Release.** Full suite **2,346 passed, 0 failed** — the eight failures reported this morning are all gone,
+cleared by Codex's re-freezes (`212be82` and its neighbours); the frozen answer total now reads
+`[34, 211650]`, the number this morning's run measured. `neurosearch release-check` → **RELEASE CHECK PASS**,
+391.8s, artifact `evals/release/release-check-0.63.94-9d5daf6-20260921-172516.json`. Bumped to 0.63.95.
+**The artifact is stamped 0.63.94 @ 9d5daf6** because the scheduler's order is check-then-bump: it validates the
+tree as it stood before the bump commit, which changes only a version string and this entry.
