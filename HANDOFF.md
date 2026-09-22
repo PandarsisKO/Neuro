@@ -2977,3 +2977,40 @@ push and returns PASS if the SHA arrived anyway.
 **Not done, deliberately:** no credential copied anywhere, no PAT created, no force, no history rewrite, no merge,
 no product code, no live-DB change, no release or version bump (this is delivery infrastructure, and the repo's
 conventions do not version it).
+
+## P11 EA-9 live setup, step 1–2 findings; what Kyle has to do — 2026-09-22
+
+Kyle: *"EA-9 server-side review is accepted. Stop adding P11 behavior speculatively. Move to live setup."* Code is
+frozen for P11 until a live test shows a concrete failure.
+
+**1. Delivery (verified):** `origin/main` = `bf4bb20`; `8bba0b4` is an ancestor; checkout clean. The macOS suite
+(2,435/0) and the §43 backfill apply recorded above stand; nothing since touched classification.
+
+**2. Kyle's ChatGPT (read from the live UI, nothing changed):** account `pandarsis@gmail.com`, plan **Plus**, personal
+(no Business workspace). Settings → Security and login → **Developer mode: available, currently OFF**; its label warns it
+"allows you to add unverified connectors that could modify or erase data permanently". Whether Plus custom apps can
+actually run write tools is still unproven (OpenAI's developer-mode guide says Plus gets read+write; the Help Center
+says full write is Business/Enterprise/Edu) — it is settled by the first live write in 9A, not by more reading.
+Secure MCP Tunnel supports personal accounts: the tunnel is associated with Kyle's **personal Platform organization**.
+
+**Identity provider — recommendation: WorkOS AuthKit.** Native CIMD (DCR optional), issues access tokens whose `aud`
+equals the requested `resource` (exactly what `idp.py` verifies), JWKS + refresh tokens, free for the first 1M MAU.
+Auth0 works too but needs a Default Audience, offline access, and a Post-Login Action to avoid ChatGPT's
+`OAUTH_SCOPES_MISMATCH`. Stytch Connected Apps also supports CIMD/DCR.
+
+**Blocked on Kyle (account-level only):**
+- (a) turn Developer mode on (Settings → Security and login), or tell the Cowork session to do it;
+- (b) platform.openai.com (personal org): create a Secure MCP Tunnel → `tunnel_id`, and a runtime API key for
+  `tunnel-client` — then hand both to Claude Code on the Mac, never to a chat;
+- (c) create a WorkOS account + AuthKit environment; enable CIMD (and DCR); add redirect
+  `https://chatgpt.com/connector_platform_oauth_redirect`; the resource indicator is the tunnel MCP URL (known after b).
+
+**Then Claude Code, on the Mac:** install `tunnel-client` from openai/tunnel-client releases, `tunnel-client init
+--mcp-server-url http://localhost:8000/ext/mcp …`, `doctor`, `run`; set `NEUROSEARCH_OAUTH_ISSUER` (AuthKit domain) and
+`NEUROSEARCH_OAUTH_RESOURCE` (the MCP URL ChatGPT uses) in `.env`; restart; confirm the protected-resource metadata
+reaches ChatGPT through the tunnel. Then Kyle adds the app in ChatGPT (Tunnel connection), links with a code from
+Project settings, grants himself the test projects, and 9A starts.
+
+**Risk for 9G, recorded now so it is not a surprise:** a tunnel is discoverable only by the Platform orgs / workspaces
+it is associated with. Gio's own ChatGPT will need that association (her personal Platform org, or a shared
+workspace). Verify when Kyle's flow is stable; it may be the real Gio blocker, not her plan.
