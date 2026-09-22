@@ -12,7 +12,8 @@ in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md`.
 | **Version** | `pyproject.toml` / `neurosearch/__init__.py` / `neurosearch/web/js/state.js` + `neurosearch/web/index.html` agree (0.63.95 on 2026-09-21); extension `manifest.json` 1.9.6. Prose version numbers elsewhere are not authoritative. |
 | **Active effort** | `PRODUCT-SCHEDULER.md` NOW → Discovery relevance + findings review; what is left is `docs/COMPLETION-CHECKLIST-2026-09-21.md`. |
 | **Open decisions / actions** | `docs/REPO-AUDIT-2026-09-21.md` §1–2 (Kyle) and `STATE-OF-THE-APP-2026-09-21-2300.md` (agents). |
-| **Parked** | `PRODUCT-SCHEDULER.md` PARKED — subreddit/Reddit API, FRED, L-21/L-40/L-60/L-61, Field Map, T2 migration, H1–H3, P11/P12. Do not pick up. |
+| **Parked** | `PRODUCT-SCHEDULER.md` PARKED — subreddit/Reddit API, FRED, L-21/L-40/L-60/L-61, Field Map, T2 migration, H1–H3, P12. Do not pick up. |
+| **P11 External AI Access** | **P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.** Frozen Architecture `EXTERNAL-AI-ACCESS-MISSION.md` §38–§67 accepted; plan `docs/P11-EXECUTION-PLAN-2026-09-22.md`; implementation NOT started. Does not displace the NOW effort. |
 | **Who is where** | Codex offline the week of 2026-09-21; its tree was adopted into `main` (`f99ab95`…`8fb5e7c`). Claude Code: the Mac, the live DB, `neurosearch` CLI, pushes. Cowork: docs, code, full suite in a Linux VM on temp DBs; never the live DB. |
 | **Last green suite** | 2,346 passed, 0 failed (2026-09-21, at 0.63.95, `release-check` PASS). Any failure is new. |
 | **Unpushed** | none as of 2026-09-21 — `origin/main` carries the 0.63.95 release. |
@@ -2635,3 +2636,29 @@ cleared by Codex's re-freezes (`212be82` and its neighbours); the frozen answer 
 391.8s, artifact `evals/release/release-check-0.63.94-9d5daf6-20260921-172516.json`. Bumped to 0.63.95.
 **The artifact is stamped 0.63.94 @ 9d5daf6** because the scheduler's order is check-then-bump: it validates the
 tree as it stood before the bump commit, which changes only a version string and this entry.
+
+## P11 re-opened: status docs corrected, execution plan written — 2026-09-22
+
+Kyle's directive (2026-09-22): **P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts
+the execution plan.** The Frozen Architecture (`EXTERNAL-AI-ACCESS-MISSION.md` §38–§67, pushed at `9d08fcc`) is
+accepted and was not redrafted. Base verified on the Mac: `origin/main` = `HEAD` = `9d08fcc`, tree clean.
+
+**What changed (docs only, current state only; history left as written):** banner + two dated notes in
+`EXTERNAL-AI-ACCESS-MISSION.md` (line 1, the 09-10 status paragraph, §67); the index row in this file (P11 out of
+Parked, its own row); `PRODUCT-SCHEDULER.md` NOW gets a second note beside the Discovery/findings effort (nothing
+replaced) and the PARKED line now parks P12 alone; `EXECUTION-LADDER.md` P11 line; one dated line each in
+`DEVELOPMENT-OPERATING-SYSTEM.md` and `PRODUCT-INTELLIGENCE-MISSION.md`.
+
+**New:** `docs/P11-EXECUTION-PLAN-2026-09-22.md` — the one consolidated readiness pass (reuse map, additive schema,
+service contract, security, ledger, intake, durable state, capability contract, health, acceptance matrix, rungs
+EA-0…EA-9, three open decisions with recommendations). Code inspected for it: `api.py` auth (`_token_ok`,
+`TokenPathMiddleware`), `mcp_server.py` (17 tools), `project_facts` + `add_fact/list_facts/delete_fact`,
+`conversation_delta_revision()`, `source_captures` + `create_or_get_capture_ingest_request()`, `/api/ingest/text`,
+`/api/import` → `ingest.store_transcript`, `claim_evidence.locator`, `safe_fetch`, `research_view`, `decision_impact`.
+**Contradictions with the frozen architecture: none.** One finding: `sources` has no acquisition-provenance column, so
+§43's legacy backfill derives it from platform / `source_captures` / `platform='file'` / the Instagram-session rule and
+leaves the rest NULL (= restricted).
+
+**Implementation: NOT started.** Next: Kyle/ChatGPT review the plan; on "P11 plan accepted. Begin execution." the
+Cowork session executes EA-0→EA-9 autonomously, Claude Code delivering at milestones. The device VM cannot run the
+Mac `.venv` (Linux vs macOS binaries) — the doc edits were link-checked only; no code changed, so no suite run is owed.

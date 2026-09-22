@@ -49,7 +49,7 @@ Transcript Intelligence
 
 ## PARKED UNTIL AFTERWARD
 
-External AI Access
+External AI Access *(re-opened by Kyle 2026-09-22 — P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan. See `PRODUCT-SCHEDULER.md` NOW.)*
 
 Project Inbox
 

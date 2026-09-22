@@ -1613,6 +1613,8 @@ external write-back) is FUTURE / NICE TO HAVE / NOT ON THE CRITICAL PATH. `EXTER
 preserved unchanged and its security/provenance requirements stand; the only present obligation is that P8–P10
 interfaces stay coherent and provenance-preserving so a future external consumer is not designed out. P12
 (bidirectional scheduler) stays trigger-only. Cloud hosting is not a prerequisite for anything below.
+*(2026-09-22: the P11 priority line above is historical. Kyle re-opened P11 — see `PRODUCT-SCHEDULER.md` NOW and
+`EXTERNAL-AI-ACCESS-MISSION.md`'s banner. P12 remains trigger-only.)*
 
 **The five capabilities, and the one loop they share.** Continuous Research (A) and Living Master Plan (B) are the
 primary product goals; Source Capability (C), Adaptive Discovery (D) and Field Map (E) are the research-expansion

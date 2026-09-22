@@ -1,4 +1,8 @@
-> PARKED — not admitted during Foundation. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
+> **STATUS (2026-09-22): P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.** Kyle's directive of 2026-09-22 supersedes every earlier
+> status line in this file ("PARKED", "FILED, NOT STARTED", §38's "P11 remains PARKED", §66–§67's "does not admit"): those were
+> true when written and are kept as history. The Frozen Architecture (§38–§67) is ACCEPTED and is not to be redrafted.
+> The execution plan is `docs/P11-EXECUTION-PLAN-2026-09-22.md`. Implementation has NOT started. P11 joins the NOW queue
+> without replacing or rewriting other admitted work.
 
 # MISSION — External AI Access + Bidirectional Project Intelligence
 
@@ -10,7 +14,7 @@ mission, not a second one, and **§20–§37 override §1–§19 wherever they d
 marked in place with a pointer, so a future session cannot read the old rule without meeting the new one. Nothing
 here is implemented and nothing is scheduled.
 
-**Status: FILED, NOT STARTED.** Kyle dictated this on 2026-09-10 while a fix queue was in progress and said
+**Status (historical, 2026-09-10): FILED, NOT STARTED** — superseded 2026-09-22 by the banner at the top of this file. Kyle dictated this on 2026-09-10 while a fix queue was in progress and said
 explicitly: *"I don't want you to work on the expansion mission but I want to add information."* So nothing here is
 implemented, nothing here is scheduled, and the sequencing decision is his. The brief below ends with "then
 IMPLEMENT IT" and calls two scenarios release blockers — that is the instruction **for when this mission is
@@ -1342,6 +1346,10 @@ already states: a session picking this mission up confirms with Kyle that this i
 code.
 
 ## §67 Sequencing
+
+> *2026-09-22, after this section was frozen:* Kyle re-opened P11 — ACTIVE / FINAL READINESS. The paragraph below
+> records the sequencing that held at the time of the freeze; the admission it said would be "decided separately" has
+> now been decided. Implementation still waits for Kyle's explicit acceptance of the execution plan.
 
 P11 remains PARKED behind the current NOW queue (confirmed live against `PRODUCT-SCHEDULER.md` and `HANDOFF.md`'s
 PARKED line at the commit checked for this amendment). This documentation work does not admit P11 and does not

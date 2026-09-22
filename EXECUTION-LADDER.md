@@ -765,8 +765,9 @@ gate first. ### H2 `[ ]` chapter/segment digests — PARKED pending a check that
 `summary` fields are populated and readable without a new pass (per-source summaries exist in
 `project_source_analysis`). ### H3 speaker structure — PARKED.
 
-### P11 — Neuro Everywhere: FUTURE / NICE TO HAVE / no active rungs (mission §12). `EXTERNAL-AI-ACCESS-MISSION.md`
-preserved. ### P12 — Bidirectional Scheduler: trigger-only; do not resurrect without measured contention.
+### P11 — External AI Access: ~~FUTURE / NICE TO HAVE~~ **re-opened 2026-09-22 — P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.**
+Rungs EA-0…EA-9 are in `docs/P11-EXECUTION-PLAN-2026-09-22.md`, not in this ladder (this file stays the Product
+Intelligence ladder). ### P12 — Bidirectional Scheduler: trigger-only; do not resurrect without measured contention.
 
 ---
 

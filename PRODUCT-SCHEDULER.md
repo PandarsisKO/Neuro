@@ -8,6 +8,12 @@ reflects the date each entry was written.
 
 ## NOW — one active effort
 
+**P11 EXTERNAL AI ACCESS — 2026-09-22, Kyle's directive.** **P11 — ACTIVE / FINAL READINESS — execution begins only after Kyle explicitly accepts the execution plan.**
+Frozen Architecture (`EXTERNAL-AI-ACCESS-MISSION.md` §38–§67) accepted; consolidated plan in
+`docs/P11-EXECUTION-PLAN-2026-09-22.md`; implementation NOT started. Added beside the Discovery/findings effort below,
+not in place of it — nothing already admitted is replaced or rewritten. Lanes: Cowork (Desktop) owns P11 planning and
+code it can write; Claude Code owns terminal/Git/live-Mac delivery. Rung ids EA-0…EA-9 live in the plan document.
+
 **DISCOVERY RELEVANCE + FINDINGS REVIEW — 2026-09-21, current authority.** The thread that began with Kyle's
 *"I have been BULK approving everything"*: what is left is in
 [docs/COMPLETION-CHECKLIST-2026-09-21.md](docs/COMPLETION-CHECKLIST-2026-09-21.md) and the 2026-09-20/21 entries
@@ -127,8 +133,8 @@ one trigger that re-opens it.
   gate exists); R9(c) long-window benchmark (numeric revisit trigger in `docs/T1-ADMISSION-2026-09-12.md`); R8
   retention revisit after 2026-10-11 17:28 PT.
 - H1 semantic finding dedupe (embedding columns exist, no writer), H2 chapter digests, H3 speaker structure.
-- External AI access / multi-user (`EXTERNAL-AI-ACCESS-MISSION.md`, P11) and the bidirectional scheduler
-  (`SCHEDULER.md`, P12): filed, not started; sequencing is Kyle's.
+- ~~External AI access / multi-user (`EXTERNAL-AI-ACCESS-MISSION.md`, P11)~~ **re-opened by Kyle 2026-09-22 — see NOW.**
+  The bidirectional scheduler (`SCHEDULER.md`, P12): filed, not started; sequencing is Kyle's.
 - Project Inbox, cloud/infrastructure expansion, new acquisition classes, additional Bootstrap.
 - Consolidated stale/risky Findings review redesign: the 09-21 focus reviewers cover the acute pain; revisit only
   if Kyle asks.
