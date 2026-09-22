@@ -40,9 +40,14 @@ INSTRUCTIONS = (
     "analysis marked as analysis). Never send the transcript, drafts, or requests about wording/tone/format. On later saves "
     "in the same conversation send only what is new since the last one.\n"
     "- CHECK: first sync the new durable material the same way, then call consult_project, then answer using both.\n"
-    "- PROJECT: if the user named a project, pass it as project_hint. If the conversation clearly concerns one project, "
-    "propose it and confirm. If Neuro answers needs_project, ask the user to choose from the candidates. Never guess. "
-    "Once a project is chosen, keep using it for the rest of this conversation.\n"
+    "- PROJECT: if the user named a project, pass their words as project_hint with project_named_by_user=true. If you only "
+    "infer it, pass project_hint alone: Neuro answers confirm_project and you ask the user. If Neuro answers needs_project, "
+    "ask the user to choose. Never guess. Once confirmed, pass that project_id for the rest of this conversation.\n"
+    "- EVIDENCE OF WHAT THE USER SAID: for every decision/constraint/commitment etc. you save as the user's, put the user's "
+    "own words from the conversation in user_text (quote them). Without them Neuro saves it only as a suggestion. If the "
+    "user says the same thing again later (e.g. 'we're STILL at 10%'), send it with their new words: Neuro records a "
+    "reaffirmation. To change or withdraw something Neuro already holds, read it first (consult_project/open_project) and "
+    "pass that ledger_cursor as base_revision; Neuro returns a conflict instead of overwriting blind.\n"
     "- Report the receipt's summary in one line; mention needs_attention only if it is not empty.\n"
     "When working inside a project from the start, open_project once, then read only when needed. Cite evidence only when "
     "asked why; use get_evidence to drill down."
@@ -86,7 +91,8 @@ async def list_projects(ctx: Context, query: str | None = None) -> dict[str, Any
 
 @server.tool(annotations=WRITE, meta={"openai/fileParams": ["files"]})
 async def sync_conversation_to_project(client_request_id: str, ctx: Context, project_id: str | None = None,
-                                       project_hint: str | None = None, state: list[dict[str, Any]] | None = None,
+                                       project_hint: str | None = None, project_named_by_user: bool = False,
+                                       state: list[dict[str, Any]] | None = None,
                                        materials: list[dict[str, Any]] | None = None, analysis: list[dict[str, Any]] | None = None,
                                        files: list[dict[str, Any]] | None = None, file_links: list[dict[str, Any]] | None = None,
                                        conversation_ref: str | None = None, base_revision: int | None = None,
@@ -96,9 +102,11 @@ async def sync_conversation_to_project(client_request_id: str, ctx: Context, pro
     project_id if known; otherwise project_hint (the project they named or the topic) — if the answer is needs_project,
     ask the user to pick from candidates and call again. client_request_id: one fresh id per save, reused on retry.
     state: [{op: record|reaffirm|supersede|propose|withdraw, kind: decision|constraint|requirement|rejected|commitment|
-    deadline|counterpart_position|concern|open_question|context|preference, content, rationale?, fact_id?, scope?,
-    explicitness?, referent?}] — 'propose' for anything you inferred rather than the user stated; 'personal' scope for
-    one person's preference. materials: what the user shared, as you read it (same shape as add_processed_material;
+    deadline|counterpart_position|concern|open_question|context|preference, content, user_text (the user's own words,
+    quoted — required for anything saved as the user's position), rationale?, fact_id?, scope?, explicitness?,
+    referent?}] — 'propose' for anything you inferred rather than the user stated; 'personal' scope for one person's
+    preference. project_named_by_user=true only when the user named the project themselves. Changing or withdrawing
+    something Neuro already holds needs base_revision from a read; a conflict comes back otherwise — show it to the user. materials: what the user shared, as you read it (same shape as add_processed_material;
     set original_available=false if you can no longer pass the file). files: files uploaded earlier in this conversation
     (they are passed by reference); file_links: [{index into files, original_of_material: index into materials}] when a
     file is the original of something you already read — Neuro keeps it and does not read it again. analysis:
@@ -107,10 +115,11 @@ async def sync_conversation_to_project(client_request_id: str, ctx: Context, pro
     links = {int(x.get("index", -1)): x.get("original_of_material") for x in (file_links or [])}
     refs = []
     for i, f in enumerate(files or []):
-        ref = {k: v for k, v in {"kind": "signed_url", "url": str(f.get("download_url") or ""), "filename": f.get("file_name"),
+        ref = {k: v for k, v in {"kind": "signed_url", "url": str(f.get("download_url") or ""), "handle": f.get("file_id"), "filename": f.get("file_name"),
                                  "content_type": f.get("mime_type")}.items() if v}
         refs.append({"artifact_ref": ref, **({"original_of_material": links[i]} if links.get(i) is not None else {})})
-    args = {"client_request_id": client_request_id, "project_id": project_id, "project_hint": project_hint, "state": state,
+    args = {"client_request_id": client_request_id, "project_id": project_id, "project_hint": project_hint,
+            "project_named_by_user": project_named_by_user or None, "state": state,
             "materials": materials, "analysis": analysis, "files": refs or None, "conversation_ref": conversation_ref,
             "base_revision": base_revision, "archive_transcript": archive_transcript}
     return await _call(ctx, "sync_conversation_to_project", args)
@@ -169,8 +178,10 @@ async def sync_project_state(project_id: str, changes: list[dict[str, Any]], ctx
     kind: decision · constraint · requirement · rejected · commitment · preference · context.
     scope: personal for one person's preference ("I personally prefer…"), project for the shared position.
     explicitness: explicit, or accepted_recommendation WITH referent = the ONE proposal the user said yes to.
-    Never record tone/format/drafting requests. Pass base_revision = the ledger_cursor you last saw; a conflict comes
-    back instead of overwriting a collaborator. client_request_id: a fresh unique id per change, reused on retry."""
+    Never record tone/format/drafting requests. user_text: the user's own words for this change, quoted — required for
+    reaffirm/supersede/withdraw, and without it a record is saved only as a suggestion. Pass base_revision = the
+    ledger_cursor you last saw; a conflict comes back instead of overwriting a collaborator. client_request_id: a fresh
+    unique id per change, reused on retry."""
     return await _call(ctx, "sync_project_state", {"project_id": project_id, "changes": changes, "base_revision": base_revision})
 
 
@@ -212,7 +223,7 @@ async def attach_file(project_id: str, intake_id: str, file: dict[str, Any], ctx
     """Attach a file the user uploaded in this conversation (file = {download_url, file_id, mime_type?, file_name?}).
     Use item_id when you already processed the file with add_processed_material: Neuro then keeps it as the original
     and does NOT read it again. Without item_id, Neuro reads it itself."""
-    ref = {k: v for k, v in {"kind": "signed_url", "url": str(file.get("download_url") or ""),
+    ref = {k: v for k, v in {"kind": "signed_url", "url": str(file.get("download_url") or ""), "handle": file.get("file_id"),
                               "filename": file.get("file_name") or "attachment", "content_type": file.get("mime_type")}.items() if v}
     return await _call(ctx, "attach_artifact", {"project_id": project_id, "intake_id": intake_id, "artifact_ref": ref,
                                                 "item_id": item_id, "client_declared_class": client_declared_class,

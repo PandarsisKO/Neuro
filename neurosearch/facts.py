@@ -73,7 +73,8 @@ def _event_for(kind: str, status: str, scope: str) -> str:
 
 def record(project_id: str, kind: str, content: str, *, explicitness: str = "explicit", scope: str = "project",
            rationale: str | None = None, referent: str | None = None, disclosure_class: str | None = None,
-           client_request_id: str | None = None, effective_at: float | None = None, origin: str = "user") -> dict[str, Any]:
+           client_request_id: str | None = None, effective_at: float | None = None, origin: str = "user",
+           user_text: str | None = None) -> dict[str, Any]:
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
     if explicitness not in EXPLICITNESS:
@@ -94,11 +95,13 @@ def record(project_id: str, kind: str, content: str, *, explicitness: str = "exp
     with db.tx() as conn:
         cur = conn.execute(
             "INSERT INTO project_facts (project_id, kind, content, origin, created_at, actor_id, external_client_id, explicitness, status, "
-            "scope, rationale, effective_at, client_request_id, disclosure_class, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "scope, rationale, effective_at, client_request_id, disclosure_class, updated_at, user_text) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (project_id, kind, content, origin, t, who.get("actor_id"), who.get("client_id"), explicitness, status, scope,
-             rationale, effective_at or t, client_request_id, disclosure_class, t))
+             rationale, effective_at or t, client_request_id, disclosure_class, t, (user_text or "").strip()[:4000] or None))
         fid = cur.lastrowid
         after = {"kind": kind, "content": content[:1000], "status": status, "scope": scope, "explicitness": explicitness}
+        if user_text:
+            after["user_text"] = user_text.strip()[:500]
         if referent:
             after["referent"] = referent[:500]
         if rationale:
@@ -109,7 +112,7 @@ def record(project_id: str, kind: str, content: str, *, explicitness: str = "exp
 
 
 def reaffirm(fact_id: int, *, rationale: str | None = None, base_cursor: int | None = None,
-             client_request_id: str | None = None) -> dict[str, Any]:
+             client_request_id: str | None = None, user_text: str | None = None) -> dict[str, Any]:
     """§47: an explicit re-statement is chronology even though the position is unchanged. The fact row is untouched."""
     f = get(fact_id)
     if not f:
@@ -121,14 +124,16 @@ def reaffirm(fact_id: int, *, rationale: str | None = None, base_cursor: int | N
         _check_base(conn, f, base_cursor, {"op": "reaffirm", "fact_id": fact_id})
         with ledger.acting(**{**_ctx(), "request_id": client_request_id or ledger.current().get("request_id")}):
             ledger.record(conn, f["project_id"], event_type="decision_reaffirmed", object_type="fact", object_id=fact_id,
-                          before={"content": f["content"][:1000]}, after={"content": f["content"][:1000], "rationale": (rationale or "")[:500]},
+                          before={"content": f["content"][:1000]},
+                          after={"content": f["content"][:1000], "rationale": (rationale or "")[:500],
+                                 **({"user_text": user_text.strip()[:500]} if user_text else {})},
                           floor={f.get("disclosure_class") or "restricted"}, force=True)
     return get(fact_id)  # type: ignore[return-value]
 
 
 def supersede(fact_id: int, content: str, *, rationale: str | None = None, base_cursor: int | None = None,
               explicitness: str = "explicit", disclosure_class: str | None = None,
-              client_request_id: str | None = None) -> dict[str, Any]:
+              client_request_id: str | None = None, user_text: str | None = None) -> dict[str, Any]:
     """A changed position replaces the old one; history keeps both, and only one is current."""
     old = get(fact_id)
     if not old:
@@ -146,17 +151,18 @@ def supersede(fact_id: int, content: str, *, rationale: str | None = None, base_
         _check_base(conn, old, base_cursor, {"op": "supersede", "fact_id": fact_id, "content": content})
         cur = conn.execute(
             "INSERT INTO project_facts (project_id, kind, content, origin, created_at, actor_id, external_client_id, explicitness, status, "
-            "scope, rationale, effective_at, supersedes_fact_id, client_request_id, disclosure_class, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?)",
+            "scope, rationale, effective_at, supersedes_fact_id, client_request_id, disclosure_class, updated_at, user_text) "
+            "VALUES (?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)",
             (old["project_id"], old["kind"], content, "user", t, who.get("actor_id"), who.get("client_id"), explicitness,
-             old.get("scope") or "project", rationale, t, fact_id, client_request_id, cls, t))
+             old.get("scope") or "project", rationale, t, fact_id, client_request_id, cls, t, (user_text or "").strip()[:4000] or None))
         new_id = cur.lastrowid
         conn.execute("UPDATE project_facts SET status='superseded', updated_at=? WHERE id=?", (t, fact_id))
         floor = {old.get("disclosure_class") or "restricted", cls or "restricted"}
         ledger.record(conn, old["project_id"], event_type="decision_changed" if old["kind"] == "decision" else "fact_changed",
                       object_type="fact", object_id=fact_id,
                       before={"content": old["content"][:1000], "status": "active"},
-                      after={"content": content[:1000], "status": "superseded", "superseded_by": new_id, "rationale": (rationale or "")[:500]},
+                      after={"content": content[:1000], "status": "superseded", "superseded_by": new_id, "rationale": (rationale or "")[:500],
+                             **({"user_text": user_text.strip()[:500]} if user_text else {})},
                       floor=floor)
     return get(new_id)  # type: ignore[return-value]
 
@@ -230,3 +236,56 @@ def as_public(row: dict[str, Any]) -> dict[str, Any]:
 
 
 _ = json  # (kept for callers that serialise facts through this module)
+
+
+
+# ------------------------------------------------------------------ P11 EA-9 integrity helpers (Kyle's review, 2026-09-22)
+
+CANONICAL = ("decision", "constraint", "requirement", "rejected", "commitment", "deadline")
+_STOP = frozenset("the a an and or of to for on in at by with we our us is are be it this that will should would not no "
+                  "keep stay stays staying still going use using at".split())
+
+
+def norm(s: str) -> str:
+    import re as _re
+    return _re.sub(r"\s+", " ", _re.sub(r"[\s.!?;:,]+$", "", (s or "").strip().lower()))
+
+
+def _topic(s: str) -> set[str]:
+    import re as _re
+    return {w for w in _re.findall(r"[a-z][a-z'-]{2,}", (s or "").lower()) if w not in _STOP}
+
+
+def same_topic(a: str, b: str) -> bool:
+    """Numbers stripped, so '10% seller note' and '7.5% seller note' are the same subject with different values."""
+    ta, tb = _topic(a), _topic(b)
+    shared = ta & tb
+    return len(shared) >= 2 and len(shared) / max(1, min(len(ta), len(tb))) >= 0.5
+
+
+def identical_active(project_id: str, kind: str, content: str) -> dict[str, Any] | None:
+    r = [dict(x) for x in db.connect().execute("SELECT * FROM project_facts WHERE project_id=? AND kind=? AND status IN ('active','proposed')",
+                                              (project_id, kind)).fetchall()]
+    n = norm(content)
+    return next((f for f in r if norm(f["content"]) == n), None)
+
+
+def overlapping_active(project_id: str, kind: str, content: str) -> dict[str, Any] | None:
+    if kind not in CANONICAL:
+        return None
+    for f in db.connect().execute("SELECT * FROM project_facts WHERE project_id=? AND kind=? AND status='active' AND scope='project' "
+                                  "ORDER BY id DESC", (project_id, kind)).fetchall():
+        if norm(f["content"]) != norm(content) and same_topic(f["content"], content):
+            return dict(f)
+    return None
+
+
+def statements_for(fact: dict[str, Any]) -> set[str]:
+    """Every user wording already on record for this fact: its own, and each reaffirmation's."""
+    out = {norm(fact.get("user_text") or "")} if fact.get("user_text") else set()
+    for r in db.connect().execute("SELECT after FROM project_change_events WHERE object_type='fact' AND object_id=? "
+                                  "AND event_type='decision_reaffirmed'", (str(fact["id"]),)).fetchall():
+        ut = (json.loads(r["after"] or "{}") or {}).get("user_text")
+        if ut:
+            out.add(norm(ut))
+    return out

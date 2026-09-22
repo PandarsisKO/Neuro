@@ -133,6 +133,9 @@ STATE_CHANGE: dict[str, Any] = {
         "scope": {"enum": list(SCOPES)},
         "referent": {"type": "string", "maxLength": 4000,
                      "description": "for accepted_recommendation: the ONE assistant proposal the user accepted, verbatim"},
+        "user_text": {"type": "string", "maxLength": 4000,
+                      "description": "the user's own words that state this (quoted from the conversation). Required for anything "
+                                     "committed as the project's position; without it the item is saved as a suggestion"},
         "disclosure_class": {"enum": list(DISCLOSURE_CLASSES)},
         "client_request_id": _REQ,
     },
@@ -168,6 +171,8 @@ CONVERSATION_SYNC_V1: dict[str, Any] = {
     "properties": {
         "project_id": _ID,
         "project_hint": {"type": "string", "maxLength": 200},
+        "project_named_by_user": {"type": "boolean", "description": "true only if the USER named the project in their own words; "
+                                                                    "an inferred project is suggested and confirmed first"},
         "conversation_ref": {"type": "string", "maxLength": 200},
         "client_request_id": _REQ,
         "base_revision": {"type": ["integer", "null"]},

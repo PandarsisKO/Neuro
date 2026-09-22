@@ -2844,3 +2844,33 @@ settings → "People using this project from their own AI" → add "Kyle"). The 
 removed from steps 1–5: (1) Mac delivery/gates, (2) **Kyle's** ChatGPT plan (Business/Enterprise/Edu = write; Pro =
 read/fetch only), (3) Secure MCP Tunnel, (4) hosted identity provider, (5) 9A–9F on Kyle's account until all PASS,
 (6) 9G Gio onboarding, (7) release. Gio's plan is checked only at 9G.
+
+## P11 EA-9 integrity review: five rules enforced in the one write path — 2026-09-22
+
+Kyle's review of `0fbf4f7` (*"#1 and #3 are integrity boundaries, not polish"*). All five now hold for BOTH
+`sync_conversation_to_project` and `sync_project_state` (they share `external.apply_state`). Full suite **2,435
+passed, 0 failed**; one named test per rule in `tests/test_ea9_convsync.py` (`test_review_1/3/4/5`, 9B for rule 2).
+
+1. **A client's "explicit" is not proof.** New `user_text` (the user's own words, quoted) on every state change, stored
+   on `project_facts.user_text` and on the ledger event. `explicit` / `accepted_recommendation` without it → saved as a
+   suggestion (proposed). Accepted recommendations keep both the referent and the acceptance words. reaffirm /
+   supersede / withdraw without user words → refused (`needs_user_words`). It is a trace, not verification: Neuro
+   cannot prove the quote is real, only that no commit happens without one.
+2. **An inferred project never writes.** project_id → write; `project_named_by_user` + a unique match → write; an
+   inferred unique match → `confirm_project` (suggestion + ask), nothing written; otherwise `needs_project`.
+3. **Retry ≠ restatement.** Same request id → no-op (receipt replay). Same content in words already on record → skipped.
+   Same content in NEW user words → `decision_reaffirmed` event (Monday "staying at 10%" / Friday "still at 10%").
+   The blanket content-dedupe in `convsync.py` is gone.
+4. **File references are materialised at arrival.** A `signed_url` is fetched immediately through `safe_fetch`,
+   sniffed (documents, images, office, audio/video, text accepted; executables/scripts refused), size-capped, hashed,
+   stored once per identical bytes in Neuro's media dir; the temporary URL is dropped, the client's file id kept as
+   `handle`. A link that fails (expired, blocked) becomes a failed item → intake `needs_review`. A retained original is
+   linked to the source its extraction became, and is never re-read.
+5. **Late sync cannot replace project truth blind.** A new decision/constraint/requirement/rejected/commitment/deadline
+   that shares the subject of an active one (≥2 shared content words, numbers ignored) and arrives with no base
+   revision — or after that fact moved — returns a conflict with current and proposed; the non-conflicting items in the
+   same sync still land. supersede / withdraw require a base revision. The heuristic errs toward asking (e.g. two
+   distinct seller-note decisions will prompt a confirmation) rather than toward overwriting.
+
+Also: an explicitly requested transcript archive now defaults to `restricted`. Still unpushed from here:
+`6cabad8`, `0fbf4f7` and this commit — Claude Code's push list in the 09-22 "EA-9 correction" entry is unchanged.

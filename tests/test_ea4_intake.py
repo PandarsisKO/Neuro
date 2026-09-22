@@ -158,7 +158,7 @@ def test_raw_artifacts_path_a_and_retained_originals(client, world, monkeypatch)
     shot = ext(client, world["gio"], "add_processed_material", project_id=world["p"], intake_id=iid, material=SCREENSHOT).json()["data"]["item"]
     H = {"Authorization": f"Bearer {world['gio']}"}
     kept = client.post(f"/api/ext/v1/intakes/{iid}/artifacts", headers=H, data={"project_id": world["p"], "item_id": shot["item_id"]},
-                       files={"file": ("seller.png", b"\x89PNG fake bytes", "image/png")}).json()["data"]
+                       files={"file": ("seller.png", b"\x89PNG\r\n\x1a\n fake bytes", "image/png")}).json()["data"]
     assert kept["retained_as_original_of"] == shot["item_id"] and kept["item"]["sha256"]
     raw = client.post(f"/api/ext/v1/intakes/{iid}/artifacts", headers=H, data={"project_id": world["p"], "client_declared_class": "financial"},
                       files={"file": ("ledger.xlsx", b"PK fake workbook", "application/vnd.ms-excel")}).json()["data"]
@@ -170,7 +170,8 @@ def test_raw_artifacts_path_a_and_retained_originals(client, world, monkeypatch)
     row = db.connect().execute("SELECT disclosure_class, acquisition_provenance FROM sources WHERE id=?", (raw_item["source_id"],)).fetchone()
     assert (row["disclosure_class"], row["acquisition_provenance"]) == ("financial", "user_private")
     retained = next(i for i in st["items"] if i["item_id"] == kept["item"]["item_id"])
-    assert retained["status"] == "ready" and retained["source_id"] is None
+    shot_src = next(i for i in st["items"] if i["item_id"] == shot["item_id"])["source_id"]
+    assert retained["status"] == "ready" and retained["source_id"] == shot_src      # the original belongs to the source it was read into
 
 
 def test_signed_url_goes_through_safe_fetch_and_a_blocked_fetch_needs_review(client, world, monkeypatch):
@@ -232,7 +233,8 @@ def test_worked_negotiation_flow_end_to_end(client, world, no_cognition):
     # turn 2 — "That makes sense. Let's stay at 10%, but frame it around transition."  → WRITE ONLY
     r = ext(client, world["gio"], "sync_project_state", project_id=p, base_revision=cur, changes=[
         {"op": "record", "kind": "decision", "content": "Seller note stays at 10%", "rationale": "frame it around the transition",
-         "explicitness": "explicit", "client_request_id": "neg-dec-1"}])
+         "explicitness": "explicit", "user_text": "That makes sense. Let's stay at 10%, but frame it around transition.",
+         "client_request_id": "neg-dec-1"}])
     applied = r.json()["data"]["applied"]
     assert r.status_code == 200 and applied[0]["status"] == "active"
     fid = applied[0]["fact_id"]
@@ -244,7 +246,8 @@ def test_worked_negotiation_flow_end_to_end(client, world, no_cognition):
     # turn 4 — new pressure; "We're still staying at 10%."  → reaffirmation is chronology, state unchanged
     seen = ext(client, world["gio"], "open_project", project_id=p).json()["ledger_cursor"]
     ext(client, world["gio"], "sync_project_state", project_id=p, base_revision=seen, changes=[
-        {"op": "reaffirm", "fact_id": fid, "rationale": "seller claims another buyer", "client_request_id": "neg-reaff-1"}])
+        {"op": "reaffirm", "fact_id": fid, "rationale": "seller claims another buyer", "user_text": "We're still staying at 10%.",
+         "client_request_id": "neg-reaff-1"}])
     assert facts.get(fid)["status"] == "active" and ledger.cursor(p) == before + 1
     # a personal preference is not the shared position; an ambiguous acceptance is refused
     r = ext(client, world["gio"], "sync_project_state", project_id=p, changes=[
@@ -254,10 +257,10 @@ def test_worked_negotiation_flow_end_to_end(client, world, no_cognition):
     assert r.status_code == 422
     # Kyle, concurrently, from his own client changes it to 8%; Gio's stale change to 7.5% conflicts instead of winning
     k = ext(client, world["kyle"], "sync_project_state", project_id=p, base_revision=seen + 1, changes=[
-        {"op": "supersede", "fact_id": fid, "content": "Seller note 8%", "client_request_id": "kyle-sup-1"}]).json()["data"]
+        {"op": "supersede", "fact_id": fid, "content": "Seller note 8%", "user_text": "Change it to 8%.", "client_request_id": "kyle-sup-1"}]).json()["data"]
     assert k["conflicts"] == [] and k["applied"][0]["status"] == "active"
     g = ext(client, world["gio"], "sync_project_state", project_id=p, base_revision=seen + 1, changes=[
-        {"op": "supersede", "fact_id": fid, "content": "Seller note 7.5%", "client_request_id": "gio-sup-1"}]).json()["data"]
+        {"op": "supersede", "fact_id": fid, "content": "Seller note 7.5%", "user_text": "Let's do 7.5%.", "client_request_id": "gio-sup-1"}]).json()["data"]
     assert g["applied"] == [] and g["conflicts"][0]["fact_id"] == fid and g["conflicts"][0]["current"]["status"] == "superseded"
     # the shared position and its chronology, as Gio's client sees them
     pos = ext(client, world["gio"], "open_project", project_id=p).json()["data"]["orientation"]["current_position"]
@@ -273,7 +276,7 @@ def test_worked_negotiation_flow_end_to_end(client, world, no_cognition):
 def test_ambiguous_acceptance_needs_a_single_referent(client, world):
     ok = ext(client, world["gio"], "sync_project_state", project_id=world["p"], changes=[
         {"op": "record", "kind": "decision", "content": "Remain at 10%", "explicitness": "accepted_recommendation",
-         "referent": "Do you want to remain at 10%?", "client_request_id": "acc-ok-01"}])
+         "referent": "Do you want to remain at 10%?", "user_text": "Yes.", "client_request_id": "acc-ok-01"}])
     assert ok.status_code == 200 and ok.json()["data"]["applied"][0]["status"] == "active"
     inferred = ext(client, world["gio"], "sync_project_state", project_id=world["p"], changes=[
         {"op": "propose", "kind": "decision", "content": "Maybe be more flexible", "client_request_id": "prop-0001"}]).json()["data"]
@@ -285,7 +288,7 @@ def test_ambiguous_acceptance_needs_a_single_referent(client, world):
 def test_cannot_change_a_fact_you_cannot_see(client, world):
     secret_fact = facts.record(world["p"], "decision", "tax position", disclosure_class="tax")
     r = ext(client, world["gio"], "sync_project_state", project_id=world["p"], changes=[
-        {"op": "supersede", "fact_id": secret_fact["id"], "content": "changed", "client_request_id": "sneaky-001"}])
+        {"op": "supersede", "fact_id": secret_fact["id"], "content": "changed", "user_text": "change it", "client_request_id": "sneaky-001"}], base_revision=0)
     assert r.status_code == 404
     assert facts.get(secret_fact["id"])["status"] == "active"
 
@@ -294,7 +297,7 @@ def test_revocation_keeps_accepted_material_and_stops_new_access(client, world, 
     iid = ext(client, world["gio"], "create_intake", project_id=world["p"], client_request_id="rev-turn-1").json()["data"]["intake_id"]
     ext(client, world["gio"], "add_processed_material", project_id=world["p"], intake_id=iid, material=SCREENSHOT)
     ext(client, world["gio"], "sync_project_state", project_id=world["p"], changes=[
-        {"op": "record", "kind": "decision", "content": "Stay at 10%", "client_request_id": "rev-dec-01"}])
+        {"op": "record", "kind": "decision", "content": "Stay at 10%", "user_text": "Stay at 10%.", "client_request_id": "rev-dec-01"}])
     access.revoke_credential(access.authenticate(world["gio"]).credential_id, reason="Gio left the deal")
     assert ext(client, world["gio"], "open_project", project_id=world["p"]).status_code == 401
     run_items(iid)                                                   # already-accepted material still finishes, with its attribution

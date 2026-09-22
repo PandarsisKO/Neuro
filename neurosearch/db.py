@@ -1316,6 +1316,9 @@ MIGRATIONS = [
     ("jobs", "origin_request_id", "ALTER TABLE jobs ADD COLUMN origin_request_id TEXT"),
     # P11 EA-9: the receipt a conversation sync returned, so a retried sync answers with the same receipt.
     ("external_intakes", "receipt", "ALTER TABLE external_intakes ADD COLUMN receipt TEXT"),
+    # P11 EA-9 (Kyle's review): the user's own words that support a committed fact — the trace that separates "ChatGPT
+    # extracted a decision" from "ChatGPT invented one". A client-labelled 'explicit' with no wording is only proposed.
+    ("project_facts", "user_text", "ALTER TABLE project_facts ADD COLUMN user_text TEXT"),
 ]
 
 

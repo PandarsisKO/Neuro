@@ -179,7 +179,7 @@ def test_uploaded_files_arrive_by_reference_and_processed_ones_are_not_reread(cl
     fetched = []
     def fake_fetch(u, content_class=None, **k):
         fetched.append(u)
-        return safe_fetch.FetchResult(url=u, status=200, content_type="image/png", body=b"\x89PNG bytes")
+        return safe_fetch.FetchResult(url=u, status=200, content_type="image/png", body=b"\x89PNG\r\n\x1a\n bytes")
     monkeypatch.setattr(safe_fetch, "safe_fetch", fake_fetch)
     from neurosearch import ingest
     monkeypatch.setattr(ingest, "ingest_local_file", lambda *a, **k: (_ for _ in ()).throw(AssertionError("re-read a processed file")))
@@ -192,7 +192,7 @@ def test_uploaded_files_arrive_by_reference_and_processed_ones_are_not_reread(cl
                "file": {"download_url": "https://files.oaiusercontent.com/file-abc?sig=1", "file_id": "file-abc", "mime_type": "image/png", "file_name": "seller.png"}}})
     assert res["result"].get("isError") is not True, res
     from neurosearch import intake, jobs
-    for r in db.connect().execute("SELECT ingest_job_id FROM intake_items WHERE intake_id=?", (iid,)).fetchall():
+    for r in db.connect().execute("SELECT ingest_job_id FROM intake_items WHERE intake_id=? AND ingest_job_id IS NOT NULL", (iid,)).fetchall():
         j = db.get_job(r["ingest_job_id"])
         db.bump_job(j["id"]); claimed = db.claim_job((j["kind"],), worker_id="t"); jobs.execute(claimed, "t")
     st = intake.status(intake._row(iid))

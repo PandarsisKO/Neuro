@@ -215,25 +215,43 @@ def attach(auth: Authorization, args: dict[str, Any], *, upload: tuple[str, byte
         if not target:
             raise AccessError("not_found", "no such item in this intake")
     if upload is None and ref["kind"] == "signed_url":
+        # Kyle's review (2026-09-22): a client's file reference (e.g. a temporary download URL) is NOT the original.
+        # It is fetched NOW, while it is still valid — through safe_fetch — validated, hashed, deduped and kept in
+        # Neuro's own storage. A reference that cannot be materialised becomes a failed item (needs_review); Neuro
+        # never claims an original it does not hold.
         if not ref.get("url"):
             raise AccessError("invalid", "a signed_url artifact_ref needs url")
-        payload = {"ref": ref, "_item_request_id": args.get("item_request_id"), "declared": declared,
-                   "retain_for": target["id"] if target else None}
-        item = _new_item(it, "raw_artifact", job_payload={"mode": "fetch"}, artifact_ref=json.dumps(ref),
-                         content_type=ref.get("content_type"), payload=json.dumps(payload))
-        return {"item": _item_out(item)}
-    if upload is None:
+        name = ref.get("filename") or "artifact"
+        try:
+            data, ctype, final_url = _fetch_now(ref)
+            name = ref.get("filename") or Path(final_url.split("?")[0]).name or "artifact"
+            _validate(name, data, ctype)
+        except AccessError as e:
+            item = _new_item(it, "raw_artifact", artifact_ref=json.dumps({k: v for k, v in ref.items() if k != "url"}),
+                             content_type=ref.get("content_type"), payload=json.dumps({"_item_request_id": args.get("item_request_id"),
+                             "declared": declared, "retain_for": target["id"] if target else None, "name": name}))
+            with db.tx() as conn:
+                conn.execute("UPDATE intake_items SET status='failed', error=?, updated_at=? WHERE id=?", (e.message[:500], time.time(), item["id"]))
+            item = {**item, "status": "failed", "error": e.message[:500]}
+            return {"item": _item_out(item)}
+        upload = (name, data, ctype)
+        ref = {k: v for k, v in ref.items() if k != "url"}         # the temporary URL is not kept; the bytes are
+    elif upload is None:
         raise AccessError("capability_missing", f"artifact_ref kind {ref['kind']!r} is not supported by this server yet; "
                                                 "use multipart upload or a signed_url")
     name, data, ctype = upload
+    _validate(name, data, ctype)
     path, digest = _save(name, data)
+    if ref.get("sha256") and ref["sha256"] != digest:
+        raise AccessError("invalid", "the artifact does not match the sha256 the client declared")
     payload = {"_item_request_id": args.get("item_request_id"), "declared": declared, "name": name,
                "retain_for": target["id"] if target else None}
+    ref_kept = json.dumps({**ref, "filename": name}) if ref.get("kind") != "multipart" else json.dumps({"kind": "multipart", "filename": name})
     if target is not None:                     # retained original of processed material: kept, never re-read
-        item = _new_item(it, "raw_artifact", artifact_ref=json.dumps({"kind": "multipart", "filename": name}),
+        item = _new_item(it, "raw_artifact", artifact_ref=ref_kept,
                          sha256=digest, bytes=len(data), content_type=ctype, payload=json.dumps({**payload, "path": str(path)}))
         return {"item": _item_out(item), "retained_as_original_of": target["id"]}
-    item = _new_item(it, "raw_artifact", job_payload={"mode": "raw"}, artifact_ref=json.dumps({"kind": "multipart", "filename": name}),
+    item = _new_item(it, "raw_artifact", job_payload={"mode": "raw"}, artifact_ref=ref_kept,
                      sha256=digest, bytes=len(data), content_type=ctype, payload=json.dumps({**payload, "path": str(path)}))
     return {"item": _item_out(item)}
 
@@ -250,10 +268,55 @@ def _save(name: str, data: bytes) -> tuple[Path, str]:
     d = settings.media_dir
     d.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(data).hexdigest()
+    existing = next(iter(sorted(d.glob(f"intake_{digest[:12]}_*"))), None)     # identical bytes are kept once
+    if existing is not None and hashlib.sha256(existing.read_bytes()).hexdigest() == digest:
+        return existing, digest
     path = d / f"intake_{digest[:12]}_{safe}"
-    if not path.exists():
-        path.write_bytes(data)
+    path.write_bytes(data)
     return path, digest
+
+
+# What an external client may hand over as an original (sniffed from the bytes, never trusted from a declared type).
+_MAGIC = ((b"%PDF-", "pdf"), (b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpeg"), (b"GIF8", "gif"), (b"PK\x03\x04", "zip-office"),
+          (b"\xd0\xcf\x11\xe0", "ole-office"), (b"ID3", "mp3"), (b"OggS", "ogg"), (b"fLaC", "flac"), (b"\x1aE\xdf\xa3", "webm/mkv"))
+_REFUSED = ((b"MZ", "windows executable"), (b"\x7fELF", "executable"), (b"\xca\xfe\xba\xbe", "executable"),
+            (b"\xcf\xfa\xed\xfe", "executable"), (b"#!", "script"))
+
+
+def _validate(name: str, data: bytes, ctype: str | None) -> str:
+    if not data:
+        raise AccessError("invalid", "empty artifact")
+    if len(data) > MAX_UPLOAD:
+        raise AccessError("invalid", f"artifact is larger than {MAX_UPLOAD // (1024 * 1024)} MB")
+    head = data[:16]
+    for sig, what in _REFUSED:
+        if head.startswith(sig):
+            raise AccessError("invalid", f"refused: the file is a {what}")
+    for sig, what in _MAGIC:
+        if head.startswith(sig):
+            return what
+    if head[4:8] == b"ftyp":
+        return "mp4/m4a/heic"
+    if head.startswith(b"RIFF") and data[8:12] in (b"WAVE", b"WEBP", b"AVI "):
+        return data[8:12].decode().strip().lower()
+    try:
+        data[:65536].decode("utf-8")
+        return "text"
+    except UnicodeDecodeError:
+        raise AccessError("invalid", "unrecognised file type (not a document, image, spreadsheet, audio/video or text file)")
+
+
+def _fetch_now(ref: dict[str, Any]) -> tuple[bytes, str, str]:
+    from . import safe_fetch
+    try:
+        res = safe_fetch.safe_fetch(ref["url"], content_class="document")
+    except safe_fetch.FetchBlocked as e:
+        raise AccessError("invalid", f"could not fetch the file: {e}")
+    except Exception as e:  # noqa: BLE001 — an expired link or a network failure is a failed item, never a crash
+        raise AccessError("invalid", f"could not fetch the file (the link may have expired): {type(e).__name__}")
+    if res.status >= 400:
+        raise AccessError("invalid", f"could not fetch the file: HTTP {res.status}")
+    return res.body, res.content_type, res.url
 
 
 def _fetch_raw(item: dict[str, Any]) -> Path:
@@ -343,6 +406,19 @@ def finalize(auth: Authorization, args: dict[str, Any], apply_state: Any = None)
     return out
 
 
+def _link_retained(items: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    by_id = {i["id"]: i for i in items}
+    out = []
+    for i in items:
+        if i["kind"] != "raw_artifact" or i.get("source_id"):
+            continue
+        tgt = by_id.get((json.loads(i["payload"] or "{}") or {}).get("retain_for") or "")
+        if tgt and tgt.get("source_id"):
+            out.append((tgt["source_id"], i["id"]))
+            i["source_id"] = tgt["source_id"]
+    return out
+
+
 def _item_status(item: dict[str, Any]) -> tuple[str, str | None]:
     if not item.get("ingest_job_id"):
         return item["status"], item.get("error")
@@ -367,6 +443,10 @@ def status(it: dict[str, Any]) -> dict[str, Any]:
         if (st, err) != (item["status"], item.get("error")):
             changed.append((st, err, item.get("source_id"), item["id"]))
             item["status"], item["error"] = st, err
+    links = _link_retained(items)
+    if links:
+        with db.tx() as conn:
+            conn.executemany("UPDATE intake_items SET source_id=? WHERE id=? AND source_id IS NULL", links)
     sts = [i["status"] for i in items]
     reason = None
     if any(s == "failed" for s in sts):
