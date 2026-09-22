@@ -1287,3 +1287,38 @@ def project_discover_report(project: str, window: str = typer.Option("all", "--w
     typer.echo(f"Novel creators in window: {r['breadth']['novel_creators_in_window']}")
     typer.echo(f"Review burden: {rb}")
     typer.echo(f"\nVerdict: {r['verdict']}")
+
+
+# ---------------------------------------------------------------- P11 external AI access (access.py)
+
+access_app = typer.Typer(help="P11: who outside this app may reach which project, and what they may see.", no_args_is_help=True)
+app.add_typer(access_app, name="access")
+
+
+@access_app.command("list")
+def access_list() -> None:
+    """People, clients, credentials (prefixes only) and project grants. Reads only."""
+    from . import access
+    _init()
+    typer.echo(json.dumps({"actors": access.list_actors(), "clients": access.list_clients(),
+                           "credentials": access.list_credentials(), "grants": access.list_grants()}, indent=2, default=str))
+
+
+@access_app.command("backfill-classes")
+def access_backfill(apply: bool = typer.Option(False, "--apply", help="Write the classification. Without it this is a dry run that writes nothing.")) -> None:
+    """§43 legacy disclosure classification: provably public → standard, provably private → restricted, the rest
+    stays unclassified (= restricted for external disclosure). $0, deterministic, idempotent."""
+    from . import access
+    _init()
+    typer.echo(json.dumps(access.backfill_classes(apply=apply), indent=2))
+
+
+@access_app.command("issue")
+def access_issue(actor: str = typer.Option(..., help="actor id (see `access list`)"),
+                 client: str = typer.Option(..., help="client id (see `access list`)")) -> None:
+    """Issue a credential for one (person, client) pair. The secret is printed ONCE; Neuro keeps only its hash."""
+    from . import access
+    _init()
+    row, secret = access.issue_credential(actor, client)
+    typer.echo(json.dumps({"credential": row}, indent=2, default=str))
+    typer.echo(f"\nsecret (shown once): {secret}")

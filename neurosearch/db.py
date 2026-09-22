@@ -814,6 +814,84 @@ CREATE TABLE IF NOT EXISTS project_reuse (
     PRIMARY KEY (project_id, object_kind, object_id)
 );
 CREATE INDEX IF NOT EXISTS ix_project_reuse_state ON project_reuse(project_id, state, band);
+
+-- P11 EA-1 (EXTERNAL-AI-ACCESS-MISSION.md §40–§43, docs/P11-EXECUTION-PLAN-2026-09-22.md §2): external principals.
+-- An ACTOR is a person (or 'system'); a CLIENT is an LLM product/connection; a CREDENTIAL binds exactly one
+-- (actor, client) pair, so "Gio using ChatGPT" and "Kyle using ChatGPT" are two credentials and never a header the
+-- caller can forge. init_db seeds actor 'kyle' (the local owner: user-initiated actions behind the legacy app token)
+-- and actor 'system' (background/derived work) -- automatic work is never attributed to a person (Kyle, 2026-09-22).
+CREATE TABLE IF NOT EXISTS external_actors (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'person',     -- person | system
+    created_at  REAL NOT NULL,
+    disabled_at REAL
+);
+CREATE TABLE IF NOT EXISTS external_clients (
+    id           TEXT PRIMARY KEY,
+    label        TEXT NOT NULL,                     -- a free label ("Gio's ChatGPT"); never a vendor enum (§63)
+    capabilities TEXT NOT NULL DEFAULT '{}',        -- JSON, external_schemas.CAPABILITIES, as last declared by the client
+    transport    TEXT NOT NULL DEFAULT 'local',     -- local | lan | tunnel (§62)
+    created_at   REAL NOT NULL,
+    updated_at   REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS external_credentials (
+    id            TEXT PRIMARY KEY,
+    actor_id      TEXT NOT NULL REFERENCES external_actors(id),
+    client_id     TEXT NOT NULL REFERENCES external_clients(id),
+    token_prefix  TEXT NOT NULL UNIQUE,             -- first 12 chars of the secret: the lookup key and the ONLY part ever logged
+    token_hash    TEXT NOT NULL,                    -- sha256 of the secret; the secret is shown once at creation and never stored
+    created_at    REAL NOT NULL,
+    created_by    TEXT,
+    expires_at    REAL,
+    last_used_at  REAL,
+    revoked_at    REAL,
+    revoked_by    TEXT,
+    revoke_reason TEXT,
+    rotated_from  TEXT
+);
+-- ACL on the ACTOR (survives credential rotation). A new grant is ALWAYS standard-only; every further disclosure class
+-- is a deliberate owner opt-in per grant (Kyle, 2026-09-22). Project access is never permission to disclose everything (§41).
+CREATE TABLE IF NOT EXISTS external_project_grants (
+    id                 INTEGER PRIMARY KEY,
+    project_id         TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    actor_id           TEXT NOT NULL REFERENCES external_actors(id),
+    role               TEXT NOT NULL,                        -- read | contribute | owner (§40 presets)
+    disclosure_classes TEXT NOT NULL DEFAULT '["standard"]', -- JSON list
+    extra_permissions  TEXT NOT NULL DEFAULT '[]',           -- JSON; explicit grants only
+    granted_by         TEXT,
+    granted_at         REAL NOT NULL,
+    updated_at         REAL,
+    revoked_at         REAL,
+    revoked_by         TEXT,
+    UNIQUE(project_id, actor_id)
+);
+-- Every owner change to an object's disclosure class (§41: lowering one is an owner-only, audited act).
+CREATE TABLE IF NOT EXISTS disclosure_audit (
+    id          INTEGER PRIMARY KEY,
+    object_type TEXT NOT NULL,          -- source | fact
+    object_id   TEXT NOT NULL,
+    from_class  TEXT,
+    to_class    TEXT NOT NULL,
+    actor_id    TEXT,
+    reason      TEXT,
+    created_at  REAL NOT NULL
+);
+-- External request audit for Health (§64) and the revocation boundary (§61). Outcome codes only: no payloads, no
+-- secrets. Pruned to EXTERNAL_REQUEST_RETENTION_S by access.record_request.
+CREATE TABLE IF NOT EXISTS external_requests (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    credential_id TEXT,
+    actor_id      TEXT,
+    client_id     TEXT,
+    operation     TEXT NOT NULL,
+    project_id    TEXT,
+    outcome       TEXT NOT NULL,        -- ok | auth_invalid | auth_revoked | project_unauthorized | forbidden | disclosure_denied | capability_missing | conflict | invalid | rate_limited | error
+    detail        TEXT,
+    duration_ms   INTEGER,
+    created_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_external_requests_client ON external_requests(client_id, created_at);
 """
 
 _local = threading.local()
@@ -1078,6 +1156,14 @@ MIGRATIONS = [
     ("project_collections", "monitor_policy", "ALTER TABLE project_collections ADD COLUMN monitor_policy TEXT NOT NULL DEFAULT 'auto'"),
     # SUB4: catalog providers can refresh small, explicitly observed metadata without overwriting user decisions.
     ("candidates", "metadata_json", "ALTER TABLE candidates ADD COLUMN metadata_json TEXT"),
+    # P11 EA-1 (§41–§43): disclosure state lives on the ORIGINAL material; everything derived computes its floor from
+    # provenance at assembly (access.py). NULL disclosure_class = unclassified = restricted for external disclosure,
+    # except where access.EFFECTIVE_CLASS_SQL can prove public acquisition. acquisition_provenance is written by the
+    # ingest paths that know it (anonymous | browser_private | user_private | external_processed); NULL on legacy rows.
+    ("sources", "disclosure_class", "ALTER TABLE sources ADD COLUMN disclosure_class TEXT"),
+    ("sources", "disclosure_origin", "ALTER TABLE sources ADD COLUMN disclosure_origin TEXT"),
+    ("sources", "acquisition_provenance", "ALTER TABLE sources ADD COLUMN acquisition_provenance TEXT"),
+    ("project_facts", "disclosure_class", "ALTER TABLE project_facts ADD COLUMN disclosure_class TEXT"),
 ]
 
 
@@ -1127,6 +1213,9 @@ def init_db() -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_usage_kind_source ON usage(kind, source_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_status ON jobs(kind, status)")
+    # P11 EA-1: the two actors every chronology needs from the first write (docs/P11-EXECUTION-PLAN-2026-09-22.md §12)
+    conn.execute("INSERT OR IGNORE INTO external_actors (id, name, kind, created_at) VALUES ('kyle', 'Kyle', 'person', ?)", (now(),))
+    conn.execute("INSERT OR IGNORE INTO external_actors (id, name, kind, created_at) VALUES ('system', 'Neuro (automatic)', 'system', ?)", (now(),))
     conn.commit()
     _add_job_payload_columns(conn)
     _migrate_source_analysis(conn)
@@ -1346,6 +1435,19 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------- sources
+
+def set_acquisition_provenance(source_id: str, provenance: str) -> None:
+    """P11 EA-1 (§43): how a source's content was obtained, the fact the disclosure rule is built on. More private
+    always wins: a page first fetched anonymously and later SENT from the user's browser becomes browser_private,
+    never the reverse. `anonymous` is only ever written onto a row that has no provenance yet."""
+    assert provenance in ("anonymous", "browser_private", "user_private", "external_processed")
+    with tx() as conn:
+        if provenance == "anonymous":
+            conn.execute("UPDATE sources SET acquisition_provenance='anonymous' WHERE id=? AND acquisition_provenance IS NULL", (source_id,))
+        else:
+            conn.execute("UPDATE sources SET acquisition_provenance=? WHERE id=? AND (acquisition_provenance IS NULL OR acquisition_provenance='anonymous')",
+                         (provenance, source_id))
+
 
 def upsert_source(**fields: Any) -> dict[str, Any]:
     """Insert or update a source keyed on (platform, external_id). Returns the row."""

@@ -1062,6 +1062,9 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
                          channel=urlparse(page["url"]).netloc.replace("www.", ""), status="ready", error=None, error_class=None)
         if vids:
             db.set_video_embeds(src["id"], vids)
+        # P11 EA-1: HTML handed to us by the user's browser may be behind their login; a page the server fetched
+        # itself is anonymous. The disclosure rule (access.effective_class_sql) is built on exactly this distinction.
+        db.set_acquisition_provenance(src["id"], "browser_private" if html is not None else "anonymous")
         progress(0.7, "embedding…")
         n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)

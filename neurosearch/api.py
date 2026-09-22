@@ -3659,3 +3659,10 @@ def api_conversation(conversation_id: str) -> list[dict[str, Any]]:
 def api_delete_conversation(conversation_id: str) -> dict[str, Any]:
     db.delete_conversation(conversation_id)
     return {"ok": True}
+
+
+# ------------------------------------------------------------ P11 external AI access (api_external.py)
+
+from .api_external import admin_router as _p11_admin_router  # noqa: E402 — needs require_auth, defined above
+
+app.include_router(_p11_admin_router(require_auth))
