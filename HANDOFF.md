@@ -3478,3 +3478,23 @@ Follow-ups seen, not yet chased (for 9B–F):
 - The Settings page does not refresh after an external write (needed a reload to show the decision).
 - The pending-sign-in UI is hard to find/read (Kyle, verbatim: "horribly confusing"); Claude Desktop will redesign it (account-level banner, email not subject, primary Approve button).
 - Link path: ChatGPT's credential-safety layer blocked the pasted `nsi_` code before link_account was sent (S82 fixed it via owner approval).
+
+## P11 EA-9 9B–F live + S83 fixes + 0.64.0 (Claude Desktop, 2026-09-22 evening)
+
+All scenarios run live in Kyle's ChatGPT on EA-9 Scratch; details in `STATE-OF-THE-APP-2026-09-22-2130.md`.
+Pass: 9B freeflow save · 9C late binding (inferred → `confirm_project`, then user_named) · review semantics
+(ChatGPT's own $300 idea → fact #24 held for review; the user's "$500 cap" → constraint #22 explicit, quoting him;
+"maybe October" → open_question #23) · 9D catch-up read in a fresh chat · 9F prior attachment (after S83: raw
+original kept, `raw_artifact` ready).
+
+S83 (`c35f7d1`), each from a live failure: `file`/`files` published in OpenAI's exact fileParams shape (before:
+ChatGPT sent a bare `file_…` id); `client_capabilities.file_transport: true` accepted (was refused as
+not-an-array); tool text rewritten descriptively (ChatGPT had shown "Suspicious Instruction" on every write; not on
+the retest); account-level sign-in approval banner; Settings refresh on focus/30 s; `.env.*` ignored (an untracked
+`.env.bak-172138` holding the tunnel key was deleted).
+
+Server auto-start written, **not installed**: run `tools/install_server_agent.sh` on the Mac once (it stops the
+hand-started server first, then waits for http://127.0.0.1:8000/ to answer).
+
+Gio next: needs her personal Platform `org-…` ID added to the tunnel (Organizations field). Unverified whether a
+cross-account org is accepted; fallback is a second tunnel in her org + a second tunnel-client profile.

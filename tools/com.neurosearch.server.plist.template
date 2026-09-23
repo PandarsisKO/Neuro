@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Neuro Search server as Kyle's normal user (P11, 2026-09-22), so Neuro is up whenever a collaborator's ChatGPT
+  reaches it through the tunnel — after a reboot, a logout, or a closed Terminal window.
+
+  No root. Listens where it always has (0.0.0.0:8000 as `neurosearch start` does; the public path is the tunnel).
+  No credential in this file: Neuro reads its own .env. Runs under the venv interpreter because the repo is under
+  ~/Desktop, where a launchd-spawned shell has no TCC access. Output goes to data/server.log (tools/server_agent.py).
+
+  Install with: tools/install_server_agent.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.neurosearch.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON__</string>
+        <string>__REPO__/tools/server_agent.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>__SUPPORT__/server-agent.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__SUPPORT__/server-agent.err.log</string>
+</dict>
+</plist>
