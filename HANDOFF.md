@@ -3270,3 +3270,58 @@ step-3 "open measurement" finally showing its hand. The `.internal.` hostname lo
 backend uses rather than one Neuro should advertise, so it has NOT been adopted. If the retry fails again with the
 same message, that host is the next value to try for both `NEUROSEARCH_PUBLIC_URL` and `NEUROSEARCH_OAUTH_RESOURCE`
 — and this time **do not truncate the tunnel log**; read it for what the tunnel actually forwards.
+
+## The real cause: ChatGPT's discovery rides the harpoon channel, which had no targets (2026-09-22)
+
+**I was wrong in the "skipped: not allowed is correct" entry above.** That entry concluded the harpoon lines were
+correct and that `--harpoon.allow-plaintext-http` would be the wrong fix. The retry log proves otherwise. The
+reasoning was right about the *public* hosts and wrong about the one that mattered.
+
+**The four lines that decide it.** `tunnel.out.log`, 17:28:28, during the retry, verbatim:
+
+```json
+{"time":"2026-09-22T17:28:28.514789-07:00","level":"ERROR","msg":"dispatcher received unsupported channel",
+ "component":"dispatcher","request_id":"cmd_fffc075c_9951_4fdb_bdaf_08affb77f17f","channel":"harpoon"}
+{"time":"2026-09-22T17:28:28.637109-07:00","level":"WARN","msg":"failed to process polled command",
+ "component":"dispatcher","request_id":"cmd_fffc075c_9951_4fdb_bdaf_08affb77f17f","error":"unsupported channel \"harpoon\""}
+{"time":"2026-09-22T17:28:28.63837-07:00","level":"ERROR","msg":"dispatcher received unsupported channel",
+ "component":"dispatcher","request_id":"cmd_6716f9f4_edab_4220_a179_138cf9b6d0e8","channel":"harpoon"}
+{"time":"2026-09-22T17:28:28.837999-07:00","level":"WARN","msg":"failed to process polled command",
+ "component":"dispatcher","request_id":"cmd_6716f9f4_edab_4220_a179_138cf9b6d0e8","error":"unsupported channel \"harpoon\""}
+```
+
+Those are the only lines in 17:28:00–17:29:30; there is no `oauth-prmd-source` WARN and no auth-server-metadata
+enrichment in the window, because nothing got that far. **ChatGPT sent two commands and the tunnel refused both.**
+That is why the failure is "after PRMD": Neuro served discovery fine to the tunnel client (`server.log`: 401 then
+two PRMD 200s, no 307), but ChatGPT's own fetches never reached Neuro at all.
+
+**Why the channel was unsupported.** harpoon registers a channel only when it has targets. Its one needed target is
+Neuro's own PRMD source, `http://localhost:8000`, which it had refused since step 3 — `base URL must use https` —
+leaving `target_count: 0`. Loopback is already eligible (`hosts-include-loopback` defaults true); the *only*
+blocker was the scheme. The public authkit and `api.openai.com` hosts are still correctly skipped: ChatGPT reaches
+those directly. So the earlier entry's analysis held for the public hosts and missed the loopback one.
+
+**Fixed by configuration.** `HARPOON_ALLOW_PLAINTEXT_HTTP=true` in `.env` (read by `tools/tunnel_agent.py`,
+documented as `env.HARPOON_ALLOW_PLAINTEXT_HTTP`). After restart:
+
+```
+INFO  harpoon host auto-registered              http://localhost:8000
+INFO  harpoon startup catalog digest            target_count=1
+INFO  harpoon host auto-registration skipped: not allowed   https://unbelievable-dinosaur-95-staging.authkit.app  (×5)
+INFO  harpoon host auto-registration skipped: not allowed   https://api.openai.com
+```
+
+`target_count` 0 → 1, and no `unsupported channel` since 17:28:28. Forwarding loopback here is safe: the only
+target is unauthenticated public metadata Neuro already serves to anyone.
+
+**One thing not yet proven.** `dispatcher channels registered` at 17:39:29.404 shows
+`{"name":"harpoon","routable_now":false,"supports_mcp":true,"supports_oauth":false}` — but that snapshot is logged
+1.1 s **before** `harpoon host auto-registered` at 17:39:30.495, so it reflects the empty catalog, not the current
+state. Whether harpoon reports routable once it has a target can only be confirmed by a retry that succeeds, or by
+the same `unsupported channel` pair appearing again. If it reappears with `target_count: 1`, the next thing to look
+at is `supports_oauth: false` on the harpoon channel.
+
+**Still standing from the previous entry:** `NEUROSEARCH_PUBLIC_URL` and the trailing-slash fix remain in place and
+were not the cause, though the 401 header genuinely was pointing at unreachable loopback and needed fixing anyway.
+ChatGPT's error still names `tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/<id>`, still not
+adopted, still the next value to try if this fails.
