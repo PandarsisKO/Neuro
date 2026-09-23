@@ -3459,3 +3459,22 @@ otherwise — the table and the recording code did not exist when the 18:1x call
 the first build that can record one. Nothing here can manufacture a token. **One more tool call from ChatGPT** (any
 call — `list_projects` is enough) will create the row; it then appears in Project settings → Access, and in this
 session's terms it is one `POST /api/access/pending-signins/approve`.
+
+## EA-9A checkpoint — Kyle's ChatGPT reads AND writes Neuro (Claude Desktop, 2026-09-22 ~19:55)
+
+Kyle approved the pending sign-in in EA-9 Scratch → Settings (the S82 path). Observed live from ChatGPT:
+
+```
+ChatGPT can see Neuro: yes
+OAuth completes: yes (WorkOS AuthKit, CIMD client https://chatgpt.com/oauth/QTOb4VcHdCsW/client.json, redirect https://chatgpt.com/connector/oauth/QTOb4VcHdCsW)
+Tools exposed: Write 8 — add_processed_material, attach_artifact, attach_file, create_intake, finalize_intake, link_account, sync_conversation_to_project, sync_project_state; Read 7 — consult_project, get_evidence, get_intake_status, get_project_changes, list_projects, open_project, search_project
+Write tools available on Pro: YES — account_tier_write_unavailable does NOT apply (Kyle's plan shows Pro; the write ran)
+First harmless read: PASS — list_projects (4 projects, all contribute) + open_project Real Estate Investment Strategy summarised from Neuro data
+First harmless write: PASS — sync_project_state decision "We are testing Neuro sync from ChatGPT on 2026-09-22." → fact #21, explicit, active, actor kyle, external_client 1e9b3df0…, user_text verbatim, client_request_id chatgpt-ea9-sync-20260922-001
+```
+
+Follow-ups seen, not yet chased (for 9B–F):
+- ChatGPT's first `open_project` call was a schema mismatch; it retried with a minimal call and succeeded. Access row shows "last refusal: sent a malformed request". Worth reading which argument it sent.
+- The Settings page does not refresh after an external write (needed a reload to show the decision).
+- The pending-sign-in UI is hard to find/read (Kyle, verbatim: "horribly confusing"); Claude Desktop will redesign it (account-level banner, email not subject, primary Approve button).
+- Link path: ChatGPT's credential-safety layer blocked the pasted `nsi_` code before link_account was sent (S82 fixed it via owner approval).
