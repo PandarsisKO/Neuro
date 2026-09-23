@@ -93,6 +93,14 @@ globalThis.addMsg = function addMsg(role, text, cites = [], extra = {}) {
     h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">Pin to findings</button>` : '') + `<span class="muted copied text-xs"></span></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites); d.dataset.warns = JSON.stringify(warns);
   }
+  // P11: turns and saves that came from an outside AI carry a small label, so a conversation held in ChatGPT reads as
+  // such inside Neuro. The text itself renders exactly like any other message.
+  const ext = extra.meta && (extra.meta.kind === 'external_transcript' || extra.meta.kind === 'external_sync') ? extra.meta : null;
+  if (ext) {
+    d.classList.add('ext');
+    const who = ext.kind === 'external_sync' ? `saved from ${ext.client || 'an AI app'}` : (role === 'user' ? `you, in ${ext.client || 'an AI app'}` : (ext.client || 'AI app'));
+    d.insertAdjacentHTML('afterbegin', `<div class="ext-tag">${esc(who)}</div>`);
+  }
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
   return d;
 }

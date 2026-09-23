@@ -433,3 +433,7 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
 .signin-banner details{margin-top:6px;color:var(--text-faint);font-size:12px}
 .signin-banner .sb-done{color:var(--ok);font-weight:600}
 .signin-banner + .signin-banner{margin-top:8px}
+
+/* P11: messages that came from an outside AI (ChatGPT) */
+.msg .ext-tag{font-size:11px;color:var(--text-faint);margin-bottom:4px;white-space:normal;text-transform:none}
+.msg.ext.user{opacity:.95}

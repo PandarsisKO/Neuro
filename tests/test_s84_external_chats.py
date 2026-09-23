@@ -136,3 +136,60 @@ def test_backfill_gives_past_saves_their_chat_once(client, kyle):
     assert "Lender said 90% of SBA loans get denied" in m["content"] and "Lender call notes" in m["content"]
     assert "Worth checking against SBA data." in m["content"]
     assert chat_mirror.backfill() == 0                 # idempotent
+
+
+CONVO_1 = "User: What does an SBA 7(a) loan cost?\nChatGPT: Roughly prime plus 2.75%, with a 10% equity injection.\nUser: And private credit?\nChatGPT: Faster, but usually 10–14%."
+CONVO_2 = CONVO_1 + "\nUser: OK, we'll go SBA first.\nChatGPT: Sensible — start the lender list this week."
+
+
+def _roles(cid):
+    return [(m["role"], (m["meta"] or {}).get("kind")) for m in db.get_messages(cid, limit=100)]
+
+
+def test_the_conversation_itself_shows_as_real_turns_then_the_summary(client, kyle):
+    _, env = sync(client, kyle["s"], client_request_id="chat-0020", project_id=kyle["acq"], conversation_ref="gpt-conv-T",
+                  state=[{"op": "record", "kind": "decision", "content": "Pursue SBA first", "user_text": "OK, we'll go SBA first."}],
+                  archive_transcript={"text": CONVO_1, "explicit_user_request": True})
+    cid = env["data"]["neuro_chat_id"]
+    assert _roles(cid) == [("user", "external_transcript"), ("assistant", "external_transcript"),
+                           ("user", "external_transcript"), ("assistant", "external_transcript"), ("assistant", "external_sync")]
+    ms = db.get_messages(cid, limit=100)
+    assert ms[0]["content"] == "What does an SBA 7(a) loan cost?" and ms[3]["content"] == "Faster, but usually 10–14%."
+    assert "Full conversation** shown above" in ms[-1]["content"] and "Conversation archive" not in ms[-1]["content"]
+    assert db.list_conversations(kyle["acq"])[0]["title"] == "ChatGPT · What does an SBA 7(a) loan cost?"
+
+
+def test_a_later_archive_of_the_same_conversation_adds_only_the_new_turns(client, kyle):
+    sync(client, kyle["s"], client_request_id="chat-0021", project_id=kyle["acq"], conversation_ref="gpt-conv-U",
+         archive_transcript={"text": CONVO_1, "explicit_user_request": True})
+    _, env = sync(client, kyle["s"], client_request_id="chat-0022", project_id=kyle["acq"], conversation_ref="gpt-conv-U",
+                  project_selection={"basis": "previously_confirmed"}, archive_transcript={"text": CONVO_2, "explicit_user_request": True})
+    turns = [m for m in db.get_messages(env["data"]["neuro_chat_id"], limit=100) if (m["meta"] or {}).get("kind") == "external_transcript"]
+    assert len(turns) == 6 and turns[-2]["content"] == "OK, we'll go SBA first."
+
+
+def test_an_unlabelled_transcript_is_shown_once_whole(client, kyle):
+    for n in ("chat-0023", "chat-0024"):
+        _, env = sync(client, kyle["s"], client_request_id=n, project_id=kyle["acq"], conversation_ref="gpt-conv-V",
+                      project_selection={"basis": "user_named", "user_text": "save it to the acquisition project"},
+                      archive_transcript={"text": "notes without any speaker labels at all", "explicit_user_request": True})
+    whole = [m for m in db.get_messages(env["data"]["neuro_chat_id"], limit=100) if (m["meta"] or {}).get("kind") == "external_transcript"]
+    assert len(whole) == 1 and whole[0]["content"].startswith("**Full conversation from ChatGPT**")
+
+
+def test_parse_turns_handles_common_labels():
+    t = chat_mirror.parse_turns("You said:\nhi there\n\nChatGPT said:\nhello\n**You:** next\n**ChatGPT:** ok")
+    assert t == [("user", "hi there"), ("assistant", "hello"), ("user", "next"), ("assistant", "ok")]
+    assert chat_mirror.parse_turns("just one block of text") is None
+
+
+def test_backfill_rebuilds_an_earlier_mirror_so_the_conversation_appears(client, kyle):
+    _, env = sync(client, kyle["s"], client_request_id="chat-0025", project_id=kyle["acq"], conversation_ref="gpt-conv-W",
+                  archive_transcript={"text": CONVO_1, "explicit_user_request": True})
+    cid = env["data"]["neuro_chat_id"]
+    with db.tx() as conn:                              # simulate the pre-transcript mirror: summary only
+        conn.execute("DELETE FROM messages WHERE conversation_id=? AND meta LIKE '%external_transcript%'", (cid,))
+    assert [k for _, k in _roles(cid)] == ["external_sync"]
+    chat_mirror.backfill()
+    [c] = [x for x in db.list_conversations(kyle["acq"]) if x["id"].startswith("ext-")]
+    assert [k for _, k in _roles(c["id"])].count("external_transcript") == 4

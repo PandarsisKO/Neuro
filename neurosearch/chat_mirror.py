@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from typing import Any
 
 from . import access, db
@@ -51,6 +52,44 @@ def _clip(s: str, n: int) -> str:
     s = " ".join((s or "").split())
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
+ARCHIVE_TITLE = "Conversation archive (saved on request)"
+_ROLE = re.compile(r"^[ \t]*[*_#>\-]*[ \t]*(you said|you|user|me|human|kyle|gio|chatgpt said|chatgpt|assistant|gpt|ai)[ \t]*[*_]*[ \t]*[:：][*_]*[ \t]*",
+                   re.I | re.M)
+_USERISH = {"you said", "you", "user", "me", "human", "kyle", "gio"}
+
+
+def transcript_text(body: dict[str, Any]) -> str:
+    """The whole conversation, when the person asked for it to be archived: from the live save, or (backfill) from
+    the archive material Neuro kept."""
+    arch = body.get("archive_transcript") or {}
+    if (arch.get("text") or "").strip():
+        return arch["text"]
+    for m in body.get("materials") or []:
+        if (m.get("title") or "") == ARCHIVE_TITLE:
+            return "".join(u.get("text") or "" for u in m.get("units") or [])
+    return ""
+
+
+def parse_turns(text: str) -> list[tuple[str, str]] | None:
+    """Split a transcript into (role, content) turns on speaker labels at the start of a line ("User:", "You said:",
+    "ChatGPT:", "Assistant:" …). None when it does not look like a labelled two-sided conversation."""
+    marks = list(_ROLE.finditer(text or ""))
+    if len(marks) < 2:
+        return None
+    turns: list[tuple[str, str]] = []
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        body = text[m.end():end].strip()
+        if not body:
+            continue
+        role = "user" if m.group(1).lower() in _USERISH else "assistant"
+        if turns and turns[-1][0] == role:
+            turns[-1] = (role, turns[-1][1] + "\n\n" + body)
+        else:
+            turns.append((role, body))
+    roles = {r for r, _ in turns}
+    return turns if roles == {"user", "assistant"} else None
+
 
 def render(app: str, who: str, body: dict[str, Any], receipt: dict[str, Any]) -> str:
     lines = [f"**Saved from {app}**" + (f" by {who}" if who else "")]
@@ -73,7 +112,9 @@ def render(app: str, who: str, body: dict[str, Any], receipt: dict[str, Any]) ->
     if review:
         lines.append("\n**Waiting for your review** (Settings → Waiting for your review)")
         lines += [f"• {t}" for t in review]
-    mats = body.get("materials") or []
+    mats = [m for m in body.get("materials") or [] if (m.get("title") or "") != ARCHIVE_TITLE]
+    if transcript_text(body):
+        lines.append("\n**Full conversation** shown above")
     if mats:
         lines.append(f"\n**Material {app} read**")
         for m in mats:
@@ -95,6 +136,10 @@ def render(app: str, who: str, body: dict[str, Any], receipt: dict[str, Any]) ->
 
 
 def _title(app: str, body: dict[str, Any], receipt: dict[str, Any]) -> str:
+    turns = parse_turns(transcript_text(body)) or []
+    first = next((t for r, t in turns if r == "user"), None)
+    if first:
+        return f"{app} · " + _clip(first, 60)
     facts = [f for f in receipt.get("facts") or [] if f.get("status") != "proposed"] or list(receipt.get("facts") or [])
     topic = (facts[0].get("content") if facts else None) or next((m.get("title") for m in body.get("materials") or [] if m.get("title")), None)
     return f"{app} · " + (_clip(topic, 60) if topic else "saved conversation")
@@ -111,6 +156,7 @@ def record(principal: access.Principal, project_id: str, body: dict[str, Any], r
         if existing and existing["project_id"] != project_id:
             # the same outside conversation saved to a second project: that project gets its own chat
             cid = conversation_id(principal.client_id, f"{body.get('conversation_ref')}|{project_id}", body.get("client_request_id") or "")
+        _mirror_transcript(cid, project_id, app, body, receipt)
         db.save_message(cid, "assistant", render(app, who, body, receipt), None, title=_title(app, body, receipt),
                         project_id=project_id,
                         meta={"kind": "external_sync", "client": app, "by": who, "intake_id": receipt.get("intake_id")})
@@ -118,6 +164,38 @@ def record(principal: access.Principal, project_id: str, body: dict[str, Any], r
     except Exception:                                   # a courtesy on a committed save — never fail the save
         log.exception("could not mirror an external save into Chats (project %s)", project_id)
         return None
+
+
+def _mirror_transcript(cid: str, project_id: str, app: str, body: dict[str, Any], receipt: dict[str, Any]) -> None:
+    """Show the conversation itself: the person's turns as user messages, the AI's as assistant messages. A later
+    archive of the same conversation repeats the earlier turns, so only turns past those already shown are added.
+    A transcript without speaker labels is shown once, whole, as one message."""
+    import json
+    text = transcript_text(body)
+    if not text.strip():
+        return
+    rows = db.connect().execute("SELECT meta FROM messages WHERE conversation_id=? AND meta LIKE '%external_transcript%'", (cid,)).fetchall()
+    shown = []
+    for r in rows:
+        try:
+            shown.append(json.loads(r["meta"] or "{}"))
+        except ValueError:
+            pass
+    title = _title(app, body, receipt)
+    turns = parse_turns(text)
+    if turns is None:
+        digest = hashlib.sha1(text.encode()).hexdigest()[:16]
+        if any(m.get("hash") == digest for m in shown):
+            return
+        db.save_message(cid, "assistant", f"**Full conversation from {app}**\n\n{text}", None, title=title, project_id=project_id,
+                        meta={"kind": "external_transcript", "client": app, "hash": digest, "intake_id": receipt.get("intake_id")})
+        return
+    done = max([m.get("idx", -1) for m in shown if "idx" in m] or [-1]) + 1
+    for i, (role, content) in enumerate(turns):
+        if i < done:
+            continue
+        db.save_message(cid, role, content, None, title=title, project_id=project_id,
+                        meta={"kind": "external_transcript", "client": app, "idx": i, "intake_id": receipt.get("intake_id")})
 
 
 def backfill() -> int:
@@ -132,6 +210,26 @@ def backfill() -> int:
             done.add(json.loads(r["meta"] or "{}").get("intake_id"))
         except ValueError:
             pass
+    # chats mirrored before the conversation itself was shown: if the save archived the conversation and the chat
+    # holds nothing but mirror rows (the owner has not chatted in it yet), rebuild it so the conversation appears
+    for r in conn.execute("SELECT DISTINCT conversation_id FROM messages WHERE conversation_id LIKE 'ext-%'").fetchall():
+        cid = r["conversation_id"]
+        metas = []
+        for m in conn.execute("SELECT role, meta FROM messages WHERE conversation_id=?", (cid,)).fetchall():
+            try:
+                metas.append(json.loads(m["meta"] or "{}"))
+            except ValueError:
+                metas.append({})
+        kinds = {m.get("kind") for m in metas}
+        if kinds != {"external_sync"}:
+            continue
+        ids = [m.get("intake_id") for m in metas]
+        archived = conn.execute(
+            f"SELECT COUNT(*) FROM intake_items WHERE intake_id IN ({','.join('?' * len(ids))}) AND kind='processed_material' "
+            "AND json_extract(payload, '$.material.title')=?", (*ids, ARCHIVE_TITLE)).fetchone()[0] if ids else 0
+        if archived:
+            db.delete_conversation(cid)
+            done.difference_update(ids)
     n = 0
     rows = conn.execute("SELECT i.*, c.label AS client_label FROM external_intakes i LEFT JOIN external_clients c ON c.id=i.client_id "
                         "WHERE i.receipt IS NOT NULL ORDER BY i.created_at").fetchall()
