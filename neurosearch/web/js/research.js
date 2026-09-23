@@ -1607,25 +1607,18 @@ globalThis.p11Load = async function p11Load() {
   try {
     const [acc, hl, ib, ps] = await Promise.all([api('/api/access'), api('/api/access/client-health'), api(`/api/projects/${pid}/inbox`),
       api('/api/access/pending-signins').catch(() => ({ pending: [] }))]);
-    // A sign-in ChatGPT verified but nobody has claimed. Its credential-safety layer blocks a pasted nsi_ code
-    // before link_account is sent, so approving here is the link path for that client.
-    const pend = (ps && ps.pending) || [];
-    $('#p11Pending').innerHTML = pend.length
-      ? pend.map(x => `<div class="row" style="padding:4px 0"><span class="grow">Pending sign-in: ${esc(x.email || x.subject)}${x.client_hint ? ' · ' + esc(x.client_hint) : ''} · seen ${x.seen_count}\u00d7</span>`
-          + acc.actors.filter(a => a.kind === 'person' && !a.disabled_at).map(a => `<a href="#" onclick="p11ApproveSignin('${esc(x.subject)}','${esc(a.id)}');return false">approve as ${esc(a.name)}</a>`).join(' · ')
-          + ` · <a href="#" class="muted" onclick="p11DismissSignin('${esc(x.subject)}');return false">dismiss</a></div>`).join('')
-      : '';
+    p11Banner(ps, acc);   // pending sign-ins live in the account-level banner, not in each project
     const grants = acc.grants.filter(g => g.project_id === pid && !g.revoked_at);
     const names = Object.fromEntries(acc.actors.map(a => [a.id, a.name]));
     $('#p11People').innerHTML = grants.map(g => {
       const clients = hl.clients.filter(c => c.people.includes(g.actor_id));
       const boxes = P11_CLASSES.map(c => `<label class="muted" style="margin-right:8px"><input type="checkbox" ${g.disclosure_classes.includes(c) ? 'checked' : ''} ${c === 'standard' ? 'disabled' : ''} onchange="p11SetClass('${g.actor_id}', '${c}', this.checked)"> ${c}</label>`).join('');
       const conn = clients.map(c => `<div class="muted" style="margin-left:12px">${esc(c.label)} · ${esc(P11_STATE[c.state] || c.state)} · last used ${p11Ago(c.last_success_at)}${c.last_refusal ? ` · last refusal: ${esc(P11_STATE[c.last_refusal.outcome] || c.last_refusal.outcome)} ${p11Ago(c.last_refusal.created_at)}` : ''}${c.credentials.active ? ` · <a href="#" onclick="p11Disconnect('${c.client_id}');return false">disconnect</a>` : ''}</div>`).join('')
-        || '<div class="muted" style="margin-left:12px">No AI client connected yet.</div>';
+        || '<div class="muted" style="margin-left:12px">Not connected from an AI app yet. When they sign in, a banner at the top of Neuro asks you to approve them.</div>';
       return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
         <div class="row"><b class="grow">${esc(names[g.actor_id] || g.actor_id)}</b>
           <select class="w-auto" onchange="p11SetRole('${g.actor_id}', this.value)"><option value="contribute" ${g.role === 'contribute' ? 'selected' : ''}>read and contribute</option><option value="read" ${g.role === 'read' ? 'selected' : ''}>read only</option></select>
-          <button class="small" onclick="p11Invite('${g.actor_id}')">Connection code</button>
+          <a href="#" class="muted" title="Only for AI apps that accept a pasted code — ChatGPT does not; it uses the approval banner" onclick="p11Invite('${g.actor_id}');return false">code for other AI apps</a>
           <a href="#" class="muted" onclick="p11Remove('${g.actor_id}');return false">remove</a></div>
         <div class="mt-1">${boxes}</div><div id="p11Code-${g.actor_id}"></div>${conn}</div>`;
     }).join('') || '<div class="muted">Nobody else. This project is yours alone.</div>';
@@ -1636,14 +1629,67 @@ globalThis.p11Load = async function p11Load() {
     }).join('') || '<div class="muted">Nothing received yet.</div>';
   } catch (e) { $('#p11People').innerHTML = `<div class="muted">could not load access — ${esc(String(e && e.message || e))}</div>`; }
 }
+globalThis.p11AppName = function p11AppName(hint) {
+  const h = String(hint || '');
+  return /chatgpt\.com|openai\.com/.test(h) ? 'ChatGPT' : /claude\.ai|anthropic\.com/.test(h) ? 'Claude' : 'An AI app';
+}
+// One banner per waiting sign-in, on every screen. The provider token carries no email, so what identifies the request
+// is the app and the time: "ChatGPT · just now" is what the owner matches against "I just signed in".
+globalThis.p11Banner = async function p11Banner(ps, acc) {
+  const el = $('#signinBanner');
+  if (!el) return;
+  try {
+    ps = ps || await api('/api/access/pending-signins');
+    acc = acc || await api('/api/access');
+  } catch { return; }
+  const pend = (ps && ps.pending) || [];
+  const people = (acc.actors || []).filter(a => a.kind === 'person' && !a.disabled_at);
+  if (!pend.length) { if (!el.dataset.flash) { el.hidden = true; el.innerHTML = ''; } return; }
+  el.hidden = false; delete el.dataset.flash;
+  el.innerHTML = pend.map(x => {
+    const app = p11AppName(x.client_hint);
+    const who = x.email ? esc(x.email) : `someone using ${esc(app)}`;
+    const pick = people.length > 1
+      ? `<select class="w-auto" id="sbWho-${esc(x.subject)}">${people.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</select>
+         <button class="primary small" onclick="p11ApproveSignin('${esc(x.subject)}', $('#sbWho-${esc(x.subject)}').value)">Approve</button>`
+      : people.map(a => `<button class="primary small" onclick="p11ApproveSignin('${esc(x.subject)}','${esc(a.id)}')">Approve as ${esc(a.name)}</button>`).join('');
+    return `<div class="sb-row"><div class="sb-text"><div class="sb-title">${esc(app)} wants to connect to Neuro</div>
+        <div class="sb-sub">${who} signed in ${p11Ago(x.last_seen)} and is waiting for your approval. Approve only if you know who this is.</div>
+        <details><summary>Details</summary>sign-in ${esc(x.subject)} · app ${esc(x.client_hint || 'unknown')} · tried ${x.seen_count}×</details></div>
+      ${pick} <button class="small" onclick="p11DismissSignin('${esc(x.subject)}')">Not now</button></div>`;
+  }).join('');
+}
 globalThis.p11ApproveSignin = async function p11ApproveSignin(subject, actorId) {
-  await post('/api/access/pending-signins/approve', { subject, actor_id: actorId, client_name: 'ChatGPT' });
-  p11Load();
+  const ps = await api('/api/access/pending-signins').catch(() => ({ pending: [] }));
+  const x = ((ps && ps.pending) || []).find(p => p.subject === subject);
+  const app = p11AppName(x && x.client_hint);
+  await post('/api/access/pending-signins/approve', { subject, actor_id: actorId, client_name: app });
+  const el = $('#signinBanner');
+  if (el) {
+    el.hidden = false; el.dataset.flash = '1';
+    el.innerHTML = `<div class="sb-row"><div class="sb-text sb-done">Connected — ${esc(app)} can now use the projects this person was given.</div></div>`;
+    setTimeout(() => { delete el.dataset.flash; p11Banner(); }, 6000);
+  }
+  if (state.project && state.view === 'settings') p11Load();
 }
 globalThis.p11DismissSignin = async function p11DismissSignin(subject) {
   await post('/api/access/pending-signins/dismiss', { subject });
-  p11Load();
+  p11Banner();
 }
+// Keep the banner and an open Settings page current. An external write (ChatGPT saving a decision) previously showed
+// only after a manual reload; now returning to the tab, or every 30 s while it is visible, refreshes what changed.
+function p11Refresh() {
+  if (document.hidden) return;
+  p11Banner();
+  if (state.project && state.view === 'settings') {
+    api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])).catch(() => {});
+    p11Load();
+  }
+}
+setInterval(p11Refresh, 30000);
+window.addEventListener('focus', p11Refresh);
+document.addEventListener('visibilitychange', p11Refresh);
+setTimeout(p11Banner, 500);
 globalThis.p11LoadReview = async function p11LoadReview() {
   try {
     const r = await api(`/api/projects/${state.project.id}/facts/review`);

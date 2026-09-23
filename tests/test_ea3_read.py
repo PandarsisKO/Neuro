@@ -204,7 +204,7 @@ def test_mcp_adapter_is_the_same_service(client, world, no_models):
     assert client.post("/ext/mcp/", json={}).status_code == 401
     assert client.post("/ext/mcp/", json={}, headers={"Authorization": "Bearer t0k"}).status_code == 401
     init = _mcp(client, world["gio"], "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
-    assert "READ from Neuro only when" in init["result"]["instructions"]
+    assert "Reading is useful for orientation" in init["result"]["instructions"]   # descriptive wording since S83
     tools = {t["name"]: t for t in _mcp(client, world["gio"], "tools/list")["result"]["tools"]}
     assert {"list_projects", "open_project", "get_project_changes", "search_project", "get_evidence", "consult_project"} <= set(tools)
     assert tools["consult_project"]["annotations"]["readOnlyHint"] is True

@@ -172,7 +172,7 @@ def test_mcp_tool_takes_files_by_reference_and_carries_the_freeflow_instructions
                         headers={"Authorization": f"Bearer {kyle['s']}", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18"})
         return json.loads(next(l for l in r.text.splitlines() if l.startswith("data: "))[6:])
     init = mcp("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
-    assert "does NOT need to be involved from the start" in init["result"]["instructions"]
+    assert "Neuro can join late" in init["result"]["instructions"]   # descriptive wording since S83 (was "does NOT need to be involved from the start")
     tools = {t["name"]: t for t in mcp("tools/list")["result"]["tools"]}
     assert tools["sync_conversation_to_project"]["_meta"]["openai/fileParams"] == ["files"]
     res = mcp("tools/call", {"name": "sync_conversation_to_project", "arguments": {"client_request_id": "mcp-save-01", "project_hint": "Business Acquisition",

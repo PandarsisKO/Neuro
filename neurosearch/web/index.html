@@ -11,6 +11,9 @@
   <symbol id="ic-flag" viewBox="0 0 24 24"><path d="M6 3 L6 21 M6 4.5 L18 8 L6 11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
 </svg>
 
+<!-- P11: an AI app someone signed in to is waiting to be approved. Account-level, shown on every screen. -->
+<div id="signinBanner" class="signin-banner" role="status" aria-live="polite" hidden></div>
+
 <!-- ============ HOME ============ -->
 <div id="home">
   <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">Dark</button><span class="muted verTag" title="app version (page / server)" style="align-self:center;margin-left:8px"></span></div>
@@ -340,9 +343,8 @@
         <div class="muted mt-2" id="exMsg"></div>
       </div>
       <div class="card"><b>People using this project from their own AI</b>
-        <div class="muted">Someone you add here can reach this project from their own AI client (for example their ChatGPT): it can read what Neuro knows and record what they decide. They see <b>standard</b> material only unless you tick more below — a Claim, finding or watch-out built on anything they can't see stays hidden from them. Nothing is shared with anyone until you add them and they connect with the code you give them.</div>
-        <div id="p11Pending" class="mt-2"></div>
-        <div id="p11People" class="mt-2"></div>
+        <div class="muted">Someone you add here can reach this project from their own AI client (for example their ChatGPT): it can read what Neuro knows and record what they decide. They see <b>standard</b> material only unless you tick more below — a Claim, finding or watch-out built on anything they can't see stays hidden from them. Nothing is shared with anyone until you add them here and approve their sign-in when it appears at the top of Neuro.</div>
+                <div id="p11People" class="mt-2"></div>
         <div class="row mt-2"><input id="p11Name" placeholder="their name, e.g. Gio" style="max-width:220px"><select id="p11Role" class="w-auto"><option value="contribute">can read and contribute</option><option value="read">read only</option></select><button class="small" onclick="p11AddPerson()">Add</button></div>
         <div class="muted mt-2" id="p11Msg"></div>
         <div class="mt-3"><b>Waiting for your review</b>

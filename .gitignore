@@ -1,4 +1,8 @@
 .env
+# any local copy/backup of .env holds live secrets (tunnel key, IdP config) — never commit one
+.env.*
+!.env.example
+*.env.bak*
 data/
 *.db
 *.db-wal
