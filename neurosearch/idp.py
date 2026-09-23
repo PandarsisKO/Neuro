@@ -131,13 +131,96 @@ def verify(token: str) -> dict[str, Any]:
 
 
 def credential_for(token: str) -> str:
-    """A verified token → the credential its (issuer, subject) was linked to."""
+    """A verified token → the credential its (issuer, subject) was linked to.
+
+    An unlinked but VERIFIED sign-in is recorded as pending so the owner can approve it in Neuro. ChatGPT's
+    credential-safety layer blocks an `nsi_…` code in chat before `link_account` is ever sent (observed
+    2026-09-22: Kyle pasted one and Neuro never received the call), so for that client a code the user types
+    cannot be the link path at all. Recording costs nothing and asserts nothing the provider has not already
+    proved -- this identity presented a valid token for this audience.
+    """
     c = verify(token)
-    r = db.connect().execute("SELECT credential_id FROM external_identities WHERE issuer=? AND subject=?", (issuer(), str(c["sub"]))).fetchone()
+    sub = str(c["sub"])
+    r = db.connect().execute("SELECT credential_id FROM external_identities WHERE issuer=? AND subject=?", (issuer(), sub)).fetchone()
     if not r:
-        raise AccessError("account_unlinked", "this sign-in is not linked to a Neuro person yet: ask the user for their Neuro "
-                                              "connection code (nsi_…) and call link_account with it")
+        note_pending(sub, c)
+        raise AccessError("account_unlinked", "this sign-in is not linked to a Neuro person yet: ask the Neuro owner to "
+                                              "approve this sign-in in Neuro \u2192 Access")
     return r["credential_id"]
+
+
+def note_pending(subject: str, claims: dict[str, Any]) -> None:
+    """Record (or refresh) an unclaimed verified sign-in. One row per (issuer, subject), never one per call.
+
+    A dismissal is deliberately not sticky against a NEW attempt: dismissing says "not now", not "never", and a
+    person who tries again should be visible again. What dismissal does do is clear it from the owner's list
+    until that happens.
+    """
+    email = claims.get("email") or None
+    hint = claims.get("azp") or claims.get("client_id") or None
+    t = time.time()
+    with db.tx() as conn:
+        conn.execute(
+            "INSERT INTO external_pending_signins (issuer, subject, email, client_hint, first_seen, last_seen) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(issuer, subject) DO UPDATE SET last_seen=excluded.last_seen, "
+            "seen_count=external_pending_signins.seen_count+1, dismissed_at=NULL, "
+            "email=COALESCE(excluded.email, external_pending_signins.email), "
+            "client_hint=COALESCE(excluded.client_hint, external_pending_signins.client_hint)",
+            (issuer(), subject, email, hint, t, t))
+
+
+def list_pending(include_resolved: bool = False) -> list[dict[str, Any]]:
+    """What the owner sees. Resolved and dismissed rows are out of the way unless asked for."""
+    q = "SELECT * FROM external_pending_signins WHERE issuer=?"
+    if not include_resolved:
+        q += " AND resolved_at IS NULL AND dismissed_at IS NULL"
+    return [dict(r) for r in db.connect().execute(q + " ORDER BY last_seen DESC", (issuer(),)).fetchall()]
+
+
+def approve_pending(subject: str, actor_id: str, *, client_name: str | None = None) -> dict[str, Any]:
+    """Owner-only: link a pending sign-in to a person, creating exactly what `link()` creates.
+
+    The credential, client and `external_identities` row are identical to the invite path -- revocation, ACL,
+    disclosure, attribution and audit are unchanged. Only the authorisation differs: the owner approved it in
+    Neuro instead of the person redeeming a code.
+    """
+    sub = str(subject)
+    existing = db.connect().execute("SELECT credential_id FROM external_identities WHERE issuer=? AND subject=?", (issuer(), sub)).fetchone()
+    if existing:
+        p = access.authenticate_credential_id(existing["credential_id"])
+        with db.tx() as conn:
+            conn.execute("UPDATE external_pending_signins SET resolved_at=?, resolved_actor=? WHERE issuer=? AND subject=?",
+                         (time.time(), p.actor_id, issuer(), sub))
+        return {"linked": True, "person": p.actor_name, "already_linked": True}
+    row = db.connect().execute("SELECT * FROM external_pending_signins WHERE issuer=? AND subject=?", (issuer(), sub)).fetchone()
+    if not row:
+        raise AccessError("not_found", "no pending sign-in for that subject")
+    if row["resolved_at"] is not None:
+        raise AccessError("invalid", "that sign-in has already been resolved")
+    actor = access.get_actor(actor_id)
+    if not actor or actor["disabled_at"] is not None or actor_id == "system":
+        raise AccessError("invalid", "unknown or disabled person")
+    ext_client = access.create_client(f"{actor['name']}'s {client_name or 'AI client'}", transport="tunnel")
+    cred, _never_stored = access.issue_credential(actor["id"], ext_client["id"], created_by=f"approved:{sub[:24]}")
+    t = time.time()
+    with db.tx() as conn:
+        conn.execute("INSERT INTO external_identities (issuer, subject, credential_id, invite_id, linked_at) VALUES (?,?,?,?,?)",
+                     (issuer(), sub, cred["id"], None, t))
+        conn.execute("UPDATE external_pending_signins SET resolved_at=?, resolved_actor=? WHERE issuer=? AND subject=?",
+                     (t, actor["id"], issuer(), sub))
+    return {"linked": True, "person": actor["name"], "client": ext_client["label"]}
+
+
+def dismiss_pending(subject: str) -> dict[str, Any]:
+    """Clear a pending sign-in from the owner's list. Blocks nothing: it is not a denial, and the same identity
+    signing in again reappears (see note_pending)."""
+    t = time.time()
+    with db.tx() as conn:
+        n = conn.execute("UPDATE external_pending_signins SET dismissed_at=? WHERE issuer=? AND subject=? AND resolved_at IS NULL",
+                         (t, issuer(), str(subject))).rowcount
+    if not n:
+        raise AccessError("not_found", "no pending sign-in for that subject")
+    return {"dismissed": True, "subject": str(subject)}
 
 
 def link(token: str, invite_code: str, client_name: str | None = None) -> dict[str, Any]:

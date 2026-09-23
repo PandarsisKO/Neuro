@@ -1025,6 +1025,24 @@ CREATE TABLE IF NOT EXISTS external_identities (
     linked_at     REAL NOT NULL,
     PRIMARY KEY (issuer, subject)
 );
+
+-- A verified provider sign-in that no Neuro person has claimed yet (2026-09-22). ChatGPT's credential-safety
+-- layer blocks `nsi_…` codes in chat before `link_account` is ever sent, so a code the user pastes cannot be the
+-- link path for that client. The owner approves the sign-in in Neuro instead. Recording it costs nothing and
+-- proves only what the provider already proved: that this (issuer, subject) presented a valid token.
+CREATE TABLE IF NOT EXISTS external_pending_signins (
+    issuer       TEXT NOT NULL,
+    subject      TEXT NOT NULL,
+    email        TEXT,
+    client_hint  TEXT,
+    first_seen   REAL NOT NULL,
+    last_seen    REAL NOT NULL,
+    seen_count   INTEGER NOT NULL DEFAULT 1,
+    dismissed_at REAL,
+    resolved_at  REAL,
+    resolved_actor TEXT,
+    PRIMARY KEY (issuer, subject)
+);
 """
 
 _local = threading.local()

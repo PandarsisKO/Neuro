@@ -83,7 +83,11 @@ def test_signing_in_grants_nothing_until_an_invite_is_redeemed(client, keys):
     t = tok(key)
     r, body = _mcp(client, t, "list_projects")
     assert r.status_code == 200 and body["result"]["isError"] is True and "account_unlinked" in body["result"]["content"][0]["text"]
-    assert "link_account" in body["result"]["content"][0]["text"]
+    # 2026-09-22: the message points at owner approval, NOT at a code. ChatGPT's credential-safety layer blocks an
+    # nsi_ code in chat before link_account is sent, so telling the user to paste one is advice they cannot follow
+    # (S82). link_account itself is unchanged and still works for clients that can carry a code — proved below.
+    assert "approve this sign-in" in body["result"]["content"][0]["text"]
+    assert "nsi_" not in body["result"]["content"][0]["text"]
     _, bad = _mcp(client, t, "link_account", {"code": "nsi_notarealcode"})
     assert bad["result"]["isError"] is True
     inv, code = oauth.create_invite("gio")

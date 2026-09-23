@@ -3407,3 +3407,55 @@ happen. Until then every external tool call keeps answering `account_unlinked` w
 `neurosearch` in a second process, which opens the live database from outside the running app — the thing
 `CLAUDE.md`'s first standing rule forbids outright, read or not. It did no harm here, but the rule exists because
 sometimes it does. The same answer was available through the app; use it.
+
+## EA-9 link path: the owner approves a sign-in, because a pasted code never arrives (2026-09-22)
+
+**Kyle's live failure, recorded concretely per the freeze rule.** He pasted "Link my Neuro account with code
+nsi_…" into ChatGPT and **Neuro never received the call** — ChatGPT's credential-safety layer blocks a
+credential-shaped string in chat before `link_account` is sent. `list_projects` kept answering
+`account_unlinked`. A code the user types cannot be the link path for that client, however correct the code is.
+
+**Minimal fix, no change to how identity or authorisation work.** A VERIFIED token whose `(iss, sub)` has no
+`external_identities` row is now recorded as a pending sign-in, and the owner approves it in Neuro:
+
+- `external_pending_signins` (additive): issuer, subject, email, client_hint, first/last seen, seen_count,
+  dismissed_at, resolved_at, resolved_actor. One row per `(issuer, subject)`, never one per call.
+- `idp.note_pending` / `list_pending` / `approve_pending` / `dismiss_pending`. **Approval creates exactly what
+  `link()` creates** — client, credential, `external_identities` row — so revocation, ACL, disclosure,
+  attribution and audit are untouched. Only the authorisation differs: the owner approved it instead of a code
+  being redeemed. `invite_id` is NULL, so no invite is spent.
+- Owner-only `GET /api/access/pending-signins`, `POST …/approve`, `POST …/dismiss`. They sit on the admin router,
+  behind the local owner token; the external surface has no such route, so a client can never approve itself.
+- One line in Project settings → Access: "Pending sign-in: <email> · approve as <person> · dismiss".
+- The `account_unlinked` message now says *"ask the Neuro owner to approve this sign-in in Neuro → Access"*. It no
+  longer mentions `nsi_`, because that is advice this client cannot follow.
+- **`link_account` and `nsi_` are unchanged** and still work for clients that can carry a code; `test_ea9_idp`
+  still proves that end to end.
+
+**Recording a pending sign-in asserts nothing.** It states what the provider already proved: this identity
+presented a valid token for this audience. **Dismissal is not a denial** — it clears the owner's list, and the
+same identity signing in again reappears. Saying "not now" and "never" are different things and only the first is
+implemented.
+
+**Tests** — `tests/test_s82_pending_signins.py` (7): one row per subject with `seen_count` rising and a known email
+not erased by a later token without the claim; approval links and is idempotent (a second approval returns
+`already_linked`, not a second credential); dismissal blocks nothing; the unlinked message points at the owner and
+never at `nsi_`; unknown/disabled/`system` actors and unknown subjects are refused; the approve route exists only
+on the owner router; and approval does not widen disclosure — a new grant is still `["standard"]`.
+**Full suite 2,467 passed, 0 failed.**
+
+One existing test changed rather than being weakened: `test_signing_in_grants_nothing_until_an_invite_is_redeemed`
+asserted the unlinked message names `link_account`. It now asserts the new instruction and the absence of `nsi_`,
+while still redeeming a real invite further down — the old behaviour is still proved, the advice is not.
+
+**Grants corrected (Kyle, mid-task): external access is bidirectional for every project.** All four projects now
+hold `kyle` at `contribute`, classes `["standard"]`, applied through `PUT /api/access/grants` on the running app:
+`bc0de4e7…` (EA-9 Scratch), `5b9b2a3b…`, `c752ed15…`, `d7a9f585…`. **The earlier read-only grant on Real Estate
+was a test-setup misreading on my part — "for read tests" described what I was going to test, not a product rule.
+There is no read-only policy for external access.** The unused invite `6e3999ae…` is revoked.
+
+**Not yet done, and it needs Kyle.** The pending list is **empty**: `{"pending": [], "idp": true}`. It could not be
+otherwise — the table and the recording code did not exist when the 18:1x calls happened, and the 19:5x restart is
+the first build that can record one. Nothing here can manufacture a token. **One more tool call from ChatGPT** (any
+call — `list_projects` is enough) will create the row; it then appears in Project settings → Access, and in this
+session's terms it is one `POST /api/access/pending-signins/approve`.

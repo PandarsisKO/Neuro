@@ -1605,7 +1605,16 @@ globalThis.p11Load = async function p11Load() {
   const pid = state.project.id;
   p11LoadReview();
   try {
-    const [acc, hl, ib] = await Promise.all([api('/api/access'), api('/api/access/client-health'), api(`/api/projects/${pid}/inbox`)]);
+    const [acc, hl, ib, ps] = await Promise.all([api('/api/access'), api('/api/access/client-health'), api(`/api/projects/${pid}/inbox`),
+      api('/api/access/pending-signins').catch(() => ({ pending: [] }))]);
+    // A sign-in ChatGPT verified but nobody has claimed. Its credential-safety layer blocks a pasted nsi_ code
+    // before link_account is sent, so approving here is the link path for that client.
+    const pend = (ps && ps.pending) || [];
+    $('#p11Pending').innerHTML = pend.length
+      ? pend.map(x => `<div class="row" style="padding:4px 0"><span class="grow">Pending sign-in: ${esc(x.email || x.subject)}${x.client_hint ? ' · ' + esc(x.client_hint) : ''} · seen ${x.seen_count}\u00d7</span>`
+          + acc.actors.filter(a => a.kind === 'person' && !a.disabled_at).map(a => `<a href="#" onclick="p11ApproveSignin('${esc(x.subject)}','${esc(a.id)}');return false">approve as ${esc(a.name)}</a>`).join(' · ')
+          + ` · <a href="#" class="muted" onclick="p11DismissSignin('${esc(x.subject)}');return false">dismiss</a></div>`).join('')
+      : '';
     const grants = acc.grants.filter(g => g.project_id === pid && !g.revoked_at);
     const names = Object.fromEntries(acc.actors.map(a => [a.id, a.name]));
     $('#p11People').innerHTML = grants.map(g => {
@@ -1626,6 +1635,14 @@ globalThis.p11Load = async function p11Load() {
       return `<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag">${esc(i.status.replace('_', ' '))}</span> ${esc(i.by || '')} via ${esc(i.via || '')} · ${p11Ago(i.created_at)}${i.needs_review_reason ? ` · <b>${esc(i.needs_review_reason)}</b>` : ''}<div class="muted" style="margin-left:12px">${items || 'no items'}</div>${reading}</div>`;
     }).join('') || '<div class="muted">Nothing received yet.</div>';
   } catch (e) { $('#p11People').innerHTML = `<div class="muted">could not load access — ${esc(String(e && e.message || e))}</div>`; }
+}
+globalThis.p11ApproveSignin = async function p11ApproveSignin(subject, actorId) {
+  await post('/api/access/pending-signins/approve', { subject, actor_id: actorId, client_name: 'ChatGPT' });
+  p11Load();
+}
+globalThis.p11DismissSignin = async function p11DismissSignin(subject) {
+  await post('/api/access/pending-signins/dismiss', { subject });
+  p11Load();
 }
 globalThis.p11LoadReview = async function p11LoadReview() {
   try {

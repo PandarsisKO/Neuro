@@ -49,6 +49,16 @@ class RotateIn(BaseModel):
     overlap_s: float = 0.0
 
 
+class ApproveSigninIn(BaseModel):
+    subject: str
+    actor_id: str
+    client_name: str | None = None
+
+
+class DismissSigninIn(BaseModel):
+    subject: str
+
+
 class GrantIn(BaseModel):
     project_id: str
     actor_id: str
@@ -109,6 +119,24 @@ def admin_router(require_auth: Callable[..., None]) -> APIRouter:
     def rotate(credential_id: str, body: RotateIn) -> dict[str, Any]:
         row, secret = guard(lambda: access.rotate_credential(credential_id, overlap_s=body.overlap_s))
         return {"credential": row, "secret": secret, "note": "shown once — Neuro keeps only a hash"}
+
+    @r.get("/pending-signins")
+    def pending_signins(include_resolved: bool = False) -> dict[str, Any]:
+        """Verified provider sign-ins nobody has claimed yet. Owner-only: this whole router is behind the local
+        owner token, so an external credential can never reach it -- approving is not a thing a client can do
+        for itself."""
+        from . import idp
+        return {"pending": idp.list_pending(include_resolved) if idp.enabled() else [], "idp": idp.enabled()}
+
+    @r.post("/pending-signins/approve")
+    def approve_signin(body: ApproveSigninIn) -> dict[str, Any]:
+        from . import idp
+        return guard(lambda: idp.approve_pending(body.subject, body.actor_id, client_name=body.client_name))
+
+    @r.post("/pending-signins/dismiss")
+    def dismiss_signin(body: DismissSigninIn) -> dict[str, Any]:
+        from . import idp
+        return guard(lambda: idp.dismiss_pending(body.subject))
 
     @r.put("/grants")
     def put_grant(body: GrantIn) -> dict[str, Any]:
