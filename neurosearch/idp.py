@@ -44,9 +44,57 @@ def issuer() -> str:
     return (settings.oauth_issuer or "").rstrip("/")
 
 
-def resource() -> str:
+TUNNEL_HEADER = "x-neuro-tunnel"          # which tunnel a request arrived through; see resource()
+PRMD_PATH = "/.well-known/oauth-protected-resource"
+
+
+def resources() -> list[str]:
+    """Every resource this Neuro answers for, in config order. The first is the default."""
+    return [r.strip() for r in (settings.oauth_resource or "").split(",") if r.strip()]
+
+
+def resource(tunnel_id: str | None = None) -> str:
+    """The resource to advertise, for the tunnel a request arrived through.
+
+    One Neuro now sits behind two Secure MCP Tunnels (2026-09-23), and each must be told its OWN resource: a
+    client pointed at the other tunnel's URL is pointed into an organisation it has no token for. tunnel-client
+    itself sends nothing that identifies the tunnel -- measured, both profiles' requests are byte-identical down
+    to `Host: localhost:8000` -- so each profile injects `X-Neuro-Tunnel` via `mcp.discovery_extra_headers`,
+    which is delivered on exactly the requests that decide this: PRMD discovery, WWW-Authenticate probing and
+    the initialize probe.
+
+    An unknown or absent tunnel id falls back to the first configured resource, which is what a single-tunnel
+    deployment has always served.
+    """
+    many = resources()
+    if tunnel_id:
+        for r in many:
+            if tunnel_id in r:
+                return r
+    if many:
+        return many[0]
     from .oauth import MCP_PATH, base_url
-    return settings.oauth_resource or (base_url() + MCP_PATH)
+    return base_url() + MCP_PATH
+
+
+def resource_metadata_url(tunnel_id: str | None = None) -> str | None:
+    """Where a 401 should send the client for this tunnel's metadata, or None to use the request's own base.
+
+    Only in resource-server mode: with no provider configured Neuro is its own authorization server and the 401
+    must keep pointing at the request's own origin, exactly as before."""
+    return (resource(tunnel_id) + PRMD_PATH) if (enabled() and resources()) else None
+
+
+def tunnel_of(headers: Any) -> str | None:
+    """The tunnel id from raw ASGI headers (list of byte pairs) or a Starlette/Requests-style mapping."""
+    if headers is None:
+        return None
+    if isinstance(headers, (list, tuple)):
+        for k, v in headers:
+            if k.lower() == TUNNEL_HEADER.encode():
+                return v.decode(errors="replace").strip() or None
+        return None
+    return (headers.get(TUNNEL_HEADER) or "").strip() or None
 
 
 def audience() -> str | list[str]:
@@ -60,7 +108,10 @@ def audience() -> str | list[str]:
     many = [a.strip() for a in raw.split(",") if a.strip()]
     if len(many) > 1:
         return many
-    return many[0] if many else resource()
+    if many:
+        return many[0]
+    every = resources()                      # unset: accept a token for any resource this Neuro answers for
+    return every if len(every) > 1 else resource()
 
 
 def looks_like_jwt(tok: str | None) -> bool:
@@ -263,8 +314,8 @@ def link(token: str, invite_code: str, client_name: str | None = None) -> dict[s
     return {"linked": True, "person": actor["name"], "client": ext_client["label"]}
 
 
-def protected_resource_metadata() -> dict[str, Any]:
+def protected_resource_metadata(tunnel_id: str | None = None) -> dict[str, Any]:
     from .oauth import SCOPE
-    return {"resource": resource(), "authorization_servers": [issuer()],
+    return {"resource": resource(tunnel_id), "authorization_servers": [issuer()],
             "scopes_supported": [settings.oauth_required_scope or SCOPE] if settings.oauth_required_scope else [],
             "bearer_methods_supported": ["header"], "resource_name": "Neuro"}

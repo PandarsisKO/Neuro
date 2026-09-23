@@ -168,3 +168,60 @@ def test_two_tunnels_two_audiences_accepted_anything_else_refused(keys, monkeypa
         idp.verify(tok(k, aud="https://tunnel-service.example/v1/mcp/tunnel_someone_else"))
     monkeypatch.setattr(settings, "oauth_audience", kyle_t)
     assert idp.audience() == kyle_t
+
+
+def test_each_tunnel_is_told_its_own_resource(client, keys, monkeypatch):
+    """2026-09-23: with two tunnels, one advertised resource is wrong for one of them.
+
+    Neuro served Kyle's tunnel URL to everyone, so Gio's ChatGPT was pointed at a resource in Kyle's organisation
+    and never came back with a token (measured: her requests reached /ext/mcp and every one was 401, no token ever
+    presented). tunnel-client sends nothing that identifies the tunnel of its own accord -- both profiles' requests
+    are byte-identical, `Host: localhost:8000` included -- so each profile injects X-Neuro-Tunnel through
+    `mcp.discovery_extra_headers`, which covers PRMD discovery and WWW-Authenticate probing.
+    """
+    kyle_id, gio_id = "tunnel_kyle111", "tunnel_gio222"
+    kyle_r = f"https://api.openai.com/v1/tunnel/{kyle_id}"
+    gio_r = f"https://api.openai.com/v1/tunnel/{gio_id}"
+    monkeypatch.setattr(settings, "oauth_resource", f"{kyle_r}, {gio_r}")
+
+    assert idp.resources() == [kyle_r, gio_r]
+    assert idp.resource(kyle_id) == kyle_r
+    assert idp.resource(gio_id) == gio_r
+    assert idp.resource() == kyle_r                          # no header: the first configured resource
+    assert idp.resource("tunnel_someone_else") == kyle_r     # unknown tunnel is never told someone else's resource
+
+    # the metadata each tunnel is served
+    for tid, want in ((kyle_id, kyle_r), (gio_id, gio_r)):
+        prm = client.get("/.well-known/oauth-protected-resource", headers={idp.TUNNEL_HEADER: tid}).json()
+        assert prm["resource"] == want, tid
+        assert prm["authorization_servers"] == [ISS]
+    assert client.get("/.well-known/oauth-protected-resource").json()["resource"] == kyle_r
+
+    # ...and where each tunnel's 401 sends it to fetch that metadata
+    for tid, want in ((kyle_id, kyle_r), (gio_id, gio_r)):
+        r = client.post("/ext/mcp/", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                        headers={idp.TUNNEL_HEADER: tid})
+        assert r.status_code == 401
+        assert f'resource_metadata="{want}{idp.PRMD_PATH}"' in r.headers["www-authenticate"], tid
+
+    # with no explicit audience, a token for either resource is accepted and nothing else is
+    k, _ = keys
+    monkeypatch.setattr(settings, "oauth_audience", None)
+    assert idp.audience() == [kyle_r, gio_r]
+    assert idp.verify(tok(k, aud=kyle_r))["sub"] == "auth0|gio"
+    assert idp.verify(tok(k, aud=gio_r))["sub"] == "auth0|gio"
+    with pytest.raises(Exception):
+        idp.verify(tok(k, aud="https://api.openai.com/v1/tunnel/tunnel_stranger"))
+
+
+def test_one_resource_behaves_exactly_as_before(client, monkeypatch):
+    """A single-tunnel deployment must not notice any of this."""
+    monkeypatch.setattr(settings, "oauth_resource", RES)
+    assert idp.resource() == RES and idp.resource("tunnel_anything") == RES
+    assert client.get("/.well-known/oauth-protected-resource").json()["resource"] == RES
+    r = client.post("/ext/mcp/", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert f'resource_metadata="{RES}{idp.PRMD_PATH}"' in r.headers["www-authenticate"]
+    # built-in-AS mode is untouched: the 401 still points at the request's own origin
+    monkeypatch.setattr(settings, "oauth_issuer", None)
+    r = client.post("/ext/mcp/", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert 'resource_metadata="http://testserver/.well-known/oauth-protected-resource"' in r.headers["www-authenticate"]

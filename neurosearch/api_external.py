@@ -306,7 +306,7 @@ def oauth_router() -> APIRouter:
     def prm(request: Request) -> JSONResponse:
         from . import idp
         if idp.enabled():                                    # resource-server mode: point at the hosted provider
-            return JSONResponse(idp.protected_resource_metadata())
+            return JSONResponse(idp.protected_resource_metadata(idp.tunnel_of(request.headers)))
         return JSONResponse(oauth.protected_resource_metadata(base(request)))
 
     @r.get("/.well-known/oauth-authorization-server")
