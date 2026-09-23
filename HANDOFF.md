@@ -3207,3 +3207,66 @@ steady state once the authorization server is public. The only WARN is still `oa
 
 **Loose end for Kyle:** `MCP_OAUTH_TRUSTED_ORIGINS` is now dead config in `.env`. Harmless, but it reads like a
 working setting and will mislead the next person. Worth deleting. `.env` was read, never written, by this session.
+
+## Why "Create MCP App" said Neuro does not implement OAuth — 401 header vs PRMD body (2026-09-22)
+
+**First, a lost-evidence admission.** Asked to quote the tunnel log for 16:50–17:05, I cannot: I truncated
+`tunnel.out.log` (`: > …`) before the 17:12 restart to get a clean read, and destroyed exactly the window that
+mattered. `tunnel.err.log` holds only the earlier `/bin/bash … Operation not permitted` TCC failures. The
+foreground daemon's own log survived in a session scratchpad and covers 16:31:31–16:56:11, but contains **no
+inbound discovery lines at all** — 221 lines, all lifecycle plus the 8 harpoon failures. Do not truncate a live
+diagnostic log.
+
+**Timeline, reconstructed from what did survive.** `data/server.log` shows `starting Neuro Search` at
+**16:54:58**, mid-window. So the earliest ChatGPT attempts hit Neuro *before* the issuer/resource restart (the log
+shows `/.well-known/oauth-authorization-server 200` then later `404` — the built-in-AS→resource-server boundary),
+and the tunnel was **down** from 16:56:11 until the Python agent came up (the `.sh` agent was failing on TCC until
+16:57:47). At least one of the three attempts met a dead tunnel. That alone muddies the 3-attempt evidence.
+
+**The hypothesis is confirmed, with a sharper mechanism.** `api.py`'s `_ExternalCredentialGate` builds the 401 from
+the inbound request, not from the configured resource — **even in resource-server mode**:
+
+```python
+host = next((… Host header …), "localhost:8000")
+meta = oauth.base_url(f"{scope.get('scheme','http')}://{host}") + "/.well-known/oauth-protected-resource"
+```
+
+Measured directly:
+
+| request | `resource_metadata` emitted |
+|---|---|
+| default (tunnel forwards `Host: localhost:8000`) | `http://localhost:8000/.well-known/oauth-protected-resource` |
+| `Host:` tunnel origin | `http://tunnel-service…/.well-known/…` — right host, still **http** |
+| `X-Forwarded-Host` + `X-Forwarded-Proto` | `https://localhost:8000/…` — took the scheme, **ignored the host** |
+
+So the PRMD **body** correctly said `resource: https://api.openai.com/v1/tunnel/…` while the 401 **header** sent
+ChatGPT to plaintext loopback. ChatGPT follows the header, cannot reach it, and reports "does not implement OAuth".
+Honouring `X-Forwarded-Proto` but not `X-Forwarded-Host` is its own asymmetry, worth fixing whenever P11 code is
+next opened — but no code was changed here.
+
+**Fixed with configuration only, as instructed.** `oauth.base_url()` already prefers `settings.public_url`, which
+was unset. Set in `.env`:
+
+```
+NEUROSEARCH_PUBLIC_URL=https://api.openai.com/v1/tunnel/tunnel_6ab30bc37d8c8191965aa0d5b2b46afd
+```
+
+The 401 now reads
+`Bearer resource_metadata="https://api.openai.com/v1/tunnel/tunnel_6ab…/.well-known/oauth-protected-resource"`.
+`idp.resource()` prefers `oauth_resource`, which is already set, so the PRMD body is unchanged; the local UI still
+answers 200 (`PublicOriginGuard` only restricts requests whose Host *matches* `public_url`, and Kyle's browser
+hits localhost). `.env` was backed up first — the first time this session wrote to it.
+
+**The 307 also removed.** `mcp-server-url` lacked the trailing slash, so every call was `POST /ext/mcp` → 307 →
+`/ext/mcp/` → 401. A 307 preserves method and body and the 401 did arrive, so it was not the cause — but it was a
+variable, and some clients drop `Authorization` across a redirect. Profile now points at `/ext/mcp/`; doctor
+reports `mcp_server_reachable PASS HTTP 401` with no redirect. (Its one FAIL remains `health_listener: address
+already in use`, which is doctor testing a port the running agent legitimately owns.)
+
+**Unresolved, and the reason a retry may still fail.** ChatGPT's error names the MCP server as
+`https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_6ab…` — a **different host and
+path** from the `tunnel_url` the daemon reports and from what `NEUROSEARCH_OAUTH_RESOURCE` is set to. That is the
+step-3 "open measurement" finally showing its hand. The `.internal.` hostname looks like an address ChatGPT's
+backend uses rather than one Neuro should advertise, so it has NOT been adopted. If the retry fails again with the
+same message, that host is the next value to try for both `NEUROSEARCH_PUBLIC_URL` and `NEUROSEARCH_OAUTH_RESOURCE`
+— and this time **do not truncate the tunnel log**; read it for what the tunnel actually forwards.
