@@ -3168,3 +3168,42 @@ whenever doctor runs against a live daemon.
 
 **Next:** step 5 — create/verify the connector in ChatGPT settings while the agent is up, then 9A–9F on Kyle's
 account. The `resource` value ChatGPT actually sends still wants confirming against a real request.
+
+## The authkit "skipped: not allowed" lines are correct — no fix applied (2026-09-22)
+
+Asked to restart the tunnel agent so it would pick up `MCP_OAUTH_TRUSTED_ORIGINS` from `.env`, and to fall back to
+`mcp.oauth_trusted_origins` in the profile if that failed. **Neither setting exists in tunnel-client 0.0.14, and
+the behaviour they were meant to change is already right.** Nothing was changed; the evidence follows so nobody
+re-attempts it.
+
+**1. The agent loads `.env` correctly.** After `launchctl kickstart -k`, `MCP_OAUTH_TRUSTED_ORIGINS` is present in
+the running process's environment (checked with `ps eww`). `tools/tunnel_agent.py` is doing its job.
+
+**2. tunnel-client has no such setting.** `strings` over the binary: `MCP_OAUTH_TRUSTED_ORIGINS`,
+`oauth_trusted_origins`, `trusted_origins` and `trusted-origins` are all **absent**. The var is loaded and ignored.
+
+**3. The suggested fallback would have broken the profile**, not been ignored. Tested on a copy, never the live
+file:
+
+```
+CHECK profile_load  FAIL  parse config file: yaml: unmarshal errors:
+  line 23: field oauth_trusted_origins not found in type runtimeconfig.fileMCPConfig
+```
+
+**4. The lines are not a defect.** harpoon auto-registers hosts ChatGPT *cannot* reach — defaults are
+`hosts-include-loopback=true` and `hosts-include-private=true`. `authkit.app` is a public host, so
+`skipped: not allowed` means "no forwarding needed", which is why it is INFO and not WARN. The real knobs are
+`--harpoon.hosts-include-suffix` / `--hosts-include-regex`, and using them here would be actively wrong: it would
+proxy a public identity provider through the tunnel. The step-3 entry already records OpenAI's position — the
+Secure MCP Tunnel carries the MCP connection and OAuth discovery, and *"the authorization server itself is not
+automatically tunneled"*. Needing the AS to be publicly reachable is exactly why WorkOS was chosen over Neuro's
+built-in AS. Forcing it through harpoon would work against that decision, and could break the browser authorize
+step or the token exchange.
+
+**What a healthy startup looks like now**, so the shape is not misread again: seven authkit lines, all INFO, all
+`harpoon host auto-registration skipped: not allowed`, plus `target_count: 0`. Zero harpoon targets is the correct
+steady state once the authorization server is public. The only WARN is still `oauth-prmd-source-0` for
+`http://localhost:8000`, unchanged and still expected to be harmless — unproven until ChatGPT connects.
+
+**Loose end for Kyle:** `MCP_OAUTH_TRUSTED_ORIGINS` is now dead config in `.env`. Harmless, but it reads like a
+working setting and will mislead the next person. Worth deleting. `.env` was read, never written, by this session.
