@@ -41,11 +41,24 @@ def main() -> int:
     # A second tunnel (profile "gio", 2026-09-23) uses its own org's runtime key: <PROFILE>_CONTROL_PLANE_API_KEY in
     # .env becomes CONTROL_PLANE_API_KEY for this process only, so every profile can reference env:CONTROL_PLANE_API_KEY.
     if PROFILE != "local-http":
-        own = env.get(PROFILE.upper().replace("-", "_") + "_CONTROL_PLANE_API_KEY")
+        prefix = PROFILE.upper().replace("-", "_")
+        own = env.get(prefix + "_CONTROL_PLANE_API_KEY")
         if not own:
-            print(f"{PROFILE.upper()}_CONTROL_PLANE_API_KEY is not set in .env", file=sys.stderr)
+            print(f"{prefix}_CONTROL_PLANE_API_KEY is not set in .env", file=sys.stderr)
             return 78
         env["CONTROL_PLANE_API_KEY"] = own
+        # The tunnel id needs the same treatment, and for a sharper reason: CONTROL_PLANE_TUNNEL_ID in the
+        # environment BEATS the profile's own tunnel_id (measured 2026-09-23 -- `doctor --profile gio` reports
+        # Kyle's id with the variable set and Gio's without it). Because this wrapper loads all of .env, Kyle's
+        # CONTROL_PLANE_TUNNEL_ID would otherwise run every profile against Kyle's tunnel, silently.
+        # Same precedence rule applies to the tunnel's organization and the control-plane base URL, so every
+        # per-profile value travels as <PROFILE>_<NAME> in .env and nothing of Kyle's leaks into another profile.
+        for name in ("CONTROL_PLANE_TUNNEL_ID", "CONTROL_PLANE_ORGANIZATION_ID", "CONTROL_PLANE_BASE_URL"):
+            own_value = env.get(f"{prefix}_{name}")
+            if own_value:
+                env[name] = own_value
+            else:
+                env.pop(name, None)
     if not env.get("CONTROL_PLANE_API_KEY"):
         print("CONTROL_PLANE_API_KEY is not set in .env", file=sys.stderr)
         return 78
