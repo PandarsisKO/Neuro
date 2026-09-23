@@ -1713,7 +1713,7 @@ globalThis.p11AddPerson = async function p11AddPerson() {
   let actor = acc.actors.find(a => a.kind === 'person' && a.name.toLowerCase() === name.toLowerCase());
   if (!actor) actor = await post('/api/access/actors', { name });
   await api('/api/access/grants', { method: 'PUT', body: JSON.stringify({ project_id: state.project.id, actor_id: actor.id, role: $('#p11Role').value }) });
-  $('#p11Name').value = ''; $('#p11Msg').textContent = `${name} added with standard material only. Give them a connection code when they're ready to connect.`;
+  $('#p11Name').value = ''; $('#p11Msg').textContent = `${name} added with standard material only. When they connect from their ChatGPT, approve them in the banner at the top of Neuro.`;
   p11Load();
 }
 globalThis.p11Grant = async function p11Grant(actorId, patch) {
