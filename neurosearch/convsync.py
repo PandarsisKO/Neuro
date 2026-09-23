@@ -218,6 +218,10 @@ def sync(principal: Principal, args: dict[str, Any], apply_state: Any, envelope:
                "skipped": skipped, "needs_attention": attention, "intake_id": iid, "intake_status": fin["status"],
                "facts": [{"op": a["op"], **a["fact"]} for a in state["applied"]],
                "next": "To check this against the project, call consult_project with the same project_id now."}
+    from . import chat_mirror                 # the save also lands in the project's Chats (Kyle, 2026-09-22)
+    chat = chat_mirror.record(principal, pid, body, receipt)
+    if chat:
+        receipt["neuro_chat_id"] = chat
     with db.tx() as conn:
         conn.execute("UPDATE external_intakes SET receipt=? WHERE id=?", (json.dumps(receipt, default=str), iid))
     return envelope(receipt, auth=auth)

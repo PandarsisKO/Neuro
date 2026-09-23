@@ -157,6 +157,11 @@ async def lifespan(app: FastAPI):
     configure(logging.INFO)
     __import__("neurosearch.schemas", fromlist=["check_installation"]).check_installation()
     db.init_db()
+    try:                                     # P11: past saves from an outside AI get their chat (idempotent)
+        from . import chat_mirror
+        chat_mirror.backfill()
+    except Exception:
+        logging.getLogger(__name__).exception("chat mirror backfill failed")
     if settings.fake_ai:
         logging.getLogger(__name__).warning("NEUROSEARCH_FAKE_AI=1 — every model call is served by the deterministic fakes")
     jobs.start_workers()

@@ -3498,3 +3498,17 @@ hand-started server first, then waits for http://127.0.0.1:8000/ to answer).
 
 Gio next: needs her personal Platform `org-…` ID added to the tunnel (Organizations field). Unverified whether a
 cross-account org is accepted; fallback is a second tunnel in her org + a second tunnel-client profile.
+
+## S84 — saves from ChatGPT land in the project's Chats (Claude Desktop, 2026-09-22)
+
+Kyle, after his first real save: "chats from ChatGPT should just land in chats... naturally." The save had worked
+(context fact #26 + intake in the business project) but surfaced only mid-Settings. Now every successful
+`sync_conversation_to_project` also writes one readable message into a Neuro chat (`chat_mirror.py`): one chat per
+outside conversation (id derived from client + conversation_ref; a later save from the same ChatGPT conversation
+appends), titled "ChatGPT · <topic>", listing what was decided (with the person's words), facts, open questions,
+what waits for review, material read, originals kept, and the AI's own reading labelled not-evidence. It is an
+ordinary chat — Kyle can keep talking to the project there. A mirror failure never fails the save. Past saves are
+backfilled once at app startup (inside the app; idempotent by intake id). Verified live: Kyle's SBA save appears at
+the top of the business project's Chats. Tests: `tests/test_s84_external_chats.py` (7). Suite 2,478 passed.
+Open: when the person asked ChatGPT to archive the whole conversation, the chat shows only "Conversation archive
+(1 part)" — rendering that transcript inside the chat is the natural next step.
