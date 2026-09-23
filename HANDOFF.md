@@ -3325,3 +3325,43 @@ at is `supports_oauth: false` on the harpoon channel.
 were not the cause, though the 401 header genuinely was pointing at unreachable loopback and needed fixing anyway.
 ChatGPT's error still names `tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/<id>`, still not
 adopted, still the next value to try if this fails.
+
+## Create MCP App succeeded — the tunnel rewrites PRMD, so the audience is its URL (2026-09-22)
+
+Connector created 17:51 after `HARPOON_ALLOW_PLAINTEXT_HTTP=true`. ChatGPT's `oauth_config` came back with the
+authkit endpoints for `authorization_url`/`token_url`, `registration_url: null`,
+`client_id_metadata_document_supported: true`, and:
+
+```
+resource = https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_6ab30bc37d8c8191965aa0d5b2b46afd
+```
+
+**That answers the step-3 open measurement, and it is not a value anyone had to guess.** The tunnel **rewrites the
+protected-resource metadata on the way out**: Neuro serves `resource: https://api.openai.com/v1/tunnel/<id>` and
+ChatGPT receives the `tunnel-service…` URL. Earlier entries treated that hostname as an internal address Neuro
+should not adopt — correct for what Neuro *advertises*, wrong as a description of what ChatGPT *uses*. Both are
+true at once because the rewrite sits between them. Kyle has added it to WorkOS as a second resource indicator.
+
+**`NEUROSEARCH_OAUTH_AUDIENCE` set to that URL**, and Neuro restarted (18:02:29; the tunnel was deliberately **not**
+restarted — pid 62343 before and after). Resolution now:
+
+```
+idp.issuer()   = https://unbelievable-dinosaur-95-staging.authkit.app
+idp.resource() = https://api.openai.com/v1/tunnel/tunnel_6ab30bc37d8c8191965aa0d5b2b46afd
+idp.audience() = https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_6ab…   ✓
+idp.enabled()  = True
+```
+
+`audience()` returns `settings.oauth_audience` when set, falling back to `resource()` otherwise — which is exactly
+why this override exists. **`resource()` deliberately still differs**: what Neuro advertises is rewritten in
+transit, while `aud` is what a WorkOS token will actually carry and what Neuro must verify. They are not supposed
+to match, and changing `NEUROSEARCH_OAUTH_RESOURCE` to the tunnel-service URL would be wrong — ChatGPT already
+receives the right resource via the rewrite.
+
+Verified in a process reading the same `.env`; the server restarted after the edit so it loads the same values.
+Health does not surface the idp block, so this is not separately observable on an endpoint — if that matters later,
+that is a small addition to `db.health()`.
+
+`NEUROSEARCH_PUBLIC_URL`, the trailing-slash `mcp-server-url` and `HARPOON_ALLOW_PLAINTEXT_HTTP` all stay as they
+are. Next is the actual OAuth round trip: Kyle connects in ChatGPT, WorkOS authorizes, and the first real token
+reaches `/ext/mcp/`. Until a token is verified end to end, `aud` matching is configured but unproven.
