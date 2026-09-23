@@ -152,3 +152,19 @@ def test_jwts_are_refused_at_the_gate_when_no_provider_is_configured(client, key
     monkeypatch.setattr(settings, "oauth_issuer", None)
     r, _ = _mcp(client, tok(key), "list_projects")
     assert r.status_code == 401
+
+
+def test_two_tunnels_two_audiences_accepted_anything_else_refused(keys, monkeypatch):
+    """2026-09-23: OpenAI refused to associate Kyle's tunnel with Gio's personal account without a manual review, so
+    Gio's ChatGPT reaches Neuro through her own tunnel. Each tunnel's tokens carry that tunnel's URL as `aud`; a
+    comma-separated NEUROSEARCH_OAUTH_AUDIENCE accepts exactly those."""
+    k, _ = keys
+    kyle_t, gio_t = "https://tunnel-service.example/v1/mcp/tunnel_kyle", "https://tunnel-service.example/v1/mcp/tunnel_gio"
+    monkeypatch.setattr(settings, "oauth_audience", f"{kyle_t}, {gio_t}")
+    assert idp.audience() == [kyle_t, gio_t]
+    assert idp.verify(tok(k, aud=kyle_t))["sub"] == "auth0|gio"
+    assert idp.verify(tok(k, aud=gio_t))["sub"] == "auth0|gio"
+    with pytest.raises(Exception):
+        idp.verify(tok(k, aud="https://tunnel-service.example/v1/mcp/tunnel_someone_else"))
+    monkeypatch.setattr(settings, "oauth_audience", kyle_t)
+    assert idp.audience() == kyle_t

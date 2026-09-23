@@ -49,8 +49,18 @@ def resource() -> str:
     return settings.oauth_resource or (base_url() + MCP_PATH)
 
 
-def audience() -> str:
-    return settings.oauth_audience or resource()
+def audience() -> str | list[str]:
+    """What a token's `aud` must be. One value normally; a comma-separated NEUROSEARCH_OAUTH_AUDIENCE lists several.
+
+    Several exist when more than one Secure MCP Tunnel reaches this Neuro (2026-09-23): OpenAI will not associate one
+    person's tunnel with another person's personal account without a manual review, so Gio's ChatGPT reaches Neuro
+    through her OWN tunnel, and each tunnel rewrites the resource to its own tunnel-service URL. A token for either
+    tunnel is accepted; a token for anything else is not. PyJWT accepts a list and requires `aud` to match one of it."""
+    raw = settings.oauth_audience or ""
+    many = [a.strip() for a in raw.split(",") if a.strip()]
+    if len(many) > 1:
+        return many
+    return many[0] if many else resource()
 
 
 def looks_like_jwt(tok: str | None) -> bool:
