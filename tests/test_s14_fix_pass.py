@@ -98,10 +98,13 @@ def test_an_older_row_without_the_measure_is_unaffected():
 
 
 def test_the_card_holds_back_a_generic_only_match():
+    # S91 (2026-09-24) revised 0.61.0's "never show them": still held back BY DEFAULT, but one click away, because in
+    # a library that shares the project's theme "matched only broad wording" is on-topic (Kyle's 46 Hormozi videos
+    # reach a wealth project only through "net worth" / "passive income"). Never pre-ticked: they are never `strong`.
     ui = ui_source(__import__("pathlib").Path(UI).parent)
-    assert "const live = pending.filter(h => !h.weak_query_only)" in ui
-    assert "without a specific connection to this project" in ui
-    assert "show them anyway" not in ui
+    assert "const live = BOOT.showWeak ? pending : pending.filter(h => !h.weak_query_only)" in ui
+    assert "matched only broad wording from your goal" in ui
+    assert "show them too</a>" in ui and "showWeak: false" in ui
     assert "No specific matches in the last library scan" in ui
 
 

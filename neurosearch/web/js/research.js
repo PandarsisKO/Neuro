@@ -618,7 +618,7 @@ globalThis.addFromLibrary = async function addFromLibrary(id, btn) {
 // again"): the poller re-renders this card every few seconds, and innerHTML forgets every box the person ticked.
 // The person's choices live here, outside the DOM, and win over the default tick on every render; `sig` skips
 // the rebuild entirely when nothing the card shows has changed.
-globalThis.BOOT = { open: new Set(), showAll: false, busy: false, pick: new Map(), sig: null };
+globalThis.BOOT = { open: new Set(), showAll: false, showWeak: false, busy: false, pick: new Map(), sig: null };
 globalThis.bootPicked = function bootPicked(h) {
   return BOOT.pick.has(h.source_id) ? BOOT.pick.get(h.source_id) : (h.band === 'strong' && !h.from_old_matcher);
 }
@@ -655,7 +655,10 @@ globalThis.renderBoot = function renderBoot() {
   const el = $('#bootCard'); if (!el) return;
   const b = BOOTSTATE;
   const pending = (b?.sources || []).filter(h => h.state === 'suggested');
-  const live = pending.filter(h => !h.weak_query_only);
+  // S91: a "generic match" is one the scan found only through a broad facet ("passive income", "net worth"). In a
+  // library that shares the project's theme those are on-topic, not noise — Kyle's Hormozi videos were all here.
+  // They stay off the card by default (0.61.0) but are one click away, never silently excluded.
+  const live = BOOT.showWeak ? pending : pending.filter(h => !h.weak_query_only);
   if (!b || (!pending.length && !b.run)) { el.hidden = true; BOOT.sig = null; return; }
   const c = b.counts, run = b.run || {};
   const shown = BOOT.showAll ? live : live.filter(h => h.band === 'strong').concat(live.filter(h => h.band !== 'strong').slice(0, 5));
@@ -663,7 +666,7 @@ globalThis.renderBoot = function renderBoot() {
   // rebuild only when what the card shows changed (rows, bands, counts, banners, what is open) -- a poll that
   // brings the same answer must not touch a card the person is in the middle of reading or ticking
   const sig = JSON.stringify([shown.map(h => [h.source_id, h.band, !!h.from_old_matcher, !!h.weak_query_only, BOOT.open.has(h.source_id)]),
-    c, run.scope, !!b.stale, !!b.matcher_stale, b.matcher_note, projs.map(p => [p.name, p.relevant, p.total]), live.length, BOOT.showAll]);
+    c, run.scope, !!b.stale, !!b.matcher_stale, b.matcher_note, projs.map(p => [p.name, p.relevant, p.total]), live.length, BOOT.showAll, BOOT.showWeak]);
   if (sig === BOOT.sig && !el.hidden) return;
   BOOT.sig = sig;
   // any box the person has touched since the last render is theirs; keep it before innerHTML forgets it
@@ -674,7 +677,7 @@ globalThis.renderBoot = function renderBoot() {
     ${c.attached ? `<div class="muted">Already added ${c.attached} sources from your library.</div>` : ''}
     ${b.stale ? `<div class="banner" style="margin:8px 0">The project brief or open research gaps changed. Scan again for current suggestions.</div>` : ''}
     ${b.matcher_stale ? `<div class="banner" style="margin:8px 0">${esc(b.matcher_note || '')} <button class="small primary" onclick="rescanBoot()">Scan again — free</button></div>` : ''}
-    ${c.weak_query_only ? `<div class="muted" style="margin-top:6px">Excluded ${c.weak_query_only} sources that matched only generic wording, without a specific connection to this project.</div>` : ''}
+    ${c.weak_query_only && !BOOT.showWeak ? `<div class="muted" style="margin-top:6px">${c.weak_query_only} more matched only broad wording from your goal (no specific passage) — <a href="#" onclick="BOOT.showWeak=true;BOOT.showAll=true;BOOT.sig=null;renderBoot();return false">show them too</a></div>` : ''}
     ${projs.length ? `<div class="muted mt-2">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
     <div class="mt-2">${shown.map(bootRow).join('')}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap">
@@ -700,7 +703,7 @@ globalThis.bootDecide = async function bootDecide(decision) {
 globalThis.rescanBoot = async function rescanBoot() {
   try { await post(`/api/projects/${state.project.id}/bootstrap`, {}); toast('🔎 searching what you already own'); }
   catch (e) { toast(e.message || e, 'err'); }
-  BOOT.pick.clear(); BOOT.sig = null;
+  BOOT.pick.clear(); BOOT.sig = null; BOOT.showWeak = false;
   loadJobs(); setTimeout(loadBoot, 1500);
 }
 globalThis.jobsTimer = undefined;

@@ -38,9 +38,14 @@ from . import db, library
 
 log = logging.getLogger(__name__)
 
-MAX_QUERIES = 6          # bounded recalls; open gaps first, then interleaved goal/brief facets
+MAX_QUERIES = 14         # bounded $0 recalls, chosen by distinctiveness (S91); at most MAX_GAP_QUERIES from open gaps
+MAX_GAP_QUERIES = 3      # S91: evidence targets used to take half the budget and, on a young project, they are all
+                         # from whichever source landed first (three Points Guy card targets on a wealth project)
 PER_QUERY = 14
-MIN_QUERY_TOKENS = 3     # a fragment shorter than this retrieves noise
+MIN_GOAL_TOKENS = 3      # the whole goal must say at least this much before anything is searched
+MIN_QUERY_TOKENS = 2     # S91: was 3, which threw away "Business ownership", "real estate", "Mortgage strategy",
+                         # "Emergency reserves" — the two-word facets ARE the subjects. Distinctiveness ranking and
+                         # the anchor rule (ANCHOR_MIN_TERMS = 2) now guard against the noise the 3 was for.
 STRONG_QUERIES = 2       # matched by two independent queries = strong
 STRONG_COVERAGE = 0.6    # or one query whose terms are mostly covered by real passages
 KEEP = 60                # the most sources a scan will suggest; the rest are honestly reported as "not shown"
@@ -50,13 +55,31 @@ _STOP = {"the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with", "
          "help", "helps", "get", "make", "build", "better", "more", "new", "use", "using", "about"}
 
 
+_MD_HEADING = re.compile(r"^\s{0,3}#{1,6}\s*")
+_MD_BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+_MD_INLINE = re.compile(r"[*_`>]+")
+
+
+def _plain(text: str) -> str:
+    """S91: a brief is written in markdown. `# Generational Wealth Project Brief` is a label, not a facet of the
+    goal, and it was the first thing the scan searched for (rarest word: "brief", 91 sources). Headings are dropped,
+    bullets and emphasis are stripped, so what is left is what the person actually said."""
+    out = []
+    for line in (text or "").splitlines():
+        if _MD_HEADING.match(line):
+            continue
+        line = _MD_BULLET.sub("", line)
+        out.append(_MD_INLINE.sub(" ", line))
+    return "\n".join(out)
+
+
 def _clauses(text: str) -> list[str]:
     """A goal, broken into the facets worth searching separately. A long sentence is REPLACED by its parts, not
     accompanied by them: the whole goal as one query is a poor retrieval query (every extra term raises the
     coverage denominator and pushes good passages under the floor), and keeping both would also make every hit
     look like it "matched 2 parts of your goal" when it matched one idea twice."""
     out: list[str] = []
-    for sent in re.split(r"[.!?\n]+", text or ""):
+    for sent in re.split(r"[.!?\n]+", _plain(text)):
         sent = " ".join(sent.split())
         if not sent:
             continue
@@ -79,10 +102,14 @@ def queries_for(project: dict[str, Any], targets: list[dict[str, Any]] | None = 
     Deduplicated by content tokens — two phrasings of one idea must not spend two recalls."""
     goal = (project.get("goal") or "").strip()
     brief = (project.get("brief") or "").strip()
+    # a goal that is only a couple of words ("Buy a business.") is too short to search from — say so rather than
+    # guess; the 2-word floor below is for FACETS of a goal that says more, never for the whole of it
+    if len(_content_tokens(" ".join([goal, brief, *(project.get("questions") or []), *map(str, project.get("tags") or [])]))) < MIN_GOAL_TOKENS:
+        return []
     # Reserve half the bounded search budget for current gaps; keep the full question
     # so clause splitting cannot turn a domain-specific gap into a generic fragment.
     gaps = [t["question"] for t in (targets or []) if t.get("status") == "open" and t.get("question")]
-    gaps = [q for q in gaps if len(_content_tokens(q)) >= MIN_QUERY_TOKENS][:MAX_QUERIES // 2]
+    gaps = [q for q in gaps if len(_content_tokens(q)) >= MIN_QUERY_TOKENS][:MAX_GAP_QUERIES]
     goal_parts, brief_parts = _clauses(goal), _clauses(brief)
     cands = list(gaps)
     for i in range(max(len(goal_parts), len(brief_parts))):
@@ -109,9 +136,53 @@ def queries_for(project: dict[str, Any], targets: list[dict[str, Any]] | None = 
             continue
         picked.append(c)
         seen.append(toks)
-        if len(picked) >= MAX_QUERIES:
-            break
-    return picked
+    return _most_distinctive(picked, keep=set(gaps))
+
+
+def _most_distinctive(cands: list[str], keep: set[str] | None = None) -> list[str]:
+    """S91 (Kyle, 2026-09-24: Hormozi videos from his business project never surfaced for the wealth project). The
+    scan took the first MAX_QUERIES clauses in DOCUMENT ORDER — the brief's heading, a mangled first sentence and
+    one real facet — and never reached "investing and tax-advantaged accounts", "estate planning, trusts", "teaching
+    our children financial literacy" further down. Every clause is now weighed the way `query_strength` weighs it
+    (how many sources hold its rarest known word) and the most distinctive ones are searched; a clause made only of
+    words the whole library uses is not searched at all. Gap questions keep their place ahead of the goal's own
+    clauses, but only up to MAX_GAP_QUERIES of them."""
+    if len(cands) <= MAX_QUERIES:
+        return cands
+    keep = keep or set()
+    floor = DISTINCTIVE_SHARE * max(1, db.sources_with_chunks())
+    scored: list[tuple[int, float, str]] = []
+    for i, q in enumerate(cands):
+        try:
+            a = library.query_anchor(_content_tokens(q))
+        except Exception:  # noqa: BLE001 — never let scoring stop a scan; fall back to document order
+            return cands[:MAX_QUERIES]
+        n = a.get("sources") if a.get("term") else None
+        if n is None and (a.get("too_common") or a.get("all_generic")) and q not in keep:
+            continue                                        # cannot discriminate: not worth one of the recalls (a gap question is kept as before)
+        # Distinctive but PRESENT wins. Rarest-first picked "responsible stewardship" and "Multi-generational
+        # trusts" (2-3 sources each, nothing to find) over "IRAs and Roth strategies" (26). Tiers: a gap question
+        # first; then an anchor under the generic floor with at least MIN_USEFUL_SOURCES behind it, more sources
+        # first; then the ultra-rare; then the generic-leaning (query_strength will mark those weak anyway).
+        if q in keep:
+            tier, key = 0, 0.0
+        elif n is None:
+            tier, key = 2, 0.0
+        elif n >= MIN_USEFUL_SOURCES and n <= floor:
+            tier, key = 1, -float(n)
+        elif n < MIN_USEFUL_SOURCES:
+            tier, key = 2, -float(n)
+        else:
+            tier, key = 3, float(n)
+        scored.append((tier, key, q))
+    scored.sort(key=lambda t: (t[0], t[1], cands.index(t[2])))
+    # A few slots are held for the BROADEST facets of the goal ("net worth tracking", "passive income": common in a
+    # finance library, but this project's actual subject). Their matches reach the card as "generic matches" behind
+    # one click, which is how Kyle's 46 Hormozi videos can surface for a wealth project at all.
+    sharp = [t for t in scored if t[0] < 3][:MAX_QUERIES - MAX_BROAD_QUERIES]
+    broad = [t for t in scored if t[0] == 3]
+    chosen = [q for _, _, q in (sharp + broad)[:MAX_QUERIES]]
+    return sorted(chosen, key=cands.index)                # searched in the order the person wrote them
 
 
 # 0.60.5 — a stored judgement has to know what made it.
@@ -151,7 +222,38 @@ SCAN_VERSION = "recall-3"        # recall-1 = before 0.60.2 (3-char tokens, unio
 # Relative to the goal, not an absolute cut — the same self-calibrating shape as `CREATOR_PROVEN_QUANTILE`, and for
 # the same reason: 85 sources is generic in a 1,229-source library and distinctive in a 90-source one.
 WEAK_QUERY_QUANTILE = 0.5        # a query is weak if its rarest term is rarer than fewer than half the others'
+# S91: the median is a RELATIVE judgement, and it assumed a mix. Once the queries are chosen for distinctiveness
+# (_most_distinctive) the median of seven rarities was 8 sources, and "IRAs and Roth strategies" — Roth in 26 of
+# 1,590 sources — was declared generic and its matches hidden. A word in fewer than this share of the library is
+# distinctive whatever its neighbours look like; the median can only raise the bar above it, never lower it.
+DISTINCTIVE_SHARE = 0.02
+MIN_USEFUL_SOURCES = 4           # an anchor in fewer sources than this has almost nothing to retrieve
+MAX_BROAD_QUERIES = 3            # slots kept for the goal's broadest facets (above the generic line, closest to it first)
 MIN_QUERIES_TO_RANK = 3          # with one or two queries there is no distribution to compare against
+
+
+def _recall_without_anchor(project_id: str, q: str, first: dict[str, Any], project: dict[str, Any]) -> dict[str, Any] | None:
+    term = (first.get("anchor") or {}).get("term")
+    if not term:
+        return None
+    rest = [w for w in q.split() if _content_tokens(w) and term not in _content_tokens(w)]
+    if len(_content_tokens(" ".join(rest))) < ANCHOR_RETRY_MIN_TOKENS:
+        return None
+    q2 = " ".join(rest)
+    try:
+        r2 = library.recall(project_id, q2, limit=PER_QUERY, want_enrichment=False,
+                            reason=f"project bootstrap (without '{term}'): {(project.get('goal') or project.get('name') or '')[:100]}")
+    except Exception as e:  # noqa: BLE001
+        log.warning("bootstrap: retry recall failed for %r: %s", q2[:60], e)
+        return None
+    a2 = r2.get("anchor") or {}
+    if a2.get("all_generic") or a2.get("too_common") or not r2.get("suggestions"):
+        return None
+    r2["retried_without"] = term
+    return r2
+
+
+ANCHOR_RETRY_MIN_TOKENS = 2      # "tax planning" is a phrase worth one recall; a single word is not
 
 
 def query_strength(queries: list[str]) -> dict[str, Any]:
@@ -180,6 +282,8 @@ def query_strength(queries: list[str]) -> dict[str, Any]:
     if len(known) >= MIN_QUERIES_TO_RANK:
         import statistics
         cut = statistics.median(known)
+        floor = DISTINCTIVE_SHARE * max(1, db.sources_with_chunks())
+        cut = max(cut, floor)
         weak += [q for q, n in rarity.items() if n is not None and n > cut]
     note = ""
     if too_common:
@@ -204,7 +308,11 @@ def _band(hit: dict[str, Any]) -> str:
     strong_passage = passage is None or passage >= STRONG_COVERAGE     # None = an older row without the measure
     if not strong_passage:
         return "possible"
-    # 0.61.0: and it has to have matched a query that could tell topics apart
+    # 0.61.0: and it has to have matched a query that could tell topics apart. S91: a query that only matched after
+    # its anchor word was dropped ("property insurance" for "Property and casualty insurance") is not that query,
+    # so on its own it makes a "possible", never a "strong" — the row the card pre-ticks.
+    if hit.get("retried_queries") and not hit.get("distinctive_queries"):
+        return "possible"
     if hit.get("distinctive_queries") is not None and not hit["distinctive_queries"]:
         return "possible"
     return "strong" if (len(hit["queries"]) >= STRONG_QUERIES or hit["coverage"] >= STRONG_COVERAGE) else "possible"
@@ -255,6 +363,13 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
         # its scores or passage coverage promote a separate, weaker subject match.
         if q in weak_qs or (r.get("anchor") or {}).get("all_generic") or (r.get("anchor") or {}).get("too_common"):
             continue
+        # S91: the anchor rule wants the query's RAREST word in the passage, and in a facet like "Multi-year tax
+        # planning" or "Two-person credit card strategies" the rarest word is the incidental modifier, not the
+        # subject — so 7 of Kyle's 10 well-chosen queries returned nothing. When a distinctive query finds nothing,
+        # it is searched once more without that word ("tax planning", "credit card strategies"): the next-rarest
+        # word anchors instead. One extra $0 recall, only on an empty result, never on a generic query.
+        if not r.get("suggestions"):
+            r = _recall_without_anchor(project_id, q, r, project) or r
         for s in r["suggestions"]:
             m = merged.setdefault(s["source_id"], {
                 "source_id": s["source_id"], "title": s.get("title"), "channel": s.get("channel"),
@@ -266,8 +381,10 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
             m["coverage"] = max(m["coverage"], s.get("coverage") or 0.0)
             m["passage_coverage"] = max(m["passage_coverage"], s.get("passage_coverage") or 0.0)
             m["queries"].append(q)
-            if q not in weak_qs:
-                m["distinctive_queries"].append(q)
+            if q not in weak_qs and not r.get("retried_without"):
+                m["distinctive_queries"].append(q)       # a shortened retry can suggest, never make a hit "strong" on its own
+            if r.get("retried_without"):
+                m.setdefault("retried_queries", []).append(q)
             m["terms"] = sorted(set(m["terms"]) | set(s.get("covered_terms") or []))
             for c in (s.get("chunks") or [])[:2]:
                 if len(m["passages"]) < 4 and not any(p["chunk_id"] == c["chunk_id"] for p in m["passages"]):
@@ -282,12 +399,13 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
     rows = []
     for h in hits:
         h["band"] = _band(h)
-        h["weak_query_only"] = bool(h["queries"]) and not h["distinctive_queries"]
+        h["weak_query_only"] = bool(h["queries"]) and not h["distinctive_queries"] and not h.get("retried_queries")
         h["why"] = _why(h)
         rows.append({"object_kind": "source", "object_id": h["source_id"], "band": h["band"], "score": h["score"],
                      "why": json.dumps({"passages": h["passages"], "terms": h["terms"], "coverage": h["coverage"],
                                         "weak_query_only": h["weak_query_only"],
-                                        "distinctive_queries": h["distinctive_queries"]}),
+                                        "distinctive_queries": h["distinctive_queries"],
+                                        "retried_queries": h.get("retried_queries") or []}),
                      "origin": json.dumps({"queries": h["queries"]})})
     db.upsert_project_reuse(project_id, rows, brev, scan_version=SCAN_VERSION)
     # 0.61.0 — a re-scan has to be able to take a suggestion AWAY.
@@ -322,6 +440,8 @@ def _why(h: dict[str, Any]) -> list[str]:
         why.append("covers " + ", ".join(h["terms"][:6]))
     if len(h["queries"]) > 1:
         why.append(f"matched {len(h['queries'])} separate parts of your goal")
+    if h.get("retried_queries") and not h.get("distinctive_queries"):
+        why.append("matched only after the search was shortened — check the passage")
     return why
 
 

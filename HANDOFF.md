@@ -3677,3 +3677,49 @@ Uncommitted at the time of writing — Claude Code commits (stage only: `neurose
 `tests/test_s85_rank_loop_and_boot_picks.py`, `tests/test_s86_pause_resume_job.py`, `tests/test_s87_findings_per_source_approve.py`, `tests/test_s88_usability_sweep.py`, `tests/test_s89_reviews_read_this_projects_scores.py`, `tests/test_s12_recall_precision.py`,
 `HANDOFF.md`; the pre-existing edits to `tests/test_s35_pool_cache.py` / `tests/test_s68_sources_list_diet.py`
 are not part of this) and runs the full suite on the Mac.
+
+## S91 — the library scan searched for the brief's markdown heading (Claude Desktop, 2026-09-24 morning)
+
+Kyle: *"in our business acquisition project we scanned a lot of Alex Hormozi, now in my Personal Finance project, I
+would expect videos from his ... to be popping up as suggestions from the library. but nothing is coming up which
+feels suspicious to me."* Read from `/api/projects/4f310029…/bootstrap` in his Chrome, the last scan had searched
+1,590 sources with six queries: `# Generational Wealth Project Brief` (the markdown heading, rarest word "brief"),
+`I are starting a long-term family wealth project…` (a clause-split fragment, then discarded as generic),
+`transferring wealth across generations` (exactly at the generic cut) and three "Corroborate or refute: $95 annual
+fee / Qantas points / transfer partners" targets from the first Points Guy findings. Found: 1. The ten concrete
+areas further down the goal (IRAs and Roth, estate planning, umbrella coverage, tax-efficient transfer…) were never
+searched: `MAX_QUERIES = 6`, half reserved for gaps, the rest in document order.
+
+`bootstrap.py`, each step verified live by re-running the scan:
+- `_plain()` strips markdown before clause-splitting (headings are labels, not facets); `MIN_GOAL_TOKENS = 3`
+  keeps "Buy a business." unsearchable as before, `MIN_QUERY_TOKENS` 3 → 2 so two-word facets ("real estate",
+  "Mortgage strategy", "Business ownership") count.
+- `MAX_QUERIES` 6 → 14, gaps capped at `MAX_GAP_QUERIES = 3`, and `_most_distinctive()` picks clauses by the
+  rarest-known-word measure `query_strength` already reports: present-but-distinctive first (anchor under the
+  generic line with ≥ `MIN_USEFUL_SOURCES` behind it, more sources first), then the ultra-rare, with
+  `MAX_BROAD_QUERIES = 3` slots held for the goal's broadest facets. Rarest-first alone picked "responsible
+  stewardship"/"Beneficiary planning" (2–3 sources) over "IRAs and Roth strategies" (26).
+- `query_strength`: the median cut gets an absolute floor, `DISTINCTIVE_SHARE = 0.02` of the library. With only
+  distinctive queries left the median was 8 and "IRAs and Roth strategies" (Roth in 26 of 1,590) was declared
+  generic and hidden.
+- `_recall_without_anchor()`: a distinctive query that finds nothing is searched once more without its anchor
+  word — "Multi-year tax planning" anchors on "multi-year", the subject is "tax planning". A hit found only that
+  way is `possible`, never `strong` (`retried_queries`; `weak_query_only` excludes them). Before this, 7 of 10
+  good queries returned nothing.
+- `research.js`: generic-only matches ("matched only broad wording from your goal") are behind "show them too"
+  instead of silently excluded (`BOOT.showWeak`). This revises 0.61.0's "never show them" (`test_s14_fix_pass::
+  test_the_card_holds_back_a_generic_only_match` updated): held back by default still, never pre-ticked (never
+  `strong`), but reachable — the Airbnb-for-UX incident was a library whose theme differed from the project's;
+  in one that shares it, broad wording is on-topic.
+Live: the same project's scan went from found 1 to found 13–34 across 8–20 channels, 3–4 strong (Karlton Dennis,
+Mark J Kohler, The Multipliers Club on Roth/IRA/tax). Tests: `tests/test_s91_bootstrap_queries.py` (9); r2, k5,
+s16, s19, s55, s75, s12, s53 green with it.
+
+**Hormozi specifically — a product question for Kyle, not a bug.** His 46 ready Hormozi videos are about growing
+and selling businesses, sales, motivation. `library/recall` finds them only under the goal's broadest words
+("net worth tracking" → 4 of his videos; "passive income" → "Dangerously Honest Advice to Create Generational
+Wealth"), and those words are in 11–25 % of a 1,600-source business library, so no passage-topical scan will
+rank them for a wealth-transfer brief without flooding the card. What he is describing is creator affinity — "you
+trusted this channel in another project; 46 of his videos are ready; scan them for this one?" — a channel-level
+suggestion the app does not have (the Pool's "same creator as a priority source" is within-project). Not built;
+his call.
