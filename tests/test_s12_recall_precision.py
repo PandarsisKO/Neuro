@@ -294,7 +294,9 @@ def test_a_fresh_row_is_not_stale(lib):
 
 def test_an_old_suggestion_is_never_pre_ticked():
     ui = ui_source(__import__("pathlib").Path(__file__).resolve().parents[1] / "neurosearch" / "web")
-    assert "h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''" in ui
+    # S85 moved the default tick into bootPicked() so the person's own picks survive polls; the rule is unchanged
+    assert "return BOOT.pick.has(h.source_id) ? BOOT.pick.get(h.source_id) : (h.band === 'strong' && !h.from_old_matcher);" in ui
+    assert "${bootPicked(h) ? 'checked' : ''}" in ui
     assert "older matcher" in ui
     assert "Scan again — free" in ui
 

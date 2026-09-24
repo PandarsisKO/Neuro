@@ -54,6 +54,11 @@ class Cancelled(RuntimeError):
     """Raised inside a job at a safe boundary after cancellation was requested. Nothing is written after it."""
 
 
+class Paused(RuntimeError):
+    """S86: raised at the same safe boundary after the person pressed pause. Everything written so far is kept; the
+    job goes back to the queue held until Resume, and re-running continues from its last completed stage."""
+
+
 class Yield(Exception):
     """A long job voluntarily gives its worker back at a safe boundary, with durable progress already written.
 
@@ -113,6 +118,8 @@ def check_cancel() -> None:
     jid = getattr(_current, "job_id", None)
     if jid and db.cancel_requested(jid):
         raise Cancelled("cancelled by the user")
+    if jid and db.pause_requested(jid):
+        raise Paused("paused by the user")
 
 
 def stage_event(stage: str, state: str = "complete", **payload: Any) -> None:
@@ -463,6 +470,9 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     except ExternalPending as e:
         db.park_external(jid, run_id, e.provider, e.kind, e.handle, e.deadline)
         return "external_pending"
+    except Paused:
+        db.hold_paused(jid, run_id)
+        return "queued"
     except Cancelled:
         db.finish_job(jid, run_id, "cancelled", message="cancelled")
         pl = job.get("payload") or {}

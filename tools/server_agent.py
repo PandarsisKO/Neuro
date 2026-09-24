@@ -16,13 +16,40 @@ copy once, deliberately, at install time.
 """
 from __future__ import annotations
 
+import glob
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 LOG_LIMIT = 5_000_000
+# Where the Claude Code CLI (and node/brew tools) usually live on a Mac. launchd starts us with PATH=/usr/bin:/bin:
+# /usr/sbin:/sbin -- none of these -- and the first casualty (2026-09-23) was every local-capable job: `claude` is
+# not on PATH, so rank_proposed failed on every batch and Kyle saw the ranking "start and stop" in a loop.
+USER_BINS = ("~/.local/bin", "~/bin", "~/.claude/local/bin", "~/.claude/local", "~/.npm-global/bin", "~/.volta/bin",
+             "~/.bun/bin", "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin")
+
+
+def login_path() -> str:
+    """The PATH Kyle's own Terminal would have: ask his login shell (sources .zprofile/.zshrc, nvm, brew shellenv...),
+    then append the usual user bin dirs as a floor in case the shell printed nothing. Never removes what launchd gave."""
+    parts: list[str] = []
+    shell = os.environ.get("SHELL") or "/bin/zsh"
+    try:
+        out = subprocess.run([shell, "-lic", 'printf %s "$PATH"'], capture_output=True, text=True, timeout=15,
+                             cwd=str(Path.home()), env={**os.environ, "TERM": "dumb"})
+        if out.returncode == 0:
+            parts += [x for x in out.stdout.strip().split(":") if x]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    parts += [os.path.expanduser(x) for x in USER_BINS]
+    for g in ("~/.nvm/versions/node/*/bin", "~/.local/share/fnm/node-versions/*/installation/bin"):
+        parts += sorted(glob.glob(os.path.expanduser(g)), reverse=True)
+    parts += [x for x in os.environ.get("PATH", "").split(":") if x]
+    seen: set[str] = set()
+    return ":".join(x for x in parts if not (x in seen or seen.add(x)))
 
 
 def main() -> int:
@@ -44,6 +71,8 @@ def main() -> int:
     os.dup2(fd, 1)
     os.dup2(fd, 2)
     port = os.environ.get("NEUROSEARCH_PORT", "8000")
+    os.environ["PATH"] = login_path()
+    os.write(fd, f"PATH={os.environ['PATH']}\n".encode())
     os.execv(str(py), [str(py), str(exe), "start", "--port", port])   # launchd supervises the server from here
 
 

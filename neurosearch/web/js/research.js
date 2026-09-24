@@ -94,16 +94,25 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
     if (f.used.chat) b.push(`<span class="tag" title="cited in ${f.used.chat} chat answer(s)">cited ${f.used.chat}×</span>`);
     if (f.used.claim) b.push(`<span class="tag" title="became or evidences a Claim">Claim: ${esc(f.used.claim)}</span>`);
     return b.join(' '); };
+  // S88 (from Kyle's S87 report, applied here too): the drawer is THE per-source place, so "approve all from this
+  // source" belongs on its Waiting-for-review group; the row buttons say Approve/Dismiss in words like the
+  // workbench does (0.63.27), and a group longer than 60 shows the rest behind a labelled fold, never silently cut.
+  const DRAWER_FIRST = 60;
   const group = (key, label, actions) => {
     const list = d.findings[key] || []; if (!list.length) return '';
-    return `<div style="margin-top:10px"><b>${label} (${list.length})</b>${actions || ''}</div>` + list.slice(0, 60).map(f => `
+    const ids = JSON.stringify(list.map(f => f.id)).replace(/"/g, '&quot;');
+    const bulk = key === 'suggested' || key === 'reserve'
+      ? ` <span style="font-weight:normal;margin-left:8px"><button class="small" title="Approve all ${list.length} from this source" onclick="drawerBulk(${ids},'approved','${sid}')">Approve all ${list.length}</button><button class="small ghost" title="Dismiss all ${list.length} from this source (nothing is deleted)" onclick="drawerBulk(${ids},'dismissed','${sid}')">Dismiss all</button></span>` : '';
+    const row = f => `
       <div class="f"><span class="fi" title="importance ${f.importance || 0}/5">${'●'.repeat(f.importance || 0)}<span class="dim">${'●'.repeat(5 - (f.importance || 0))}</span></span>
         <div class="main"><div class="ttl">${esc(f.title || (f.content || '').slice(0, 90))}</div>
           <div class="meta">${badge(f)} ${f.locator ? `<a class="chip" href="${esc(f.link || '#')}" target="_blank">▶ ${esc(f.locator)}</a>` : ''}${f.area ? `<span class="tag muted">${esc(f.area)}</span>` : ''}</div></div>
-        <div class="act">${key === 'reserve' ? `<button class="small primary" title="Approve" aria-label="Approve" onclick="drawerNote(${f.id},'approved','${sid}')"><svg class="ic"><use href="#ic-approve"></use></svg></button><button class="small" title="Send to Suggested" aria-label="Send to Suggested" onclick="drawerNote(${f.id},'suggested','${sid}')"><svg class="ic"><use href="#ic-flag"></use></svg></button>`
-          : key === 'suggested' ? `<button class="small primary" title="Approve" aria-label="Approve" onclick="drawerNote(${f.id},'approved','${sid}')"><svg class="ic"><use href="#ic-approve"></use></svg></button><button class="small ghost" title="Dismiss" aria-label="Dismiss" onclick="drawerNote(${f.id},'dismissed','${sid}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>`
-          : key === 'approved' ? `<button class="small ghost" title="Dismiss" aria-label="Dismiss" onclick="drawerNote(${f.id},'dismissed','${sid}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>`
-          : key === 'dismissed' ? `<button class="small ghost" title="Put it back in the review queue" onclick="drawerNote(${f.id},'suggested','${sid}')">↩ Restore</button>` : ''}</div></div>`).join('');
+        <div class="act">${key === 'reserve' ? `<button class="small" title="Keep it — approved findings feed exports, the plan and Claims" onclick="drawerNote(${f.id},'approved','${sid}')">Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="drawerNote(${f.id},'suggested','${sid}')">To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted)" onclick="drawerNote(${f.id},'dismissed','${sid}')">Dismiss</button>`
+          : key === 'suggested' ? `<button class="small" title="Keep it — approved findings feed exports, the plan and Claims" onclick="drawerNote(${f.id},'approved','${sid}')">Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted)" onclick="drawerNote(${f.id},'dismissed','${sid}')">Dismiss</button>`
+          : key === 'approved' ? `<button class="small ghost" title="Remove it from the project's approved findings" onclick="drawerNote(${f.id},'dismissed','${sid}')">Dismiss</button>`
+          : key === 'dismissed' ? `<button class="small ghost" title="Put it back in the review queue" onclick="drawerNote(${f.id},'suggested','${sid}')">↩ Restore</button>` : ''}</div></div>`;
+    return `<div style="margin-top:10px"><b>${label} (${list.length})</b>${bulk}${actions || ''}</div>` + list.slice(0, DRAWER_FIRST).map(row).join('')
+      + (list.length > DRAWER_FIRST ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Show the other ${list.length - DRAWER_FIRST}</summary>${list.slice(DRAWER_FIRST).map(row).join('')}</details>` : '');
   };
   const staleLine = st.status === 'current' ? '<span class="st strong">current</span>'
     : st.status === 'current_accepted' ? '<span class="st developing">accepted as still usable</span>'
@@ -159,7 +168,7 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
       (u.plan.uses || []).map(p => `<div class="kn"><span class="st strong">📋 plan</span><div><b>${esc(p.where)}</b>${p.text ? `<div class="why">${esc(p.text)}</div>` : ''}</div></div>`).join('') +
       (u.chat || []).map(c => `<div class="kn"><span class="st developing">💬 chat</span><div><b>${esc(c.conversation)}</b> <span class="muted">· ${esc((c.locators || []).join(', '))}</span><div class="why">${esc(c.snippet)}</div></div></div>`).join('')
       : ''}
-    ${d.claims.length ? `<div style="margin-top:10px"><b>Claims resting on it (${d.claims.length})</b></div>` + d.claims.slice(0, 12).map(c => `<div class="kn">${stTag(c.strength)}<div><div>${esc((c.text || '').slice(0, 200))}</div><div class="why">${esc(c.claim_type)}${c.independent ? '' : ' · repeats another source'}${c.stale ? ' · evidence stale' : ''}${c.locator ? ' · ' + esc(c.locator) : ''}</div></div></div>`).join('') : ''}
+    ${d.claims.length ? `<div style="margin-top:10px"><b>Claims resting on it (${d.claims.length})</b></div>` + d.claims.slice(0, 12).map(c => `<div class="kn">${stTag(c.strength)}<div><div>${esc((c.text || '').slice(0, 200))}</div><div class="why">${esc(c.claim_type)}${c.independent ? '' : ' · repeats another source'}${c.stale ? ' · evidence stale' : ''}${c.locator ? ' · ' + esc(c.locator) : ''}</div></div></div>`).join('') + (d.claims.length > 12 ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Show the other ${d.claims.length - 12}</summary>` + d.claims.slice(12).map(c => `<div class="kn">${stTag(c.strength)}<div><div>${esc((c.text || '').slice(0, 200))}</div><div class="why">${esc(c.claim_type)}${c.independent ? '' : ' · repeats another source'}${c.stale ? ' · evidence stale' : ''}${c.locator ? ' · ' + esc(c.locator) : ''}</div></div></div>`).join('') + `</details>` : '') : ''}
     ${group('approved', 'Approved findings')}
     ${group('suggested', 'Waiting for review')}
     ${group('reserve', 'Extracted beyond the cap', ' <span class="muted" style="font-weight:normal;font-size:12px">— lower importance, kept rather than thrown away</span>')}
@@ -204,6 +213,7 @@ globalThis.sourceArchived = async function sourceArchived(sid) {
       <a class="muted" href="${esc(c.archived_url || '#')}" target="_blank" title="the page exactly as captured, without the archive's own navigation">raw ↗</a>
     </div></div>`;
 }
+globalThis.drawerBulk = async function drawerBulk(ids, status, sid) { if (!ids.length) return; await post('/api/notes/bulk-status', { note_ids: ids, status }); toast(`${status === 'approved' ? '✓ approved' : 'dismissed'} ${ids.length}`); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerNote = async function drawerNote(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerRebuild = async function drawerRebuild(sid) { await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], source_ids: [sid], transport: 'interactive' }); toast('↻ queued'); dlg.close(); loadJobs(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerAccept = async function drawerAccept(sid) { await post(`/api/projects/${state.project.id}/staleness/accept`, { source_ids: [sid] }); toast('kept as still usable'); sourceDrawer(sid); loadStaleness(); }
@@ -443,7 +453,7 @@ globalThis.renderQuestionsPane = function renderQuestionsPane() {
      ${total > open.length ? `<div class="muted" style="font-size:12.5px;margin-bottom:6px">Showing the ${open.length} most important. ${RES.area ? '' : 'Nothing is hidden — load more below.'}</div>` : ''}
      ${open.length ? open.map(q => qCard(q, RES.qs.indexOf(q))).join('') : `<div class="empty">No open questions${RES.area ? ' in this area' : ''}.</div>`}
      ${more ? `<div style="margin-top:10px"><button class="small" onclick="resMoreQuestions(this)">Load the next 200 of ${RES.v.questions_total}</button></div>` : ''}
-     ${rest.length ? `<h3 style="margin-top:14px">Settled (${rest.length})</h3>` + rest.slice(0, 30).map(q => `<div class="kn"><span class="st strong">settled</span><div><div>${esc(q.headline || q.question)}</div><div class="why">${esc(q.current)}</div></div></div>`).join('') : ''}`;
+     ${rest.length ? `<h3 style="margin-top:14px">Settled (${rest.length})</h3>` + rest.slice(0, 30).map(q => `<div class="kn"><span class="st strong">settled</span><div><div>${esc(q.headline || q.question)}</div><div class="why">${esc(q.current)}</div></div></div>`).join('') + (rest.length > 30 ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Show the other ${rest.length - 30} settled</summary>` + rest.slice(30).map(q => `<div class="kn"><span class="st strong">settled</span><div><div>${esc(q.headline || q.question)}</div><div class="why">${esc(q.current)}</div></div></div>`).join('') + `</details>` : '') : ''}`;
 }
 globalThis.resMoreQuestions = async function resMoreQuestions(btn) {
   const was = btn.textContent; btn.disabled = true; btn.textContent = 'loading…';
@@ -604,7 +614,18 @@ globalThis.addFromLibrary = async function addFromLibrary(id, btn) {
 // and check — never "highly relevant to your goal", which is what you get when you ask a model to explain a
 // retrieval it did not perform. Nothing here is attached until the user says so; attaching adds a membership row
 // and never copies, re-downloads or re-transcribes anything.
-globalThis.BOOT = { open: new Set(), showAll: false, busy: false };
+// `pick` (2026-09-23, Kyle: "when I try to click the checkbox ... the page refreshes and the check box is unclicked
+// again"): the poller re-renders this card every few seconds, and innerHTML forgets every box the person ticked.
+// The person's choices live here, outside the DOM, and win over the default tick on every render; `sig` skips
+// the rebuild entirely when nothing the card shows has changed.
+globalThis.BOOT = { open: new Set(), showAll: false, busy: false, pick: new Map(), sig: null };
+globalThis.bootPicked = function bootPicked(h) {
+  return BOOT.pick.has(h.source_id) ? BOOT.pick.get(h.source_id) : (h.band === 'strong' && !h.from_old_matcher);
+}
+globalThis.bootPick = function bootPick(id, on) {
+  BOOT.pick.set(id, !!on); BOOT.sig = null;
+  const n = document.querySelectorAll('#bootCard .bootPick:checked').length, el = $('#bootSel'); if (el) el.textContent = n;
+}
 globalThis.bootWhy = function bootWhy(h) {
   const p = (h.passages || [])[0];
   return `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || []).join(' · '))}</div>` +
@@ -613,7 +634,7 @@ globalThis.bootWhy = function bootWhy(h) {
 globalThis.bootRow = function bootRow(h) {
   const open = BOOT.open.has(h.source_id);
   return `<div class="job" style="flex-wrap:wrap;align-items:flex-start">
-    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''} style="margin-top:5px">
+    <input type="checkbox" class="bootPick" value="${h.source_id}" ${bootPicked(h) ? 'checked' : ''} onchange="bootPick('${h.source_id}', this.checked)" style="margin-top:5px">
     <div class="grow min-w-0">
       <div style="overflow:hidden;text-overflow:ellipsis">${esc(h.title || h.source_id)}${h.channel ? ` <span class="muted text-xs">· ${esc(h.channel)}</span>` : ''}</div>
       ${open ? bootWhy(h) : `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || [])[0] || '')}</div>`}
@@ -635,10 +656,18 @@ globalThis.renderBoot = function renderBoot() {
   const b = BOOTSTATE;
   const pending = (b?.sources || []).filter(h => h.state === 'suggested');
   const live = pending.filter(h => !h.weak_query_only);
-  if (!b || (!pending.length && !b.run)) { el.hidden = true; return; }
+  if (!b || (!pending.length && !b.run)) { el.hidden = true; BOOT.sig = null; return; }
   const c = b.counts, run = b.run || {};
   const shown = BOOT.showAll ? live : live.filter(h => h.band === 'strong').concat(live.filter(h => h.band !== 'strong').slice(0, 5));
   const projs = (b.projects || []).slice(0, 4);
+  // rebuild only when what the card shows changed (rows, bands, counts, banners, what is open) -- a poll that
+  // brings the same answer must not touch a card the person is in the middle of reading or ticking
+  const sig = JSON.stringify([shown.map(h => [h.source_id, h.band, !!h.from_old_matcher, !!h.weak_query_only, BOOT.open.has(h.source_id)]),
+    c, run.scope, !!b.stale, !!b.matcher_stale, b.matcher_note, projs.map(p => [p.name, p.relevant, p.total]), live.length, BOOT.showAll]);
+  if (sig === BOOT.sig && !el.hidden) return;
+  BOOT.sig = sig;
+  // any box the person has touched since the last render is theirs; keep it before innerHTML forgets it
+  for (const i of el.querySelectorAll('.bootPick')) if (!BOOT.pick.has(i.value) && i.checked !== i.defaultChecked) BOOT.pick.set(i.value, i.checked);
   el.hidden = false;
   el.innerHTML = `<b>${live.length ? 'Research in your library that may help this project' : 'No specific matches in the last library scan'}</b>
     <div class="muted mt-1">${c.strong} strong matches${c.possible ? ` · ${c.possible} possible matches` : ''}${run.scope ? ` · searched ${run.scope} sources outside this project` : ''}. These are sources you already own.</div>
@@ -649,7 +678,7 @@ globalThis.renderBoot = function renderBoot() {
     ${projs.length ? `<div class="muted mt-2">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
     <div class="mt-2">${shown.map(bootRow).join('')}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap">
-      ${shown.length ? `<button class="small primary" onclick="bootDecide('attach')">Add selected</button><button class="small ghost" onclick="bootDecide('dismiss')">Not useful</button>` : ''}
+      ${shown.length ? `<button class="small primary" onclick="bootDecide('attach')">Add selected (<span id="bootSel">${shown.filter(bootPicked).length}</span>)</button><button class="small ghost" onclick="bootDecide('dismiss')">Not useful</button>` : ''}
       ${live.length > shown.length ? `<button class="small ghost" onclick="BOOT.showAll=true;renderBoot()">Show all ${live.length}</button>` : ''}
       <span class="grow"></span><button class="small ghost" onclick="rescanBoot()">Scan again</button>
     </div>`;
@@ -665,11 +694,13 @@ globalThis.bootDecide = async function bootDecide(decision) {
     toast(decision === 'attach' ? `✓ Added ${r.count} source${r.count === 1 ? '' : 's'} you already owned` : `Hid ${r.count}`);
     if (decision === 'attach') { loadSources().catch(() => {}); }
   } catch (e) { toast(e.message || e, 'err'); }
-  BOOT.busy = false; loadBoot();
+  for (const id of ids) BOOT.pick.delete(id);
+  BOOT.busy = false; BOOT.sig = null; loadBoot();
 }
 globalThis.rescanBoot = async function rescanBoot() {
   try { await post(`/api/projects/${state.project.id}/bootstrap`, {}); toast('🔎 searching what you already own'); }
   catch (e) { toast(e.message || e, 'err'); }
+  BOOT.pick.clear(); BOOT.sig = null;
   loadJobs(); setTimeout(loadBoot, 1500);
 }
 globalThis.jobsTimer = undefined;
@@ -694,7 +725,11 @@ globalThis.rateResume = async function rateResume() {
 globalThis.retryJob = async function retryJob(id) { await post(`/api/jobs/${id}/retry`, {}).catch(e => toast(e.message || e, 'err')); toast('Queued again'); loadJobs(); }
 globalThis.retryFailed = async function retryFailed() { const r = await post('/api/jobs/retry-failed', { project_id: state.project.id }); toast(`↻ ${r.retried} job${r.retried === 1 ? '' : 's'} queued again`); loadJobs(); }
 globalThis.dismissJob = async function dismissJob(id) { await post(`/api/jobs/${id}/dismiss`, {}).catch(e => toast(e.message || e, 'err')); loadJobs(); }
-globalThis.cancelJob = async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); globalThis.rvSig = null; loadJobs(); loadReviews(); }
+// S86 (Kyle, 2026-09-23): "theres no pause button on the sources progress window. only cancel. we need a pause/resume
+// option". Per job: a queued one is held; a running one stops at its next safe point and keeps what it did.
+globalThis.pauseJob = async function pauseJob(id) { const r = await post(`/api/jobs/${id}/pause`, {}).catch(e => { toast(e.message || e, 'err'); return null; }); if (r) toast(r.state === 'pausing' ? '⏸ pausing at the next safe point' : '⏸ paused — press ▶ to continue'); loadJobs(); }
+globalThis.resumeJob = async function resumeJob(id) { await post(`/api/jobs/${id}/resume`, {}).catch(e => toast(e.message || e, 'err')); toast('▶ continuing'); loadJobs(); }
+globalThis.cancelJob = async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => toast(e.message || e, 'err')); globalThis.rvSig = null; loadJobs(); loadReviews(); }
 globalThis.runNowJob = async function runNowJob(id) { await post(`/api/jobs/${id}/run-now`, {}).catch(e => toast(e.message || e, 'err')); toast('starting now'); loadJobs(); loadStaleness(); }
 globalThis.bumpJob = async function bumpJob(id) { await post(`/api/jobs/${id}/bump`, {}).catch(e => toast(e.message || e, 'err')); toast('⏫ moved to the front of the queue'); loadJobs(); }
 globalThis.CHECK_NOW_STATES = new Set(['budget_wait', 'rate_limit_wait', 'provider_wait', 'retry_wait']);
@@ -739,8 +774,8 @@ globalThis.loadJobs = async function loadJobs(quiet) {
     return;
   }
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
-  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', scheduled: 'scheduled', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
-  const stateClass = st => ({ blocked: 'queued', scheduled: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
+  const STATE_LABEL = { paused: 'paused by you', pausing: 'pausing', queued: 'queued', running: 'running', blocked: 'blocked', scheduled: 'scheduled', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
+  const stateClass = st => ({ paused: 'queued', pausing: 'running', blocked: 'queued', scheduled: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
   const jobMsg = j => j.state === 'scheduled' && j.not_before ? `eligible from ${new Date(j.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · this Mac must be awake` : j.provider_wait ? j.provider_wait.message : j.batch ? j.batch.label : (j.message || '');
   const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span class="status-bad">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
@@ -749,7 +784,7 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   // running, anything that failed, and the banners — with one line counting the rest; expanded it is unchanged.
   // The queue itself is not touched: this is what the box draws, not what the workers do.
   const isHot = j => j._budget || j.status === 'running' || j.status === 'failed' || j.status === 'cancelling'
-    || (j.state || j.status) === 'external_pending' || j.bumped;
+    || (j.state || j.status) === 'external_pending' || j.state === 'paused' || j.bumped;   // S86: a paused job stays in view so it can be resumed
   const st = await api('/api/stats', q); const u = await loadSpend(quiet);
   $('#jobsCard').hidden = !(show.length || st.youtube?.paused || u?.blocked);
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
@@ -774,9 +809,10 @@ globalThis.loadJobs = async function loadJobs(quiet) {
     : runningNow.length ? `${runningNow.length} job${runningNow.length === 1 ? '' : 's'} running · ${jobLabel(runningNow[0])}`
     : `${queuedCount} job${queuedCount === 1 ? '' : 's'} queued`;
 
-  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted grow">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">Re-check account</button>` : ''}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted grow">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">Re-check account</button>` : ''}</div>` : `<div class="job" data-job="${j.id || ''}" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
-    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && j.state === 'scheduled' ? `<button class="small ghost" title="Start it now instead of waiting for its scheduled time" onclick="runNowJob('${j.id}')">Run now</button>` : j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.id && (j.state === 'paused' || j.state === 'pausing') ? `<button class="small primary" title="${j.state === 'pausing' ? 'Never mind — keep going' : 'Continue from where it stopped — nothing is redone'}" onclick="resumeJob('${j.id}')">▶ Resume</button>` : j.id && (j.status === 'queued' || j.status === 'running') && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Hold this job until you press Resume' : 'Stop at the next safe point and hold — everything done so far is kept'}" aria-label="Pause job" onclick="pauseJob('${j.id}')">⏸</button>` : ''}${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && j.state === 'scheduled' ? `<button class="small ghost" title="Start it now instead of waiting for its scheduled time" onclick="runNowJob('${j.id}')">Run now</button>` : j.status === 'queued' && j.id && !j.bumped && j.state !== 'paused' ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+  restoreJobHistories();
   clearTimeout(jobsTimer);
   const analysing = (SRCG.rows || []).some(s => s.analysing || (s.job && s.job.status === 'running'));
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
@@ -813,13 +849,30 @@ globalThis.pollTick = async function pollTick() {
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.view === 'sources' && state.project) { clearTimeout(jobsTimer); pollTick(); } });
 
+// S88: the box polls every 3 s while anything runs and rebuilds #jobs from scratch — an opened history vanished on
+// the next tick (the same class of bug as the S85 checkboxes). Open histories are remembered here and re-drawn.
+globalThis.JOBSHIST = new Map();   // job id -> last rendered text
+globalThis.jobHistText = function jobHistText(ev) {
+  return ev.map(e => { const t = new Date(e.ts * 1000).toLocaleTimeString(); const p = e.payload || {}; const extra = e.stage ? e.stage : (p.worker_id ? 'worker ' + p.worker_id.split(':').pop() : p.message || p.handle || p.delay ? (p.message || p.handle || `wait ${Math.round(p.delay / 60)} min`) : ''); return `${t}  ${e.event_type.padEnd(20)} ${e.run_id ? 'run ' + e.run_id.slice(0, 6) + '  ' : ''}${extra}`; }).join('\n') || 'no events';
+}
+globalThis.jobHistBox = function jobHistBox(text) {
+  const box = document.createElement('div'); box.className = 'jobhist muted'; box.style.cssText = 'width:100%;font-size:11.5px;font-family:ui-monospace,monospace;white-space:pre;overflow:auto;max-height:180px;padding:4px 8px';
+  box.textContent = text; return box;
+}
 globalThis.jobHistory = async function jobHistory(id, btn) {
+  const row = btn.closest('.job'); const box = row && row.querySelector('.jobhist');
+  if (box) { box.remove(); JOBSHIST.delete(id); return; }
   const ev = await api(`/api/jobs/${id}/events`);
-  const row = btn.closest('.job'); let box = row.querySelector('.jobhist');
-  if (box) { box.remove(); return; }
-  box = document.createElement('div'); box.className = 'jobhist muted'; box.style.cssText = 'width:100%;font-size:11.5px;font-family:ui-monospace,monospace;white-space:pre;overflow:auto;max-height:180px;padding:4px 8px';
-  box.textContent = ev.map(e => { const t = new Date(e.ts * 1000).toLocaleTimeString(); const p = e.payload || {}; const extra = e.stage ? e.stage : (p.worker_id ? 'worker ' + p.worker_id.split(':').pop() : p.message || p.handle || p.delay ? (p.message || p.handle || `wait ${Math.round(p.delay / 60)} min`) : ''); return `${t}  ${e.event_type.padEnd(20)} ${e.run_id ? 'run ' + e.run_id.slice(0, 6) + '  ' : ''}${extra}`; }).join('\n') || 'no events';
-  row.appendChild(box);
+  const text = jobHistText(ev); JOBSHIST.set(id, text);
+  const live = document.querySelector(`#jobs .job[data-job="${id}"]`) || row; if (live && !live.querySelector('.jobhist')) live.appendChild(jobHistBox(text));
+}
+globalThis.restoreJobHistories = function restoreJobHistories() {
+  for (const [id, text] of JOBSHIST) {
+    const row = document.querySelector(`#jobs .job[data-job="${id}"]`);
+    if (!row) { JOBSHIST.delete(id); continue; }          // the job left the box: forget it
+    if (!row.querySelector('.jobhist')) row.appendChild(jobHistBox(text));
+    api(`/api/jobs/${id}/events`).then(ev => { const t = jobHistText(ev); JOBSHIST.set(id, t); const b = row.querySelector('.jobhist'); if (b) b.textContent = t; }).catch(() => {});
+  }
 }
 // ---- findings ----
 globalThis.STALE = { data: null };
@@ -1084,7 +1137,7 @@ globalThis.openSourceSuggestions = async function openSourceSuggestions(sid, sta
 globalThis.clearFindingSource = function clearFindingSource() { FB.source = null; FB.offset = 0; loadWorkbench(); }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
 globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false, rows: [] };
-globalThis.FGRP = { collapsed: new Set() };   // remembers which source-groups the user closed by hand (title -> closed)
+globalThis.FGRP = { collapsed: new Set(), project: null };   // remembers which source-groups the user closed by hand (title -> closed), per project
 // C1: DESIGN.md's Workbench-row rule caps a normal row at two visible badges; this row used to show up to
 // five (plan/chat/claim/stale/area). The three "where this got used" signals are really one fact — whether
 // anything downstream relies on this finding — so they collapse into a single badge that keeps all three
@@ -1161,6 +1214,11 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
     : `<button class="small ghost" title="Put it back in the review queue" onclick="noteStatus(${n.id},'suggested')">↩ Restore</button>`;
   // PRODUCT-ORGANIZATION.md #1: this list already groups by source (nothing new there) — what was missing was any
   // way to collapse a group, so a project with many sources was still one long scroll of open groups.
+  // S87 (Kyle, 2026-09-23): "its hiding the full list by default ... when I first clicked on findings I got scared
+  // because the entire window was blank until I expanded all." Groups are OPEN unless this person closed them, in
+  // THIS project: a collapse remembered from another project must never carry over, and "Collapse all" is a choice
+  // for one visit, not a default.
+  if (FGRP.project !== state.project.id) { FGRP.project = state.project.id; FGRP.collapsed = new Set(); }
   if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([title]) => title));
   const grpSearching = !!($('#fbQ').value || $('#fbImp').value || $('#fbUsed').value || $('#fbStale').value || $('#fbArea').value);
   $('#fbGroupCtl').hidden = !(bySrc.length > 1);
@@ -1175,7 +1233,12 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => {
     const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);
     const keyJs = JSON.stringify(title).replace(/"/g, '&quot;');
-    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
+    // S87 (Kyle): "there should be an 'approve all' for a single source (per video, article, etc) and not just an
+    // 'approve all' for EVERYTHING." Per group, over exactly the suggested rows shown in it — same door as every
+    // other status change (/api/notes/bulk-status).
+    const sugg = list.filter(n => n.status === 'suggested' || n.status === 'reserve').map(n => n.id);
+    const grpBulk = sugg.length ? `<button class="small" title="Approve the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'approved')">Approve all ${sugg.length}</button><button class="small ghost" title="Dismiss the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source (nothing is deleted)" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'dismissed')">Dismiss all</button>` : '';
+    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${grpBulk}${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
       list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</details>`; }).join('')
     : `<div class="empty">${r.total ? '' : st === 'approved' && !$('#fbQ').value && !$('#fbUsed').value ? 'Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.' : 'No findings match these filters.'}</div>`;
   const pages = Math.ceil(r.total / FB.limit);

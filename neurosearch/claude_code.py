@@ -130,8 +130,48 @@ def _hkey(model: str | None) -> str:
     return model or "(cli default)"
 
 
+# Where the Claude Code CLI (and the node it may need) live on a Mac when the server was NOT started from a
+# Terminal. 2026-09-23: the first evening under the LaunchAgent (tools/server_agent.py), launchd's PATH was
+# `/usr/bin:/bin:/usr/sbin:/sbin`, `claude` was "not installed" for every local-capable job, and Kyle watched the
+# ranking start and stop in a loop. The agent now takes the login shell's PATH; this is the in-process floor for
+# any other way the server can be started without one (a cron, a double-clicked .command with a bare shell).
+USER_BINS = ("~/.local/bin", "~/bin", "~/.claude/local/bin", "~/.claude/local", "~/.npm-global/bin", "~/.volta/bin",
+             "~/.bun/bin", "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin")
+# version managers keep node (and a global `claude`) under a per-version dir; newest version first
+USER_BIN_GLOBS = ("~/.nvm/versions/node/*/bin", "~/.local/share/fnm/node-versions/*/installation/bin", "~/.asdf/installs/nodejs/*/bin")
+_path_widened = False
+
+
+def _user_bin_dirs() -> list[str]:
+    import glob
+    out = [os.path.expanduser(x) for x in USER_BINS]
+    for g in USER_BIN_GLOBS:
+        out += sorted(glob.glob(os.path.expanduser(g)), reverse=True)
+    return out
+
+
+def widen_path() -> None:
+    """Append the usual user bin dirs to this process's PATH, once, only those that exist, never in front of what
+    the person's own environment already says — so `shutil.which` (ours and the CLI's own lookup of node) can see them."""
+    global _path_widened
+    if _path_widened:
+        return
+    _path_widened = True
+    have = [x for x in os.environ.get("PATH", "").split(":") if x]
+    extra = [d for d in _user_bin_dirs() if d not in have and os.path.isdir(d)]
+    if extra:
+        os.environ["PATH"] = ":".join(have + extra)
+    found = shutil.which("claude")
+    (log.info if found else log.warning)("claude code lookup: %s -- PATH had %d dirs, added %d (%s)",
+                                         found or "`claude` not found", len(have), len(extra), ", ".join(extra) or "none")
+
+
 def binary() -> str:
-    return settings.claude_code_bin or "claude"
+    if settings.claude_code_bin:
+        return settings.claude_code_bin
+    if not shutil.which("claude"):
+        widen_path()
+    return "claude"
 
 
 def capabilities(force: bool = False) -> dict[str, Any]:

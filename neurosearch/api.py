@@ -856,8 +856,8 @@ def api_budget(body: BudgetIn) -> dict[str, Any]:
         # that is a different wait for a different reason, and waking it early breaks the "runs when the worker
         # is next available, no earlier than the requested time" promise the CLI/API gave when it was scheduled.
         with db.tx() as conn:
-            conn.execute("UPDATE jobs SET not_before=NULL, message=NULL WHERE status='queued' AND (wait_reason IS NULL OR wait_reason != 'scheduled') "
-                        "AND (message LIKE 'paused:%' OR not_before IS NOT NULL)")
+            conn.execute("UPDATE jobs SET not_before=NULL, message=NULL WHERE status='queued' AND (wait_reason IS NULL OR wait_reason NOT IN ('scheduled', 'paused')) "
+                        "AND (message LIKE 'paused:%' OR not_before IS NOT NULL)")     # S86: a job the person paused stays paused
     return usage.totals()
 
 
@@ -2352,6 +2352,33 @@ def api_cancel_job(job_id: str) -> dict[str, Any]:
         h = batches.cancel_job(j)                       # tell the provider, keep what already completed
         note = f"batch cancelled at the provider; {h.get('materialized', 0)} source(s) with complete results were kept"
     return {"cancelled": 1 if st == "cancelled" else 0, "status": st, "note": note}
+
+
+@app.post("/api/jobs/{job_id}/pause", dependencies=[Depends(require_auth)])
+def api_pause_job(job_id: str) -> dict[str, Any]:
+    """S86: hold one job until the person presses Resume. A running job stops at its next safe point and keeps what it
+    has done; a queued one is simply not claimed. Nothing is cancelled, nothing is redone on resume."""
+    j = db.get_job(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    if j["status"] in db.JOB_TERMINAL:
+        raise HTTPException(409, f"job is already {j['status']}")
+    if j["status"] == "external_pending":
+        raise HTTPException(409, "this work is running at the provider and cannot be paused — cancel it or let it finish")
+    if j.get("cancel_requested_at"):
+        raise HTTPException(409, "this job is already being cancelled")
+    st = db.request_pause(job_id)
+    return {"status": st, "state": "pausing" if st == "running" else "paused",
+            "note": "will pause at its next safe point; everything done so far is kept" if st == "running" else None}
+
+
+@app.post("/api/jobs/{job_id}/resume", dependencies=[Depends(require_auth)])
+def api_resume_job(job_id: str) -> dict[str, Any]:
+    j = db.get_job(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    st = db.resume_job(job_id)
+    return {"status": st, "resumed": st in ("queued", "running")}
 
 
 class ConvIn(BaseModel):

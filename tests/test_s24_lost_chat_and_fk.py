@@ -181,7 +181,7 @@ def test_the_review_note_says_how_many_left(fresh, monkeypatch):
         db.link_source_collection(sid, coll["id"])
     # the real sequence: the rows are READ, then a source is deleted while the ranking runs, then the writes land.
     # `_pool` is called after the read, so deleting there reproduces it exactly.
-    def pool_then_delete(rows):
+    def pool_then_delete(rows, since=None):          # S85 gave _pool a `since` (re-rank convergence); stub matches
         with db.tx() as conn:
             conn.execute("DELETE FROM sources WHERE id='k2'")
         return rows, []

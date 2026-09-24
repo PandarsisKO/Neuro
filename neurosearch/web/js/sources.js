@@ -12,6 +12,10 @@ globalThis.RVFOLD = {};      // review card id -> folded? (default: everything a
 globalThis.rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
 globalThis.rvFilterText = {};
 globalThis.rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
+// 2026-09-23 (Kyle): "we should not be doing the 'review one at a time' feature for bulk ingestion of sources ...
+// it should not appear at all when ingesting a source. only for findings, research, claims etc". The review card and
+// the pool are source-acquisition decisions — ranker + "pick top N" + Start / Capture. Focus review (focus.js) stays
+// for findings, research and claims. `rvFocus`/`poolFocus` are kept as functions; no source card renders them.
 globalThis.scClass = function scClass(v) { return v >= 60 ? 'hi' : v >= 30 ? 'mid' : ''; }
 globalThis.loadReviews = async function loadReviews(quiet) {
   if (!POLL.enter('reviews', quiet)) return;
@@ -50,7 +54,7 @@ globalThis.loadReviews = async function loadReviews(quiet) {
       ${meta.counts ? `<div class="muted" style="margin-top:2px">🗂 ${(meta.counts.already_in_project || 0) + (meta.counts.already_in_library || 0) + (meta.counts.new || 0)} found · <b>${meta.counts.already_in_library || 0}</b> already in your library (reused, not re-downloaded) · <b>${meta.counts.already_in_project || 0}</b> already in this project · <b>${meta.counts.new || 0}</b> new — the estimate below covers only new work</div>` : ''}
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
       <div class="row mt-1">${rankLine}</div>
-      <div class="row" style="margin-top:6px"><button class="small" onclick="rvFocus('${c.id}')" title="Go through these one at a time. A skip here is recorded as YOUR judgement, which is what teaches the ranker — bulk-approving this list teaches it almost nothing.">◉ Review one at a time</button><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
+      <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
       <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' hidden' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.access_gate ? `<span class="tag status-warn" title="${s.access_gate === 'members_only' ? 'Members-only: YouTube will not let this download without your own channel membership, so it is listed last and not selected' : s.access_gate === 'premium' ? 'YouTube Premium only' : 'Needs sign-in'}">${s.access_gate === 'members_only' ? '🔒 members only' : s.access_gate === 'premium' ? '🔒 premium' : '🔒 sign-in'}</span>` : ''}${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
@@ -78,7 +82,7 @@ globalThis.rvFilter = function rvFilter(id, q) { rvFilterText[id] = q; q = q.toL
 globalThis.rvRerank = async function rvRerank(id) { delete rvAutoApplied[id]; await post(`/api/collections/${id}/rank`, { project_id: state.project.id }); globalThis.rvSig = null; loadReviews(); setTimeout(loadReviews, 4000); }
 globalThis.rvStart = async function rvStart(id, btn) {
   const ids = [...document.querySelectorAll(`#rv-${id} input:checked`)].map(i => i.dataset.id);
-  if (!ids.length) return alert('Nothing selected.');
+  if (!ids.length) return toast('Nothing selected — tick at least one', 'err');
   if (btn) { btn.disabled = true; btn.textContent = `Starting ${ids.length}…`; }
   try {
     const r = await post(`/api/collections/${id}/approve`, { source_ids: ids });
@@ -465,7 +469,6 @@ globalThis.loadPool = async function loadPool() {
   POOL.total = r.total;
   const c = r.counts;
   $('#srcCount').innerHTML = `${r.total} known, not captured <span class="muted">· ${c.skipped} skipped at the date cutoff · ${c.candidates} seen while exploring · <b>${c.worth_a_look}</b> worth a look · ${c.fits_a_question} fit an open question</span>` +
-    ` <button class="small" onclick="poolFocus()" title="Go through the pool one at a time — including anything resurfaced back into review. Each decision is recorded as your own.">◉ Review one at a time</button>` +
     (c.worth_a_look ? ` <button class="small primary" onclick="captureManyPool()" title="Captures every item at or above 'worth a look' (potential ≥ 40) in your current rank/show filter — same as clicking Capture on each one">Capture the ${c.worth_a_look} that fit</button>` : '');
   $('#srcFilterNote').textContent = '';
   const pot = v => `<span class="fi" title="potential ${v}/100 — a $0 scan of the title and description against your open questions, weak areas and the project's own words">${'●'.repeat(Math.round(v / 20))}<span class="dim">${'●'.repeat(5 - Math.round(v / 20))}</span></span>`;
@@ -794,7 +797,7 @@ globalThis.ingestFiles = async function ingestFiles() {
   const files = [...$('#inFile').files]; if (!files.length) return;
   for (const f of files) {
     const fd = new FormData(); fd.append('file', f); if (files.length === 1) fd.append('title', $('#inFileTitle').value); fd.append('project_id', state.project.id); fd.append('tags', $('#inTags').value);
-    const r = await uiFetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) alert(j.error || j.detail);
+    const r = await uiFetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) toast(j.error || j.detail || 'upload failed', 'err');
   }
   $('#inFile').value = ''; $('#inFileTitle').value = ''; loadJobs();
 }
@@ -1086,7 +1089,7 @@ globalThis.backupNow = async function backupNow() { $('#healthMsg').textContent 
 globalThis.saveBudget = async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }
 globalThis.cancelQueued = async function cancelQueued() {
   if (!confirm('Cancel everything that has not started yet? Finished videos are kept; the rest go back to the Review card so you can approve a smaller set later.')) return;
-  const r = await post('/api/jobs/cancel-queued', { project_id: state.project.id }); alert(`Cancelled ${r.cancelled} queued job(s).`); loadJobs(); loadSources();
+  const r = await post('/api/jobs/cancel-queued', { project_id: state.project.id }); toast(`Cancelled ${r.cancelled} queued job${r.cancelled === 1 ? '' : 's'}`); loadJobs(); loadSources();
 }
 globalThis.togglePause = async function togglePause(p) { await post('/api/usage/budget', { paused: p }); loadJobs(); }
 globalThis.toggleBackground = async function toggleBackground(p) {

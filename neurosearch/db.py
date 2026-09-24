@@ -1177,6 +1177,7 @@ MIGRATIONS = [
     ("jobs", "heartbeat_at", "ALTER TABLE jobs ADD COLUMN heartbeat_at REAL"),
     ("jobs", "lease_until", "ALTER TABLE jobs ADD COLUMN lease_until REAL"),
     ("jobs", "cancel_requested_at", "ALTER TABLE jobs ADD COLUMN cancel_requested_at REAL"),
+    ("jobs", "pause_requested_at", "ALTER TABLE jobs ADD COLUMN pause_requested_at REAL"),     # S86: per-job pause
     ("jobs", "wait_reason", "ALTER TABLE jobs ADD COLUMN wait_reason TEXT"),
     # L1 Local-First AI: intent (execution_policy: local_preferred | local_only | api_requested | api_only) and outcome (executed_by,
     # fallback_reason) are separate columns — a job that meant local and ran on the API says so
@@ -3240,12 +3241,16 @@ def derived_status(j: dict[str, Any]) -> str:
             rep = dependency_report(j)
             if rep["state"] == "waiting":
                 return "blocked"
+        if j.get("wait_reason") == "paused":
+            return "paused"                                    # S86: held by the person until they press Resume
         if j.get("not_before") and j["not_before"] > now():
             return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait",
                     "scheduled": "scheduled"}.get(j.get("wait_reason") or "", "retry_wait")   # L-40: a caller's schedule is not a retry
         return "queued"
     if st == "running" and j.get("cancel_requested_at"):
         return "cancelling"
+    if st == "running" and j.get("pause_requested_at"):
+        return "pausing"
     if st == "external_pending" and str(j.get("external_handle") or "").startswith("tentative:"):
         # recovery found provider work that MAY be ours; identity is proven only by the returned custom_id set
         cands = kv_get("batch:candidates:" + j["external_handle"][len("tentative:"):])
@@ -3330,6 +3335,65 @@ def request_cancel(job_id: str) -> str:
                 job_event(job_id, "ambiguous_external_execution", conn=conn, resolved=n)
             return "cancelled"
         return r["status"]
+
+
+# S86 (Kyle, 2026-09-23: "theres no pause button on the sources progress window. only cancel. we need a pause/resume
+# option"). A pause is a HOLD, not a wait: the job stays queued with wait_reason='paused' and a not_before far in the
+# future, so no worker claims it and no scheduler wakes it — only resume_job does. A running job is asked to pause and
+# stops at its next safe boundary (the same hook cancel uses), keeping everything it has written; Resume continues from
+# there. The queue-wide Resume never touches a job the person paused individually.
+PAUSE_HOLD_UNTIL = 4102444800.0            # 2100-01-01: "not until you say so"
+
+
+def request_pause(job_id: str) -> str:
+    """queued → held now; running → pause_requested (stops at the next safe boundary, then held). Returns the stored status."""
+    with tx() as conn:
+        r = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not r:
+            return "missing"
+        t = now()
+        if r["status"] == "queued":
+            conn.execute("UPDATE jobs SET wait_reason='paused', not_before=?, pause_requested_at=NULL, message='paused by you — press ▶ to continue', updated_at=? WHERE id=?",
+                         (PAUSE_HOLD_UNTIL, t, job_id))
+            job_event(job_id, "paused", conn=conn, was="queued")
+            return "queued"
+        if r["status"] == "running":
+            conn.execute("UPDATE jobs SET pause_requested_at=?, message='pausing… (stops at the next safe point)', updated_at=? WHERE id=?", (t, t, job_id))
+            job_event(job_id, "pause_requested", conn=conn)
+            return "running"
+        return r["status"]
+
+
+def hold_paused(job_id: str, run_id: str | None = None) -> None:
+    """The worker reached its safe boundary after a pause request: back to the queue, held."""
+    with tx() as conn:
+        t = now()
+        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, pause_requested_at=NULL, "
+                     "wait_reason='paused', not_before=?, message='paused by you — press ▶ to continue', updated_at=? WHERE id=?", (PAUSE_HOLD_UNTIL, t, job_id))
+        job_event(job_id, "paused", run_id=run_id, conn=conn, was="running")
+
+
+def resume_job(job_id: str) -> str:
+    """Lift a person's pause. A job that is only pause-REQUESTED (still running) simply keeps running."""
+    with tx() as conn:
+        r = conn.execute("SELECT status, wait_reason, pause_requested_at FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not r:
+            return "missing"
+        t = now()
+        if r["status"] == "queued" and r["wait_reason"] == "paused":
+            conn.execute("UPDATE jobs SET wait_reason=NULL, not_before=NULL, pause_requested_at=NULL, message=NULL, updated_at=? WHERE id=?", (t, job_id))
+            job_event(job_id, "resumed", conn=conn)
+            return "queued"
+        if r["status"] == "running" and r["pause_requested_at"]:
+            conn.execute("UPDATE jobs SET pause_requested_at=NULL, message=NULL, updated_at=? WHERE id=?", (t, job_id))
+            job_event(job_id, "resumed", conn=conn, was="pausing")
+            return "running"
+        return r["status"]
+
+
+def pause_requested(job_id: str) -> bool:
+    r = connect().execute("SELECT pause_requested_at FROM jobs WHERE id=?", (job_id,)).fetchone()
+    return bool(r and r["pause_requested_at"])
 
 
 def cancel_requested(job_id: str) -> bool:
@@ -3539,13 +3603,14 @@ def proposed_sources(collection_id: str, project_id: str | None = None) -> list[
         project_id = collection_project(collection_id)
     out = []
     for r in connect().execute(
-            """SELECT s.*, a.relevance AS a_relevance, a.relevance_why AS a_relevance_why
+            """SELECT s.*, a.relevance AS a_relevance, a.relevance_why AS a_relevance_why, a.updated_at AS a_relevance_at
                FROM sources s JOIN source_collections sc ON sc.source_id=s.id
                LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=? AND a.analysis_kind='relevance'
                WHERE sc.collection_id=? AND s.status='proposed'
                ORDER BY (s.access_gate IS NOT NULL), (a.relevance IS NULL), a.relevance DESC, s.created_at""", (project_id, collection_id)).fetchall():
         d = row_to_dict(r)
         d["relevance"], d["relevance_why"] = d.pop("a_relevance"), d.pop("a_relevance_why")     # the legacy global columns are ignored
+        d["relevance_at"] = d.pop("a_relevance_at")
         out.append(d)
     return out
 

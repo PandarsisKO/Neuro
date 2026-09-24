@@ -182,14 +182,32 @@ def _prov(project: dict[str, Any]) -> dict[str, Any]:
             "routing": providers.routing_json("rank.relevance", getattr(providers.last_response(), "model", None))}
 
 
-def _pool(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _job_started() -> float | None:
+    """When the job now ranking was CREATED (a re-rank request, a fresh listing) — None outside a job."""
+    try:
+        from .jobs import current_job
+        jid = current_job()[0]
+        row = db.get_job(jid) if jid else None
+        return float(row["created_at"]) if row and row.get("created_at") else None
+    except Exception:  # noqa: BLE001 — never let bookkeeping stop a ranking
+        return None
+
+
+def _pool(rows: list[dict[str, Any]], since: float | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     # 2026-09-18 (Kyle): a gated (members-only / premium / sign-in) video IS ranked — its relevance is what the
     # Candidate Index remembers, so a 90+ can be worth a membership — but it sorts last in the review and is never
     # auto-ticked (db.proposed_sources, the review card). Ranking is what makes the memory worth keeping.
     rows.sort(key=lambda r: r.get("created_at") or 0)      # listing order (newest first for channels)
     pool, rest = rows[:POOL], rows[POOL:]
-    # re-rank only what is still unscored when a previous pass partially failed
-    unscored = [r for r in pool if r.get("relevance") is None]
+    # Resume only what is still unscored BY THIS JOB. A score written before the job was created is the previous
+    # ranking, not progress. 2026-09-23 (Kyle: "the new rankings seem to be looping again"): he pressed re-rank on two
+    # fully-scored channels; each run ranked two batches, yielded, and the next run found nothing "unscored" — every
+    # row already carried its OLD score — so it started from batch 0 again, forever (13 batches for a 5-batch list).
+    def fresh(r: dict[str, Any]) -> bool:
+        if r.get("relevance") is None:
+            return False
+        return since is None or (r.get("relevance_at") or 0) >= since
+    unscored = [r for r in pool if not fresh(r)]
     if unscored and len(unscored) < len(pool):
         pool = unscored
     return pool, rest
@@ -237,7 +255,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
         # nothing to rank against: keep newest-first, mark as ranked so the UI stops waiting
         db.mark_review_ranked(collection_id, note="no brief to rank against — newest first")
         return {"ranked": 0, "skipped": "no brief"}
-    pool, rest = _pool(rows)
+    pool, rest = _pool(rows, since=_job_started())
     head = _head(project, want)
     scored: dict[str, tuple[int, str]] = {}
     persisted: set[str] = set()
@@ -247,6 +265,8 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
         if batches >= BATCHES_PER_RUN and b < len(pool):
             yielding = True                                 # durable progress is already written: leave
             break
+        from .jobs import check_cancel
+        check_cancel()                                      # safe boundary: the previous batch is persisted, this one not started
         batches += 1
         batch = pool[b:b + BATCH]
         done_now = min(b + BATCH, len(pool))
@@ -257,8 +277,17 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
             res = _call(SYSTEM, user, project_id, collection_id, head=head)
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
+            from .providers import LOCAL_TYPES, ProviderError
             from .usage import BudgetPaused
             if isinstance(e, (BudgetPaused, ProviderUnavailable)):
+                raise
+            if isinstance(e, ProviderError) and e.error_type in LOCAL_TYPES:
+                # 2026-09-23 (Kyle: "stuck in a loop of starting and stopping the ranking"). The local CLI was not
+                # reachable at all (`claude` not on the LaunchAgent's PATH), so every batch failed in milliseconds,
+                # nothing was persisted, and the run reached the yield below with zero progress -- requeued at once,
+                # started from batch 0 again, 1,800+ times in ten minutes. A transport that is DOWN is not a batch
+                # that failed: hand it to jobs.execute, which parks the job for 60 s with the honest local-AI-
+                # unavailable message instead of counting it as a scored-nothing pass.
                 raise
             log.warning("rank batch %d failed: %s", b // BATCH, e)
             failed_batches += 1
@@ -281,7 +310,10 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                     persisted.add(s_["id"])
         if progress:                                       # the bar moves when a batch is actually scored, not when one starts
             progress(min(0.99, done_now / len(pool)), f"ranked {len(scored)} of {len(pool)}")
-    if yielding:
+    if yielding and persisted:
+        # Yield's contract: durable progress is written and the next run skips it (_pool re-ranks only what is still
+        # unscored). A run that persisted NOTHING has no such progress, so yielding would restart it identically and
+        # forever; it falls through instead and finishes with the "could not be scored — press re-rank" note.
         from .jobs import Yield
         raise Yield(f"ranked {len(persisted)} of {len(pool)} — paused so other work can run, continues automatically")
     from . import contracts, providers

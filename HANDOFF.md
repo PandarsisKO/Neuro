@@ -3563,3 +3563,96 @@ edits to `neurosearch/web/js/research.js` remove the string S12 asserts. Not thi
 `https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_6ab3f6cb1ee08191a02f450fff535d28`.
 `NEUROSEARCH_OAUTH_AUDIENCE` already lists it; WorkOS must be willing to issue for it before Gio's ChatGPT can
 complete a token exchange. Until then her requests reach `/ext/mcp/` and every one is 401 with no token.
+
+## S85 — ranking loop under the LaunchAgent + library-suggestion checkboxes (Claude Desktop, 2026-09-23 evening)
+
+Kyle, on a new personal-finance project with three channels: *"stuck in a loop of starting and stopping the
+ranking"*, and on the "Research in your library that may help this project" card: *"when I try to click the
+checkbox ... the page refreshes and the check box is unclicked again."*
+
+**Cause 1 — `claude` not on the LaunchAgent's PATH.** First evening under `com.neurosearch.server` (installed
+S83). launchd's PATH is `/usr/bin:/bin:/usr/sbin:/sbin`; `data/server.log` shows 1,868 lines of
+`rank batch N failed: LOCAL_UNAVAILABLE ... `claude` is not on PATH` between 19:29 and 19:42, the same three
+jobs (`83db47c2`, `c3180a4b`, `a1a680d9`, project `4f310029`) getting a fresh run id every ~0.6 s and never a
+`job done`. `rank_collection` counted the dead transport as two failed batches, persisted nothing, hit
+`BATCHES_PER_RUN` and raised `Yield` — whose contract ("progress is written, re-running skips it") did not hold,
+so the immediate requeue restarted batch 0 forever.
+Fixes: `relevance.py` re-raises a `ProviderError` in `LOCAL_TYPES` (jobs.execute parks it 60 s, `provider_wait`,
+"paused: local AI unavailable…") and never yields from a run that persisted nothing; `claude_code.binary()`
+widens the process PATH with the usual user bin dirs (`~/.local/bin`, `~/.claude/local`, Homebrew, nvm/fnm/asdf
+globs) when `claude` is not found and logs one `claude code lookup:` line; `tools/server_agent.py` now hands the
+server the LOGIN shell's PATH (`$SHELL -lic 'printf %s "$PATH"'`) plus the same floor, and writes it to
+server.log at start. Verified live: the loop stopped at 19:42:06 on the first hot reload; from then the three
+jobs cycled `claimed → provider_wait (60 s)` with the honest message (job_events, snapshot `…-1955.db`).
+**Verified end to end (20:14–20:15):** after Kyle restarted the agent (`launchctl kickstart -k gui/$(id -u)/com.neurosearch.server`) server.log shows `PATH=/Users/kyleowen/.local/bin:/Users/kyleowen/bin:/opt/homebrew/bin:…` (the login PATH) and all three jobs finished — `claude code claude-sonnet-5 answered in 34–62s` per batch, `job done` for `83db47c2`, `a1a680d9`, `c3180a4b`. `~/bin` was the one dir the in-app floor lacked; added to `USER_BINS` in both `claude_code.py` and `server_agent.py`.
+
+**Cause 2 — `renderBoot` rebuilt the card's innerHTML on every poll.** `loadBoot(true)` fires whenever jobs or
+sources change (constantly while channels are listing), and innerHTML forgets every tick. Picks now live in
+`BOOT.pick` (a Map outside the DOM), win over the default tick on every render, and an unchanged answer never
+rebuilds the card (`BOOT.sig`). "Add selected (N)" shows the count. A rescan clears picks; a decision drops the
+decided ids. Kyle's browser needs one reload to pick up `research.js`.
+
+Tests: `tests/test_s85_rank_loop_and_boot_picks.py` (8) — green with the neighbours
+(`test_r8_yield…`, `test_s24…`, `test_j3…`, `test_r2_bootstrap`, `test_s61…`, `test_n2_local_ai`: 81 passed)
+on Python 3.11 in the Cowork VM. Full suite on a clone of `7c47f2b` + this working tree, in the Cowork cloud
+container (Linux, Python 3.11): **2,498 passed, 7 failed** — the 7 (`test_core` spreadsheet/golden-eval/closeout ×6,
+`test_j3` release-check) fail identically on the pristine `7c47f2b` there (no `ezodf` wheel, no git state), so they are
+the container, not this work; the Mac suite is the gate. **Also (Kyle, same evening):** *"we should not be doing the 'review one at a time' feature for bulk ingestion of
+sources ... it should not appear at all when ingesting a source. only for findings, research, claims etc"* — neither
+the ingestion review card nor the pool renders ◉ Review one at a time any more (`rvFocus`/`poolFocus` kept as
+functions, unreferenced by any card); focus review remains for findings, research and claims.
+**Re-rank loop (21:04, Kyle: "the new rankings seem to be looping again").** A different loop, pre-existing: he
+pressed re-rank on two fully-scored channels (`POST /api/collections/…/rank` ×2 at 20:51). Each run ranked two
+batches, yielded, and the next run's "resume only what is still unscored" found nothing unscored — every row
+already carried its OLD score — so it restarted from batch 0 (13 batches answered for a 5-batch list). `_pool` now
+takes `since` = the ranking job's `created_at` (`relevance._job_started`, via `jobs.current_job`); a score written
+before the job existed is the previous ranking, not progress. `db.proposed_sources` exposes `relevance_at`. Verified
+live: both jobs `job done` at 21:12:17 / 21:13:57 on the first run after the hot reload.
+
+**S86 — per-job pause/resume (Kyle: "theres no pause button on the sources progress window. only cancel. we need a
+pause/resume option").** A pause is a HOLD: queued → `wait_reason='paused'`, `not_before=PAUSE_HOLD_UNTIL` (2100),
+never claimed; running → `pause_requested_at`, and `jobs.check_cancel` (already at every safe boundary in ingest,
+findings, claims; now also the ranker's batch loop) raises `Paused` → `db.hold_paused` keeps the work and holds the
+job. `db.resume_job` lifts it; Resume pressed while still "pausing" just withdraws the request. Queue-wide Resume
+(`/api/usage/budget paused=false`) excludes `wait_reason='paused'`; budget/provider wake-ups are already scoped by
+their own wait_reason. API: `POST /api/jobs/{id}/pause` (409 for terminal / external_pending / cancelling),
+`POST /api/jobs/{id}/resume`. UI: ⏸ on every queued/running row, ▶ Resume on a paused/pausing row, state label
+"paused by you", and a paused job counts as hot so it stays in the collapsed box. Schema: additive column
+`jobs.pause_requested_at`. Tests: `tests/test_s86_pause_resume_job.py` (6).
+
+**S87 — findings tab (Kyle: "there should be an 'approve all' for a single source (per video, article, etc) and not
+just an 'approve all' for EVERYTHING" · "its hiding the full list by default ... the entire window was blank until I
+expanded all").** Each source group's header now has Approve all N / Dismiss all over exactly its suggested rows
+(same `/api/notes/bulk-status` door; `event.preventDefault()` so the group does not toggle). Groups are open unless
+closed by hand in THIS project: `FGRP` is reset on project change, so a Collapse-all from another project cannot
+leave the next one blank; "Collapse all" is one visit's choice, not a default. Tests:
+`tests/test_s87_findings_per_source_approve.py` (2). (The blank-on-first-click itself could not be reproduced from
+the code — every group renders `open` unless `FGRP.collapsed` holds its title — so if it recurs, the thing to
+capture is `FGRP` in the console at that moment.)
+
+**S88 — usability sweep (Kyle: "my findings seem to be pretty low hanging fruit for usability issues. can you take
+these observation and examine the app and see if you can find similar issues").** The five classes his reports fall
+into, checked across every view. Fixed: (1) *state wiped by a poll* — an opened job history in the In-progress box
+vanished on the next 3 s tick (`JOBSHIST`, rows carry `data-job`, `restoreJobHistories()` after each render);
+(2) *bulk with no per-thing twin* — the source drawer (THE per-source place) had no Approve all on its Waiting/
+Beyond-the-cap groups (`drawerBulk`); the workbench group button now also covers reserve rows; (3) *silently cut
+lists* — drawer findings beyond 60, "Claims resting on it" beyond 12, Settled questions beyond 30 were dropped with
+the header still saying the full count — each now folds the rest behind "Show the other N"; (4) *verbs mimed as
+glyphs* — the drawer's row buttons were the bare ✓/✕ the workbench dropped in 0.63.27; they say Approve / To review /
+Dismiss now; (5) *blocking dialogs* — the four `alert()` boxes used for ordinary feedback ("Nothing selected",
+"Cancelled N", upload error, cancel error, plan check error) are toasts; `confirm()` stays where it guards a
+destructive action. Not changed, worth Kyle's eye: only the FIRST review card is open when several channels are added
+(R8, so the queue controls stay reachable — each folded card still shows "N of M selected"); the In-progress box is
+collapsed by default with a one-line summary (SM-6), which is where ⏸ and ✕ live; and there is still no
+per-channel "pause/cancel these 20" — only per job or the whole queue. Gate: `tests/test_s88_usability_sweep.py` (4).
+Verified in the container: 285 UI-contract tests green (drawer, findings tab, click-feedback, design-drift, S5/S44).
+
+Two existing gates tripped and were
+fixed: `test_s51` (the S85 test no longer uses `setdefault` for the data dir — the 71-module ratchet stays) and
+`test_s12::test_an_old_suggestion_is_never_pre_ticked` (now asserts the same rule where it moved, `bootPicked`).
+Uncommitted at the time of writing — Claude Code commits (stage only: `neurosearch/relevance.py`, `neurosearch/db.py`, `neurosearch/jobs.py`, `neurosearch/api.py`,
+`neurosearch/claude_code.py`, `neurosearch/web/js/sources.js`, `neurosearch/web/js/research.js`, `neurosearch/web/js/plan.js`,
+`tools/server_agent.py`,
+`tests/test_s85_rank_loop_and_boot_picks.py`, `tests/test_s86_pause_resume_job.py`, `tests/test_s87_findings_per_source_approve.py`, `tests/test_s88_usability_sweep.py`, `tests/test_s12_recall_precision.py`,
+`HANDOFF.md`; the pre-existing edits to `tests/test_s35_pool_cache.py` / `tests/test_s68_sources_list_diet.py`
+are not part of this) and runs the full suite on the Mac.
