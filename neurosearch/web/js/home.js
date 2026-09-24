@@ -73,10 +73,37 @@ globalThis.createProject = async function createProject() {
 }
 
 // ================= workspace =================
+// S94: everything below is per-project state that lived in module globals and survived a project switch — so a
+// failed or slow refresh "kept the list that is already on screen" (the OTHER project's), the pool total, the
+// findings page, the research state, the review-card signature and the jobs revision all carried over. One
+// reset, at the moment the project changes, and every pane starts from its loading state.
+globalThis.resetProjectState = function resetProjectState() {
+  if (globalThis.SRCG) Object.assign(SRCG, { rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [] });
+  if (globalThis.POOL) POOL.total = null;
+  if (globalThis.FB) Object.assign(FB, { offset: 0, source: null, loaded: false, rows: [], statusCounts: {} });
+  if (globalThis.RES) Object.assign(RES, { area: null, v: null, state: null, next: [], qs: [], wos: [], open: {}, queue: null });
+  if (globalThis.STALE) STALE.data = null;
+  globalThis.BOOTSTATE = null;
+  if (globalThis.BOOT) { BOOT.pick = new Map(); BOOT.sig = null; BOOT.showAll = false; BOOT.showWeak = false; }
+  globalThis.rvSig = null; globalThis.rvData = {}; globalThis.rvUnchecked = {}; globalThis.rvFilterText = {}; globalThis.rvAutoApplied = {}; globalThis.RVFOLD = {};
+  globalThis.CAPTURE_SEEN = null; globalThis.lastRev = null; globalThis.notesRev = null; globalThis.QUAL = null; globalThis.COMM_MISSIONS = [];
+  if (globalThis.JOBSHIST) JOBSHIST.clear();
+  if (globalThis.CW) { CW.offset = 0; if (CW.sel) CW.sel.clear(); }
+  for (const [sel, html] of [['#srcList', ''], ['#reviewWrap', ''], ['#jobs', ''], ['#backlog', ''], ['#notes', ''], ['#fbBulk', ''], ['#chat', ''], ['#chatList', ''], ['#planWrap', ''], ['#captureCard', ''], ['#srcCount', ''], ['#fbCount', ''], ['#jobsSummary', 'In progress']]) {
+    const el = document.querySelector(sel); if (el) { el.innerHTML = html; }
+  }
+  const jc = document.querySelector('#jobsCard'); if (jc) jc.hidden = true;
+  const bc = document.querySelector('#bootCard'); if (bc) bc.hidden = true;
+  const cc = document.querySelector('#captureCard'); if (cc) cc.hidden = true;
+};
+globalThis.openSeq = 0;
 globalThis.openProject = async function openProject(id, view, conv) {
-  const p = await api('/api/projects/' + id).catch(() => null);
-  if (!p) return goHome();
+  const seq = ++globalThis.openSeq;
   const fresh = !state.project || state.project.id !== id;
+  if (fresh) { state.project = { id, name: '…', _loading: true }; resetProjectState(); }   // from here, answers for the old project are dropped by api()
+  const p = await api('/api/projects/' + id).catch(() => null);
+  if (seq !== globalThis.openSeq) return;                              // the person opened something else meanwhile
+  if (!p) return goHome();
   state.project = p;
   $('#home').hidden = true; $('#ws').classList.add('active');
   $('#wsName').textContent = p.name; loadSpend();
@@ -90,6 +117,7 @@ globalThis.openProject = async function openProject(id, view, conv) {
   $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
   loadStaleness();
   await loadChats();
+  if (seq !== globalThis.openSeq) return;
   if (fresh || view !== state.view || conv !== state.conv) {
     if (view === 'chats') await selectChat(conv || (state.chats[0] && state.chats[0].id) || null, false);
     showView(view, false);

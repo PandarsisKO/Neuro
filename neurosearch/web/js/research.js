@@ -1181,7 +1181,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (FB.source) p.set('source_id', FB.source);
   for (const [k, id] of [['q', 'fbQ'], ['min_importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
   if (!FB.loaded) $('#notes').innerHTML = listState('loading', { label: 'Loading findings…' });
-  let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { if (e && e.stale) return; $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
   FB.loaded = true;
   FB.statusCounts = (r.facets && r.facets.status) || {};
   // S90 (Kyle, 2026-09-23: "something is seriously broken with the findings tab... why is nothing showing up?").

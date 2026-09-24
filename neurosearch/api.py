@@ -955,6 +955,37 @@ def api_capture_pending(project_id: str | None = None, url: str | None = None) -
     return {"items": acquire.pending_captures(project_id=project_id, url=url), "extension": acquire.extension_status()}
 
 
+class CommunityThreadsIn(BaseModel):
+    project_id: str
+    threads: list[dict[str, Any]]
+    tags: list[str] | None = None
+
+
+@app.post("/api/community/threads", dependencies=[Depends(require_auth)])
+def api_community_threads(body: CommunityThreadsIn) -> dict[str, Any]:
+    """S93 — the extension's community walker delivers threads in batches (`community_thread_capture/1`, produced in
+    the person's browser from the community's own API with their session). Each becomes a ready community source
+    through the same `store_thread` path a Reddit thread takes; one bad thread never fails the batch."""
+    from . import community
+    if not db.get_project(body.project_id):
+        raise HTTPException(404, "project not found")
+    if len(body.threads) > 50:
+        raise HTTPException(413, "at most 50 threads per batch")
+    if len(json.dumps(body.threads, default=str)) > 12_000_000:
+        raise HTTPException(413, "batch too large")
+    results: list[dict[str, Any]] = []
+    for cap in body.threads:
+        tid = str((cap.get("thread") or {}).get("id") or "?")
+        try:
+            out = community.acquire_generic_thread(cap, project_id=body.project_id, tags=body.tags)
+            results.append({"thread_id": tid, "ok": True, "source_id": out["source_id"], "posts": out["posts"], "substantive": out["substantive"],
+                            "completeness": (out.get("completeness") or {}).get("status")})
+        except Exception as e:  # noqa: BLE001 — the walker reports it and moves on
+            log.warning("community thread %s rejected: %s", tid[:12], e)
+            results.append({"thread_id": tid, "ok": False, "error": str(e)[:300]})
+    return {"stored": sum(1 for r in results if r["ok"]), "failed": sum(1 for r in results if not r["ok"]), "results": results}
+
+
 @app.post("/api/capture/{job_id}", dependencies=[Depends(require_auth)])
 def api_capture_resolve(job_id: str, body: CaptureIn) -> dict[str, Any]:
     """The extension delivers what the browser saw for a waiting request; the SAME job completes the SAME source."""

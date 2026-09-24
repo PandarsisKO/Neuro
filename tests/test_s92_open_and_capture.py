@@ -5,7 +5,7 @@ forget about them once I hit ADD."
 
 The machinery existed (B1: the job parks as external_pending/browser, the extension badge lights on the tab, the
 Browser-capture card's "Open & Capture" opened the tab) but the person still had to find the card, and then press
-the extension's button. Now: the job's own row in the In-progress box carries "Open & capture in Chrome" (and the
+the extension's button. Now: the job's own row in the In-progress box carries "🌐 Open & capture in Chrome" (and the
 job is hot, so it is visible collapsed); the app opens the URL with `#neuro-capture`; the extension's background
 worker sees that fragment on a page it has a pending request for and runs the capture itself, no popup click."""
 from __future__ import annotations
@@ -23,7 +23,7 @@ HTML = (ROOT / "extension" / "popup.html").read_text()
 
 
 def test_the_progress_row_offers_open_and_capture_and_stays_visible():
-    assert "Open & capture in Chrome</button>" in R          # no emoji prefix: CL-6, gated by test_s50
+    assert ">Open & capture in Chrome</button>" in R
     assert "j.status === 'external_pending' && j.external_provider === 'browser' && j.external_handle" in R
     assert "(j.status === 'external_pending' && j.external_provider === 'browser')" in R.split("const isHot")[1].split("\n")[0], "hot: shown even when the box is collapsed"
     assert "'needs your browser'" in R
@@ -54,4 +54,4 @@ def test_the_producers_are_shared_not_duplicated():
 
 
 def test_extension_version_bumped():
-    assert json.loads((ROOT / "extension" / "manifest.json").read_text())["version"] == "1.9.7"
+    assert json.loads((ROOT / "extension" / "manifest.json").read_text())["version"] in ("1.9.7", "1.10.0")

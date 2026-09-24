@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Neuro Search",
-  "version": "1.9.7",
+  "version": "1.10.0",
   "description": "Send the page you are reading, a screenshot of it, or the videos of a course you are logged into, to your Neuro Search project.",
   "permissions": [
     "activeTab",

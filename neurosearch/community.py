@@ -570,6 +570,102 @@ def _merge_partial(source_id: str, posts: list[dict[str, Any]]) -> list[dict[str
     return merged
 
 
+GENERIC_CONTRACT = "community_thread_capture/1"
+
+
+def _epoch(v: Any) -> float | None:
+    """ISO-8601 or epoch → epoch seconds; None when unreadable. Platforms differ; the thread dict does not."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return float(v) / (1000.0 if v > 10 ** 11 else 1.0)          # milliseconds are a common API habit
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def thread_from_generic_capture(capture: dict[str, Any]) -> dict[str, Any]:
+    """S93 — the platform-neutral capture contract, `community_thread_capture/1`, produced by the extension's
+    community walker (smbmarket.com first). What Reddit's contract already carried, minus anything Reddit-shaped:
+
+        {"contract": "community_thread_capture/1", "platform": "smbmarket", "community": "SMB Market · deal-talk",
+         "thread": {"id", "title", "author", "body", "created_at", "score", "url", "expected_comments", "edited", "deleted"},
+         "comments": [{"id", "parent_id", "author", "text", "score", "created_at", "edited", "deleted", "permalink"}],
+         "capture": {"status": "complete|partial|unknown", "captured", "expected", "method"}}
+
+    A comment whose parent is not in the thread hangs off the root (a reply to something deleted is still a reply
+    in this thread). Depth comes from the parent chain, so the platform need not say it."""
+    if not isinstance(capture, dict) or not isinstance(capture.get("thread"), dict):
+        raise RuntimeError("unexpected capture payload (no thread)")
+    platform = re.sub(r"[^a-z0-9_-]", "", str(capture.get("platform") or "").lower()) or "community"
+    th, comments = capture["thread"], capture.get("comments") or []
+    tid = str(th.get("id") or "").strip()
+    if not tid:
+        raise RuntimeError("capture has no thread id")
+    url = str(th.get("url") or "")
+    posts: list[dict[str, Any]] = [{"post_id": tid, "parent_id": None, "depth": 0, "author": th.get("author"), "score": th.get("score"), "created": _epoch(th.get("created_at")),
+                                    "edited": bool(th.get("edited")), "deleted": bool(th.get("deleted")),
+                                    "text": (th.get("title") or "") + ("\n\n" + th["body"] if th.get("body") else ""), "kind": "post", "permalink": url}]
+    known = {tid}
+    depth_of = {tid: 0}
+    pending = [c for c in comments if isinstance(c, dict) and str(c.get("id") or "")]
+    # parents before children whatever order the platform sent them: up to a few passes, the rest hang off the root
+    for _ in range(6):
+        rest = []
+        for c in pending:
+            cid = str(c.get("id"))
+            if cid in known:
+                continue
+            pid = str(c.get("parent_id") or tid)
+            if pid not in known:
+                rest.append(c)
+                continue
+            text = c.get("text") or ""
+            deleted = bool(c.get("deleted"))
+            posts.append({"post_id": cid, "parent_id": pid, "depth": depth_of[pid] + 1, "author": c.get("author"), "score": c.get("score"), "created": _epoch(c.get("created_at")),
+                          "edited": bool(c.get("edited")), "deleted": deleted, "text": "" if deleted else text, "kind": "comment", "permalink": c.get("permalink") or url})
+            known.add(cid); depth_of[cid] = depth_of[pid] + 1
+            if len(posts) >= MAX_POSTS:
+                break
+        if not rest or len(posts) >= MAX_POSTS:
+            break
+        pending = rest
+    for c in pending if len(posts) < MAX_POSTS else []:                       # orphans: a reply to something not in the thread
+        cid = str(c.get("id"))
+        if cid in known:
+            continue
+        posts.append({"post_id": cid, "parent_id": tid, "depth": 1, "author": c.get("author"), "score": c.get("score"), "created": _epoch(c.get("created_at")),
+                      "edited": bool(c.get("edited")), "deleted": bool(c.get("deleted")), "text": c.get("text") or "", "kind": "comment", "permalink": c.get("permalink") or url})
+        known.add(cid)
+    expected = th.get("expected_comments")
+    return {"platform": platform, "thread_id": tid, "title": th.get("title") or url or tid, "community": capture.get("community") or platform, "url": url,
+            "created": _epoch(th.get("created_at")), "score": th.get("score"), "num_comments": expected if isinstance(expected, (int, float)) else len(posts) - 1,
+            "posts": posts, "retrieved_at": time.time(), "representation": f"browser extension ({(capture.get('capture') or {}).get('method') or 'community walker'})",
+            "capture": capture.get("capture") or {}}
+
+
+def acquire_generic_thread(capture: dict[str, Any], *, project_id: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:
+    """One walker-captured thread → a ready community source, embedded and hooked like every other ingest."""
+    thread = thread_from_generic_capture(capture)
+    out = store_thread(thread, tags=tags, project_id=project_id)
+    _finish_thread(out, project_id)
+    return out
+
+
+def _finish_thread(out: dict[str, Any], project_id: str | None) -> None:
+    from . import ingest
+    out["embedded"] = ingest._embed_ready(out["source_id"])
+    ingest._after_ready(out["source_id"], project_id)
+    try:
+        from . import claims
+        for cid in {r["claim_id"] for r in db.connect().execute("SELECT claim_id FROM claim_evidence WHERE source_id=?", (out["source_id"],))}:
+            claims.assess(cid)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, project_id: str | None = None, query_terms: set[str] | None = None) -> dict[str, Any]:
     """Thread → ONE global source (platform 'community', external_id '<platform>:<thread_id>'), the full post tree in
     community_posts, and chunks for the pruned high-signal posts (locator = post ordinal; deep link = permalink).
@@ -691,20 +787,15 @@ def acquire_thread(url: str, *, tags: list[str] | None = None, project_id: str |
                         "posts": conn.execute("SELECT COUNT(*) FROM community_posts WHERE source_id=?", (existing["id"],)).fetchone()[0],
                         "substantive": conn.execute("SELECT COUNT(*) FROM community_posts WHERE source_id=? AND in_chunks=1", (existing["id"],)).fetchone()[0]}
             raise
+    elif capture is not None and capture.get("contract") == GENERIC_CONTRACT:
+        thread = thread_from_generic_capture(capture)
     else:
         raise RuntimeError("no community adapter for this host yet (Reddit threads are supported; other communities can be added as pages)")
     terms = set(re.findall(r"[a-z][a-z0-9\-']{3,}", (query or "").lower())) or None
     out = store_thread(thread, tags=tags, project_id=project_id, query_terms=terms)
     if progress:
         progress(0.7, "embedding…")
-    out["embedded"] = ingest._embed_ready(out["source_id"])
-    ingest._after_ready(out["source_id"], project_id)
-    try:
-        from . import claims
-        for cid in {r["claim_id"] for r in db.connect().execute("SELECT claim_id FROM claim_evidence WHERE source_id=?", (out["source_id"],))}:
-            claims.assess(cid)
-    except Exception:  # noqa: BLE001
-        pass
+    _finish_thread(out, project_id)
     return out
 
 

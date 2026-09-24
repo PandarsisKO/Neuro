@@ -296,6 +296,8 @@ async function execFn(tabId, func, args) {
 importScripts('capture-lib.js', 'capture-blob-store.js');
 importScripts('thread-capture.js');     // S92: the same producers the popup button runs (auto-capture below)
 const { redditCapture, pageCapture } = self.NSThreadCapture;
+importScripts('community-adapters.js'); // S93: "Scan this community" — the platform adapters; the walker is below
+const NSC = self.NSCommunityAdapters;
 const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsHideScrollbars, nsRestoreScrollbars, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
         nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity } = self.NSCaptureLib;
 const NSBlobStore = self.NSCaptureBlobStore;
@@ -860,6 +862,108 @@ async function autoCapture(tab) {
   }
 }
 
+
+// ================================================================== S93: "Scan this community" — the walker
+// Kyle: "using the SMB Market community example, how can I just capture every single one? I dont want to manually
+// open each one at a time." Same shape as a course scan: the popup only starts and watches; the durable record
+// (`cscan:<tabId>`) lives here so the popup can close and MV3 can evict this worker without losing the place.
+// The walk itself is a sequence of JSON reads made INSIDE the person's tab (their session, their cookies — exactly
+// like redditCapture), turned into `community_thread_capture/1` by the adapter and posted to the app in batches.
+const CSCAN_ACTIVE = new Set(['listing', 'reading', 'sending']);
+const cscanKey = tabId => `cscan:${tabId}`;
+async function getCScan(tabId) { return (await chrome.storage.local.get(cscanKey(tabId)))[cscanKey(tabId)] || null; }
+async function putCScan(rec) { rec.updated_at = now(); await chrome.storage.local.set({ [cscanKey(rec.tab_id)]: rec }); }
+async function pageJson(tabId, url) {
+  const [{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func: async (u) => {
+    try { const r = await fetch(u, { credentials: 'include', headers: { Accept: 'application/json' } }); return { status: r.status, json: r.ok ? await r.json() : null }; }
+    catch (e) { return { status: 0, error: String(e) }; }
+  }, args: [url] });
+  return result || { status: 0, error: 'no result' };
+}
+const CSCAN_PACE_MS = 250;        // between API reads: a member scrolling, not a crawler
+const CSCAN_BATCH = 10;           // threads per POST to the app
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function startCommunityScan(tabId, projectId, maxAgeDays) {
+  const cur = await getCScan(tabId);
+  if (cur && CSCAN_ACTIVE.has(cur.status)) return { error: 'A community scan is already running in this tab.', scan: cur };
+  let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
+  const adapter = NSC.forUrl(tab.url);
+  if (!adapter) return { error: 'This page is not a community Neuro Search knows how to walk.' };
+  if (!projectId) return { error: 'Pick a project first.' };
+  const rec = { scan_id: (crypto.randomUUID ? crypto.randomUUID() : String(now()) + Math.random()), tab_id: tabId, url: tab.url, adapter: adapter.key, label: adapter.label,
+                project_id: projectId, max_age_days: maxAgeDays || null, started_at: now(), updated_at: now(), finished_at: null, status: 'listing', reason: null,
+                listed: 0, read: 0, stored: 0, failed: 0, skipped_old: 0, current: null, errors: [], cancel: false };
+  await putCScan(rec);
+  runCommunityScan(rec).catch(async e => { const r = await getCScan(tabId); if (r) { r.status = 'failed'; r.reason = 'runner_error'; r.errors.push(String(e.message || e).slice(0, 200)); r.finished_at = now(); await putCScan(r); } });
+  return { ok: true, scan: rec };
+}
+async function cancelCommunityScan(tabId) {
+  const rec = await getCScan(tabId);
+  if (!rec || !CSCAN_ACTIVE.has(rec.status)) return { ok: false };
+  rec.cancel = true; await putCScan(rec); return { ok: true };
+}
+async function runCommunityScan(rec) {
+  const adapter = NSC.all.find(a => a.key === rec.adapter);
+  const tabId = rec.tab_id;
+  const cutoff = rec.max_age_days ? Date.now() - rec.max_age_days * 86400e3 : null;
+  const bail = async (status, reason) => { rec.status = status; rec.reason = reason; rec.finished_at = now(); rec.current = null; await putCScan(rec); };
+  // 1. list: every post in the window, newest first
+  const posts = [];
+  let cursor = null, pages = 0;
+  while (pages < 400) {
+    const fresh = await getCScan(tabId); if (!fresh || fresh.cancel) return bail('cancelled', 'cancelled');
+    const r = await pageJson(tabId, adapter.feedUrl(cursor));
+    if (!r.json) { rec.errors.push(`feed page ${pages + 1}: HTTP ${r.status}${r.error ? ' ' + r.error : ''}`); if (!posts.length) return bail('failed', 'feed_unreadable'); break; }
+    const page = adapter.parseFeed(r.json); pages++;
+    let stop = false;
+    for (const p of page.items) {
+      const t = p.created_at ? Date.parse(p.created_at) : NaN;
+      if (cutoff && !isNaN(t) && t < cutoff) { rec.skipped_old++; stop = true; continue; }
+      posts.push(p);
+    }
+    rec.listed = posts.length; rec.current = `listing… ${posts.length} posts so far`; await putCScan(rec);
+    if (stop || !page.next || !page.items.length) break;
+    cursor = page.next; await sleep(CSCAN_PACE_MS);
+  }
+  if (!posts.length) return bail('done', 'nothing_in_window');
+  // 2. read each post's comments, 3. send in batches
+  rec.status = 'reading'; await putCScan(rec);
+  let batch = [];
+  const flush = async () => {
+    if (!batch.length) return;
+    rec.status = 'sending'; rec.current = `sending ${batch.length} to Neuro Search…`; await putCScan(rec);
+    try {
+      const res = await api('/api/community/threads', { method: 'POST', body: JSON.stringify({ project_id: rec.project_id, threads: batch }) });
+      rec.stored += (res && res.stored) || 0; rec.failed += (res && res.failed) || 0;
+      for (const x of (res && res.results) || []) if (!x.ok) rec.errors.push(`${x.thread_id.slice(0, 8)}: ${x.error}`);
+    } catch (e) { rec.failed += batch.length; rec.errors.push('send: ' + String(e.message || e).slice(0, 160)); }
+    batch = []; rec.status = 'reading'; await putCScan(rec);
+  };
+  for (const p of posts) {
+    const fresh = await getCScan(tabId); if (!fresh || fresh.cancel) { await flush(); return bail('cancelled', 'cancelled'); }
+    rec.current = `reading ${rec.read + 1} of ${posts.length}: ${(p.title || '').slice(0, 60)}`; await putCScan(rec);
+    const comments = []; let ccur = null, cpages = 0, partial = false;
+    if (p.expected_comments !== 0) {
+      while (cpages < 40) {
+        const r = await pageJson(tabId, adapter.commentsUrl(p.id, ccur));
+        if (!r.json) { partial = true; rec.errors.push(`${p.id.slice(0, 8)} comments: HTTP ${r.status}`); break; }
+        const pg = adapter.parseComments(r.json, p); cpages++;
+        comments.push(...pg.items);
+        if (!pg.next || !pg.items.length) break;
+        ccur = pg.next; await sleep(CSCAN_PACE_MS);
+      }
+    }
+    batch.push(NSC.contract(adapter, p, comments, partial));
+    rec.read++;
+    if (batch.length >= CSCAN_BATCH) await flush();
+    await sleep(CSCAN_PACE_MS);
+  }
+  await flush();
+  await bail('done', null);
+  await refreshPending();
+}
+
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status === 'complete' || info.url) paint(tab);
   if (info.status === 'complete') setTimeout(() => autoCapture(tab).catch(() => {}), 1500);   // let Reddit's client render
@@ -878,6 +982,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-retry') { withCapture(msg.tabId, () => retryCapture(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-start') { startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-cancel') { cancelCommunityScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-get') { getCScan(msg.tabId).then(scan => reply({ scan }), e => reply({ error: String(e) })); return true; }
 });
 
 // Unawaited, and deliberately placed AFTER every chrome.*.addListener registration above: MV3 re-executes this

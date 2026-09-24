@@ -319,6 +319,7 @@ globalThis.loadSources = async function loadSources(quiet) {
   let all; try { all = await api('/api/sources?' + p, quiet ? { ack: false } : {}); }
   catch (e) {
     POLL.leave('sources', loadSources);
+    if (e && e.stale) return;                                            // S94: the person moved to another project
     // an abandoned or failed BACKGROUND refresh keeps the list that is already on screen; the next tick tries again
     if (quiet && SRCG.loaded) return;
     $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return;

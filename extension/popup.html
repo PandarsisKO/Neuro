@@ -49,6 +49,14 @@
     <span id="screenshotMsg" class="muted"></span>
     <details><summary>Add a note</summary><input id="screenshotNote" placeholder="Optional context for this screenshot"></details>
   </div>
+  <div id="communityCard" style="display:none;border:1px solid #e1e5eb;border-radius:8px;background:#fff;padding:10px;margin-bottom:10px">
+    <b>Scan this community</b> <span class="muted" id="communityLabel"></span>
+    <div class="muted">Every conversation in this community — posts and their comments, read with your own login — goes to the project chosen above, as community sources.</div>
+    <label>How far back</label><select id="communityAge"><option value="365" selected>1 year</option><option value="90">3 months</option><option value="30">30 days</option><option value="">Everything</option></select>
+    <button class="primary" id="communityScan">Scan this community</button>
+    <button id="communityCancel" style="display:none">Stop</button>
+    <div id="communityMsg" class="muted" style="margin-top:6px"></div>
+  </div>
   <b>Scan this course</b>
   <div class="muted">Open the course's home page (the one listing its lessons) while signed in, then:</div>
   <button class="primary" id="scan">Scan this course</button>
@@ -65,5 +73,6 @@
   <details><summary>Settings</summary><div class="muted" id="cfg"></div><button id="reset">Change app address / password</button></details>
 </div>
 <script src="thread-capture.js"></script>
+<script src="community-adapters.js"></script>
 <script src="popup.js"></script>
 </body></html>

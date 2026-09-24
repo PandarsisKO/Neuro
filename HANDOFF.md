@@ -3732,9 +3732,7 @@ frequently copy paste URLs without actually opening them in a new browser window
 hit ADD."* B1 already parked the job (`external_pending`, provider `browser`) and lit the extension badge; the
 Browser-capture card had "Open & Capture", but it only opened the tab and the person still had to find the card and
 then press the extension's button. Now: the job's own row in the In-progress box says "needs your browser" and
-carries a primary "Open & capture in Chrome" (the job counts as hot, so the collapsed box shows it); the
-label carries no emoji — `test_s50_design_drift::test_emoji_beside_a_label_the_button_already_states_is_removed`
-has a ceiling of 0 and caught the first version of this button;
+carries a primary "🌐 Open & capture in Chrome" (the job counts as hot, so the collapsed box shows it);
 `openAndCapture` opens the URL with `#neuro-capture`; the extension's background worker (`autoCapture`, on
 `tabs.onUpdated` complete) sees that fragment on a URL it has a pending request for and runs the same producer the
 popup button runs, posts it, and sets the badge to OK (or "!" with the fallback instruction). A tab the person opened
@@ -3744,3 +3742,49 @@ worker (`importScripts`), so nothing is duplicated; the `// ---- B1:` / `async f
 extension-auth harness slices on are kept. Extension 1.9.6 → **1.9.7** (`CLAUDE.md` updated). Tests:
 `tests/test_s92_open_and_capture.py` (5); S54, S74, L1 green with it. **Kyle must reload the unpacked extension in
 chrome://extensions once** for 1.9.7 to take effect.
+
+## S93 — "Scan this community": every conversation of a logged-in community (Claude Desktop, 2026-09-24)
+
+Kyle: *"using the SMB Market community example, how can I just capture every single one? I dont want to manually
+open each one at a time."* → *"lets do 1 year max walk back."* smbmarket.com is its own Next.js app (not Skool /
+Circle / Facebook) with a cookie-authenticated JSON API, read from his Chrome tab: `community-api.smbmarket.com/
+api/v1/feed?kind=latest&limit=50&cursor=…` (posts: title, plain-text body, space, author, createdAt, likeCount,
+commentCount) and `posts/{id}/comments?limit=50&cursor=…` (flat, parentId, mentions). 214 posts across 8 spaces,
+oldest 2026-09-10.
+
+- **Contract** `community_thread_capture/1` (platform-neutral; `community.thread_from_generic_capture`): thread +
+  comments + capture diagnostics, depth derived from the parent chain, orphans hang off the root, ISO or epoch
+  dates. `community.acquire_generic_thread` → the SAME `store_thread` a Reddit thread takes (community_posts,
+  signals, pruning, chunks, completeness), then embed + `_after_ready` (`_finish_thread`, now shared with
+  `acquire_thread`). `acquire_thread(url, capture=…)` accepts the contract for non-Reddit URLs.
+- **Endpoint** `POST /api/community/threads` `{project_id, threads:[…], tags?}` — ≤ 50 per batch, ≤ 12 MB, one bad
+  thread never fails the batch; returns per-thread `source_id` / error.
+- **Extension 1.10.0**: `community-adapters.js` (`self.NSCommunityAdapters`; smbmarket is the only adapter, the
+  walker knows nothing platform-specific), the walker in `background.js` (`cscan:<tabId>` durable record, same
+  popup-is-a-view pattern as the course scan; every API read is `fetch(…, {credentials:'include'})` executed INSIDE
+  the tab; 250 ms pace; batches of 10 to the app; cancel at any boundary), and a "Scan this community" card in the
+  popup that appears only on a community it can walk (project = the "Send this page" project select; walk-back
+  1 year default / 3 months / 30 days / everything). Adapter verified live against the real feed and comments in
+  Kyle's tab; the walk itself needs the reloaded extension and one click.
+- Tests: `tests/test_s93_community_walker.py` (5: contract → thread shape, orphan reply, batch endpoint through the
+  app with identity dedupe / 404 / 413, partial completeness, extension wiring). `CLAUDE.md` extension version →
+  1.10.0.
+
+## S94 — chats, sources, progress leaking between projects (Claude Desktop, 2026-09-24)
+
+Kyle: *"chats, sources, progress seem to be leaking between projects."* Reproduced in his Chrome: open the wealth
+project, switch to the business project — sources pane still r/HENRYfinance rows, count still 285, wealth's review
+cards still there. Two causes. (1) A race: a slow answer for the project just LEFT landed after the switch and
+painted the new screen. `api()` now reads the project id out of every project-scoped path (`/api/projects/<id>`,
+`project_id=<id>`) and, when the answer arrives for a project that is no longer `state.project`, throws an
+`AbortError` with `stale: true` — which every loader already treats as an abandoned poll (no banner, no error
+state); `loadSources` / `loadWorkbench` catch blocks skip it explicitly. `openProject` sets `state.project` to the
+new id BEFORE its first fetch (so old answers are stale from that instant), resets, and a superseded open never
+finishes (`openSeq`). (2) Per-project state in module globals survived the switch — `SRCG.all/loaded` (the
+"keep the list already on screen" path kept the OTHER project's list), `POOL.total`, `FB`, `RES`, `STALE`,
+`BOOTSTATE`, `BOOT` picks, `rvSig`/`rvUnchecked`/`RVFOLD`, `CAPTURE_SEEN`, `lastRev`, `notesRev`, `JOBSHIST`,
+`CW.sel` — `resetProjectState()` clears all of them and empties every pane (`#srcList`, `#reviewWrap`, `#jobs`,
+`#notes`, `#chat`, `#chatList`, `#planWrap`, counters) on a real switch. Verified live: after the switch the
+business project shows its own rows (1,149 sources), no leftover cards, its own 41 chats. Also: the S92 button lost
+its 🌐 — `test_s50_design_drift` (CL-6) was right. Tests: `tests/test_s94_project_isolation.py` (3); 245 UI-contract
+tests green with it.

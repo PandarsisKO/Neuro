@@ -140,6 +140,18 @@ globalThis.POLL = {
   },
 };
 
+// S94 (Kyle, 2026-09-24: "chats, sources, progress seem to be leaking between projects"). A slow response for
+// the project the person just LEFT used to land after the switch and paint the new project's screen with the old
+// one's rows. Every project-scoped request carries its project id in the path; when the answer arrives for a
+// project that is no longer open it is dropped here — thrown as an AbortError, which every loader already treats
+// as "an abandoned poll, try again", never as an outage and never as data.
+globalThis.projectOfPath = function projectOfPath(path) {
+  const m = /\/api\/projects\/([0-9a-f]{32})(?:[/?]|$)/.exec(path || '') || /[?&]project_id=([0-9a-f]{32})/.exec(path || '');
+  return m ? m[1] : null;
+};
+globalThis.staleProjectError = function staleProjectError(pid) {
+  const e = new Error('response for a project that is no longer open'); e.name = 'AbortError'; e.stale = true; e.project_id = pid; return e;
+};
 globalThis.api = async function api(path, opts = {}) {
   // opts.ack === false: a background poll must never light the window up. Everything a person started
   // is acknowledged; the 3-second /tick loop is not something a person started.
@@ -152,10 +164,12 @@ globalThis.api = async function api(path, opts = {}) {
   const timer = ctl ? setTimeout(() => ctl.abort(), budget) : null;
   if (quiet) await POLL.acquire();
   try {
+    const pid = projectOfPath(path);
     const r = await uiFetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts, ...(ctl ? { signal: ctl.signal } : {}) });
     if (r.status === 401) { location.reload(); return; }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
+    if (pid && state.project && state.project.id !== pid) throw staleProjectError(pid);   // S94: the person moved on
     return j;
   } finally {
     if (timer) clearTimeout(timer);

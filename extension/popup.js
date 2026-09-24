@@ -412,3 +412,37 @@ $('#send').onclick = async () => {
 
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 load();
+
+// ---- S93: "Scan this community" — a VIEW of the background walker (cscan:<tabId>), exactly like the course scan.
+const CSCAN_ACTIVE = new Set(['listing', 'reading', 'sending']);
+let CSCAN = null;
+async function renderCommunity() {
+  if (!TAB) TAB = await currentTab();
+  const adapter = TAB && self.NSCommunityAdapters.forUrl(TAB.url);
+  const card = $('#communityCard');
+  if (!adapter) { card.style.display = 'none'; return; }
+  card.style.display = ''; $('#communityLabel').textContent = '· ' + adapter.label;
+  const r = await bg({ type: 'cscan-get', tabId: TAB.id }); CSCAN = r.scan || null;
+  const s = CSCAN, active = !!(s && CSCAN_ACTIVE.has(s.status));
+  $('#communityScan').disabled = active; $('#communityCancel').style.display = active ? '' : 'none';
+  if (!s) { $('#communityMsg').textContent = ''; return; }
+  const errs = s.errors && s.errors.length ? ` <span class="warn">${s.errors.length} problem${s.errors.length === 1 ? '' : 's'}</span>` : '';
+  if (active) { $('#communityMsg').innerHTML = `${esc(s.current || s.status)}<br>${s.listed} listed · ${s.read} read · ${s.stored} stored${s.failed ? ` · ${s.failed} failed` : ''}${errs}`; return; }
+  const why = { nothing_in_window: 'no posts in that time window', feed_unreadable: 'the community feed could not be read — are you signed in on this tab?', cancelled: 'you stopped it', runner_error: 'the walker hit an error' }[s.reason] || '';
+  const head = s.status === 'done' ? `<span class="ok">Done — ${s.stored} conversation${s.stored === 1 ? '' : 's'} stored in Neuro Search</span>` : `<span class="bad">${s.status === 'cancelled' ? 'Stopped' : 'Failed'}${why ? ' — ' + esc(why) : ''}</span>`;
+  $('#communityMsg').innerHTML = `${head}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
+}
+$('#communityScan').onclick = async () => {
+  if (!TAB) TAB = await currentTab();
+  const pid = $('#pageProject').value; if (!pid) { $('#communityMsg').innerHTML = '<span class="bad">Pick a project above first.</span>'; return; }
+  chrome.storage.local.set({ lastProject: pid });
+  $('#communityScan').disabled = true; $('#communityMsg').textContent = 'Listing conversations…';
+  const age = $('#communityAge').value;
+  const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null });
+  if (r.error) { $('#communityMsg').innerHTML = `<span class="bad">${esc(r.error)}</span>`; $('#communityScan').disabled = false; }
+  renderCommunity();
+};
+$('#communityCancel').onclick = async () => { if (!TAB) return; $('#communityCancel').disabled = true; await bg({ type: 'cscan-cancel', tabId: TAB.id }); $('#communityCancel').disabled = false; renderCommunity(); };
+chrome.storage.onChanged.addListener((changes) => { if (TAB && changes[`cscan:${TAB.id}`]) renderCommunity(); });
+renderCommunity();
+
