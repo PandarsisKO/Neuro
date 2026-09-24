@@ -62,5 +62,31 @@ async function pageCapture(tab) {
   return result;
 }
 
-  self.NSThreadCapture = { redditCapture, pageCapture };
+  // S95: the JSON half of redditCapture for a thread that is NOT the tab's own page — Reddit serves the same-origin
+  // .json to the person's session from any reddit.com tab, so a pending capture needs no tab of its own.
+  async function redditCaptureUrl(tab, url) {
+    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: async (u) => {
+      const norm = id => (id || '').replace(/^t[13]_/, '');
+      try {
+        const x = new URL(u); x.hash = ''; x.search = '';
+        const path = x.pathname.replace(/\/$/, '').replace(/\.json$/, '');
+        const r = await fetch(`https://www.reddit.com${path}.json?raw_json=1&limit=500&depth=12`, { credentials: 'include', headers: { Accept: 'application/json' } });
+        if (!r.ok) return { error: 'HTTP ' + r.status };
+        const listing = await r.json();
+        const link = listing[0].data.children[0].data;
+        const comments = [];
+        const walk = (children, parent, depth) => { for (const ch of children || []) { if (ch.kind !== 't1') continue; const d = ch.data;
+          comments.push({ reddit_id: d.id, parent_id: parent, depth, author: d.author, text: d.body || '', score: d.score, created_at: d.created_utc, edited: !!d.edited,
+            deleted: d.body === '[deleted]' || d.body === '[removed]' || d.author === '[deleted]', permalink: 'https://www.reddit.com' + (d.permalink || '') });
+          if (d.replies && d.replies.data) walk(d.replies.data.children, d.id, depth + 1); } };
+        if (listing[1]) walk(listing[1].data.children, link.id, 1);
+        return { contract: 'reddit_thread_capture/1', method: 'json', canonical_url: 'https://www.reddit.com' + link.permalink,
+          thread: { reddit_id: link.id, subreddit: link.subreddit_name_prefixed || ('r/' + link.subreddit), title: link.title, author: link.author, body: link.selftext || '', score: link.score,
+                    created_at: link.created_utc, edited: !!link.edited, deleted: link.author === '[deleted]' && !link.selftext, permalink: 'https://www.reddit.com' + link.permalink, expected_comments: link.num_comments },
+          comments, capture: { status: comments.length >= (link.num_comments || 0) ? 'complete' : 'partial', captured: comments.length, expected: link.num_comments, method: 'json' } };
+      } catch (e) { return { error: String(e) }; }
+    }, args: [url] });
+    return result;
+  }
+  self.NSThreadCapture = { redditCapture, pageCapture, redditCaptureUrl };
 })();

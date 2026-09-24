@@ -33,7 +33,30 @@
     }),
     community: post => 'SMB Market' + (post.space ? ' · ' + post.space : ''),
   };
-  const ADAPTERS = [SMB];
+  // S95 — a subreddit's listing, read with the person's session (/r/<sub>/new.json). Mode 'propose': the walker
+  // LISTS and hands the posts to the app as a review card (ranked against the brief, best N pre-selected); the
+  // app ingests the chosen ones, and the pending captures are fulfilled from any open Reddit tab (background.js).
+  // No OCR: this is the same structured listing the page itself is built from — titles, bodies, dates, scores, links.
+  const subOf = url => { const m = /reddit\.com\/r\/([A-Za-z0-9_]+)/.exec(url || ''); return m ? m[1] : null; };
+  const REDDIT = {
+    key: 'reddit',
+    platform: 'reddit',
+    label: 'subreddit',
+    mode: 'propose',
+    match: url => !!subOf(url) && !/\/comments\//.test(url || ''),
+    title: url => 'r/' + subOf(url),
+    feedUrl: (cursor, ctx) => `https://www.reddit.com/r/${subOf(ctx.url)}/new.json?raw_json=1&limit=100` + (cursor ? '&after=' + encodeURIComponent(cursor) : ''),
+    parseFeed: json => ({
+      items: ((json && json.data && json.data.children) || []).filter(c => c.kind === 't3').map(({ data: d }) => ({
+        id: d.id, title: d.title || '', body: d.selftext || '', author: d.author || null, created_at: d.created_utc, edited: !!d.edited,
+        score: d.score, expected_comments: d.num_comments, space: d.subreddit || '', kind: d.is_self ? 'text' : 'link',
+        url: 'https://www.reddit.com' + (d.permalink || ''),
+      })),
+      next: json && json.data && json.data.after || null,
+    }),
+    community: post => 'r/' + (post.space || ''),
+  };
+  const ADAPTERS = [SMB, REDDIT];
   self.NSCommunityAdapters = {
     all: ADAPTERS,
     forUrl: url => ADAPTERS.find(a => a.match(url)) || null,

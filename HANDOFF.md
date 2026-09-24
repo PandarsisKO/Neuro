@@ -3788,3 +3788,28 @@ finishes (`openSeq`). (2) Per-project state in module globals survived the switc
 business project shows its own rows (1,149 sources), no leftover cards, its own 41 chats. Also: the S92 button lost
 its 🌐 — `test_s50_design_drift` (CL-6) was right. Tests: `tests/test_s94_project_isolation.py` (3); 245 UI-contract
 tests green with it.
+
+## S95 — "Scan this subreddit": walk, rank against the brief, capture the chosen (Claude Desktop, 2026-09-24)
+
+Kyle: *"can the reddit walk not use the API but do a long scroll screenshot, OCR the screenshot, and then weigh the
+titles and visible description to then load URLs we want to capture into the chrome extension?"* → *"build it. make
+a dedicated button so i know about it."* No OCR: the extension already sits in the logged-in tab, where Reddit serves
+the same structured listing the page is built from (`/r/<sub>/new.json?limit=100&after=…` with the person's
+session — the server is blocked, the browser is not), so titles, bodies, dates, scores and permalinks arrive intact.
+
+- **Adapter** `reddit` in `community-adapters.js`, `mode: 'propose'`: the S93 walker LISTS (1-year default walk-back;
+  Reddit caps a listing at ~1,000) and hands the posts to the app instead of reading comments.
+- **Server** `POST /api/community/proposals` → `ingest.propose_community_listing`: a `subreddit` collection linked to
+  the project, one proposed `community` source per post (identity first — an owned thread keeps its status; the
+  body is the description so `rank_proposed` weighs title + body), `candidates.remember`, review meta with
+  `max_videos` = the popup's "pre-select the best N", and the `rank_proposed` job — the same review card a YouTube
+  channel gets. `approve_proposed` ingests a `community` row through `ingest_url` (the community reader; when
+  Reddit blocks the server, `park_for_browser`'s identity lands the capture request on the SAME proposed row).
+- **Extension** fulfils pending Reddit captures from ANY open reddit.com tab (`fulfilRedditCaptures` on every
+  pending refresh; `thread-capture.js: redditCaptureUrl` = the proven JSON producer for an arbitrary thread URL;
+  once per request per 10 min; a failure leaves the request for the popup / Open & capture path) — the chosen
+  threads arrive without a tab per post. Dedicated popup card "Scan this subreddit" (walk-back, pre-select N,
+  its own button) beside "Scan this community". Extension **1.11.0** (`CLAUDE.md`).
+- Tests: `tests/test_s95_scan_subreddit.py` (3: listing → ranked card through the app with re-walk dedupe / 404 /
+  400; Start → parked browser capture on the same row; the extension wiring). L1, K9, S54, S74, S92, S93 green
+  with it. Live: Claude-in-Chrome refuses reddit.com, so the first real walk is Kyle's.

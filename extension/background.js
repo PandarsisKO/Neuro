@@ -59,6 +59,7 @@ async function refreshPending() {
     const items = (p && p.items) || [];
     await chrome.storage.local.set({ pending: items, pendingAt: Date.now() });
     await paintAll(items);
+    fulfilRedditCaptures(items).catch(() => {});
   } catch (e) {
     // Keep ordinary offline polling quiet. The popup can ask for this state and surface auth failures;
     // do not turn a transient network failure into a persistent notification.
@@ -295,7 +296,7 @@ async function execFn(tabId, func, args) {
 // carries the durable IndexedDB blob store (service-worker-only — never page-injected, unlike capture-lib.js).
 importScripts('capture-lib.js', 'capture-blob-store.js');
 importScripts('thread-capture.js');     // S92: the same producers the popup button runs (auto-capture below)
-const { redditCapture, pageCapture } = self.NSThreadCapture;
+const { redditCapture, pageCapture, redditCaptureUrl } = self.NSThreadCapture;
 importScripts('community-adapters.js'); // S93: "Scan this community" — the platform adapters; the walker is below
 const NSC = self.NSCommunityAdapters;
 const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsHideScrollbars, nsRestoreScrollbars, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
@@ -833,6 +834,38 @@ chrome.alarms.onAlarm.addListener(async a => {
 // the page loads, this worker sees a pending request for exactly this URL, runs the same producer the popup
 // button would, posts it, and lights the badge. A tab the person opened by hand (no fragment) still captures
 // only from the popup button — rule 2 at the top of this file holds for everything not started from the app.
+// S95: a pending Reddit capture needs no tab of its own. Reddit serves the thread's .json to the person's session
+// from ANY reddit.com tab, so whenever one is open, every waiting Reddit request is read through it and delivered —
+// the walk-and-pick flow ("Scan this subreddit") ends with the chosen threads captured without a click per post.
+// Each request is tried once per FULFIL_RETRY_MS; a failure leaves the request for the popup / Open & capture path.
+const FULFIL_RETRY_MS = 10 * 60 * 1000;
+let fulfilling = false;
+async function fulfilRedditCaptures(items) {
+  if (fulfilling) return;
+  const wanted = (items || []).filter(i => i.adapter === 'reddit_thread' && i.status !== 'expired');
+  if (!wanted.length) return;
+  const tabs = await chrome.tabs.query({ url: 'https://www.reddit.com/*' });
+  const tab = tabs.find(t => t.status === 'complete') || tabs[0];
+  if (!tab) return;
+  fulfilling = true;
+  try {
+    for (const it of wanted) {
+      const key = `fulfil:${it.job_id}`;
+      const last = (await chrome.storage.local.get(key))[key];
+      if (last && Date.now() - last < FULFIL_RETRY_MS) continue;
+      await chrome.storage.local.set({ [key]: Date.now() });
+      const payload = await redditCaptureUrl(tab, it.canonical_url || it.url);
+      if (!payload || payload.error) continue;
+      await api(`/api/capture/${it.job_id}`, { method: 'POST', body: JSON.stringify(payload) });
+      await sleep(1000);
+    }
+  } finally { fulfilling = false; }
+  await refreshPendingQuiet();
+}
+async function refreshPendingQuiet() {
+  try { const p = await api('/api/capture/pending'); const items = (p && p.items) || []; await chrome.storage.local.set({ pending: items, pendingAt: Date.now() }); await paintAll(items); } catch (e) {}
+}
+
 const AUTO_MARK = 'neuro-capture';
 async function autoCapture(tab) {
   if (!tab || !tab.id || !tab.url) return;
@@ -884,7 +917,7 @@ const CSCAN_PACE_MS = 250;        // between API reads: a member scrolling, not 
 const CSCAN_BATCH = 10;           // threads per POST to the app
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function startCommunityScan(tabId, projectId, maxAgeDays) {
+async function startCommunityScan(tabId, projectId, maxAgeDays, want) {
   const cur = await getCScan(tabId);
   if (cur && CSCAN_ACTIVE.has(cur.status)) return { error: 'A community scan is already running in this tab.', scan: cur };
   let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
@@ -893,7 +926,7 @@ async function startCommunityScan(tabId, projectId, maxAgeDays) {
   if (!projectId) return { error: 'Pick a project first.' };
   const rec = { scan_id: (crypto.randomUUID ? crypto.randomUUID() : String(now()) + Math.random()), tab_id: tabId, url: tab.url, adapter: adapter.key, label: adapter.label,
                 project_id: projectId, max_age_days: maxAgeDays || null, started_at: now(), updated_at: now(), finished_at: null, status: 'listing', reason: null,
-                listed: 0, read: 0, stored: 0, failed: 0, skipped_old: 0, current: null, errors: [], cancel: false };
+                listed: 0, read: 0, stored: 0, failed: 0, skipped_old: 0, current: null, errors: [], cancel: false, want: want || null, mode: adapter.mode || 'store' };
   await putCScan(rec);
   runCommunityScan(rec).catch(async e => { const r = await getCScan(tabId); if (r) { r.status = 'failed'; r.reason = 'runner_error'; r.errors.push(String(e.message || e).slice(0, 200)); r.finished_at = now(); await putCScan(r); } });
   return { ok: true, scan: rec };
@@ -913,7 +946,7 @@ async function runCommunityScan(rec) {
   let cursor = null, pages = 0;
   while (pages < 400) {
     const fresh = await getCScan(tabId); if (!fresh || fresh.cancel) return bail('cancelled', 'cancelled');
-    const r = await pageJson(tabId, adapter.feedUrl(cursor));
+    const r = await pageJson(tabId, adapter.feedUrl(cursor, { url: rec.url }));
     if (!r.json) { rec.errors.push(`feed page ${pages + 1}: HTTP ${r.status}${r.error ? ' ' + r.error : ''}`); if (!posts.length) return bail('failed', 'feed_unreadable'); break; }
     const page = adapter.parseFeed(r.json); pages++;
     let stop = false;
@@ -927,6 +960,17 @@ async function runCommunityScan(rec) {
     cursor = page.next; await sleep(CSCAN_PACE_MS);
   }
   if (!posts.length) return bail('done', 'nothing_in_window');
+  if (adapter.mode === 'propose') {
+    // S95: hand the LISTING to the app as a review card; the app ranks it against the brief and ingests the chosen
+    rec.status = 'sending'; rec.current = `sending ${posts.length} posts to Neuro Search for review…`; await putCScan(rec);
+    try {
+      const res = await api('/api/community/proposals', { method: 'POST', body: JSON.stringify({ project_id: rec.project_id, platform: adapter.platform, community: adapter.title(rec.url),
+        url: rec.url, items: posts.slice(0, 2000), max_videos: rec.want || null }) });
+      rec.stored = (res && res.proposed) || 0; rec.already = (res && res.already_ingested) || 0; rec.collection_id = res && res.collection_id;
+    } catch (e) { rec.errors.push('send: ' + String(e.message || e).slice(0, 160)); return bail('failed', 'send_failed'); }
+    await bail('proposed', null);
+    return;
+  }
   // 2. read each post's comments, 3. send in batches
   rec.status = 'reading'; await putCScan(rec);
   let batch = [];
@@ -982,7 +1026,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-retry') { withCapture(msg.tabId, () => retryCapture(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
-  if (msg.type === 'cscan-start') { startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-start') { startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-cancel') { cancelCommunityScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-get') { getCScan(msg.tabId).then(scan => reply({ scan }), e => reply({ error: String(e) })); return true; }
 });

@@ -43,7 +43,7 @@ def test_the_extension_captures_a_marked_tab_on_its_own():
 
 def test_the_producers_are_shared_not_duplicated():
     assert "async function redditCapture(tab)" in LIB and "async function pageCapture(tab)" in LIB
-    assert "self.NSThreadCapture = { redditCapture, pageCapture };" in LIB
+    assert "self.NSThreadCapture = { redditCapture, pageCapture, redditCaptureUrl };" in LIB
     # scoped: as globals, these two would collide with the `const { redditCapture, pageCapture }` in popup.js and
     # background.js ("Identifier has already been declared") and take the popup AND the worker down — 1.9.7's first
     # load did exactly that
@@ -54,4 +54,4 @@ def test_the_producers_are_shared_not_duplicated():
 
 
 def test_extension_version_bumped():
-    assert json.loads((ROOT / "extension" / "manifest.json").read_text())["version"] in ("1.9.7", "1.10.0")
+    assert json.loads((ROOT / "extension" / "manifest.json").read_text())["version"] in ("1.9.7", "1.10.0", "1.11.0")

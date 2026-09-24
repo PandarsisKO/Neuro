@@ -106,4 +106,4 @@ def test_the_extension_ships_the_walker_and_the_adapter():
     assert 'id="communityScan"' in html and '<option value="365" selected>1 year</option>' in html, "1 year is the default walk-back (Kyle)"
     assert '<script src="community-adapters.js"></script>' in html and html.index("community-adapters.js") < html.index('src="popup.js"')
     assert "type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null" in pop
-    assert json.loads((ext / "manifest.json").read_text())["version"] == "1.10.0"
+    assert json.loads((ext / "manifest.json").read_text())["version"] in ("1.10.0", "1.11.0")

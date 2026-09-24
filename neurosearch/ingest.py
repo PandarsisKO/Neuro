@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Callable
 
+from . import community as community_mod
 from . import db, identity, media, providers, relevance
 from .chunking import build_chunks, normalize_segments
 from .config import settings
@@ -308,10 +309,17 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
             # things are going at the same speed as I am." A review the person just approved is the strongest
             # statement of intent ingestion ever receives — the same rule `jobs.user_pick_lane` applies to findings.
             # Ordering only: same worker pool, same cost.
-            db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
-                                            "collection_id": collection_id, "newest_first": bool(meta.get("newest_first")),
-                                            "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")},
-                          lane="priority")
+            if r.get("platform") == community_mod.PLATFORM:
+                # S95: a proposed thread goes through the URL path — the community reader, and when Reddit blocks
+                # the server, the parked browser capture the extension fulfils; identity lands it on THIS row
+                db.create_job("ingest_url", {"url": r["url"], "project_id": pid, "title": r.get("title"), "collection_id": collection_id,
+                                             "tags": json.loads(r.get("tags") or "[]") if isinstance(r.get("tags"), str) else (r.get("tags") or [])},
+                              lane="priority")
+            else:
+                db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
+                                                "collection_id": collection_id, "newest_first": bool(meta.get("newest_first")),
+                                                "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")},
+                              lane="priority")
             started += 1
         else:
             db.delete_source(r["id"])
@@ -319,6 +327,65 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
     db.kv_set(f"review:{collection_id}", None)
     return {"collection_id": collection_id, "started": started, "dropped": dropped,
             "dismissed": len(set(dismissed_ids or ()) - set(chosen))}
+
+
+def propose_community_listing(project_id: str, *, platform: str, community: str, url: str, items: list[dict[str, Any]],
+                              max_videos: int | None = None, tags: list[str] | None = None) -> dict[str, Any]:
+    """S95 — a community listing the extension walked in the person's browser (a subreddit's /new.json, read with
+    their session — the server is blocked, the browser is not) becomes a review card exactly like a YouTube channel:
+    proposed sources, the relevance ranker over title + body, the best N pre-selected, Start ingests the chosen ones.
+    Mirrors the Instagram-profile path above; a thread already in the library keeps its status (identity first)."""
+    from . import identity
+    if platform != "reddit":
+        raise ValueError("only reddit listings are proposable today")
+    label = community if community.startswith("r/") else f"r/{community}"
+    coll = db.upsert_collection("subreddit", f"reddit:{label}", url, label)
+    db.add_project_collections(project_id, [coll["id"]])
+    mx = max_videos or settings.default_max_videos or 20
+    counts = {"already_in_project": 0, "already_in_library": 0, "new": 0}
+    member_ids = set(db.project_source_ids(project_id, ready_only=False))
+    proposed, skipped = 0, 0
+    entries = []
+    with db.batch():
+        for it in items:
+            tid = str(it.get("id") or "").strip()
+            if not tid:
+                continue
+            created = it.get("created_at")
+            published = None
+            try:
+                import datetime as _dt
+                if isinstance(created, (int, float)):
+                    published = _dt.datetime.fromtimestamp(float(created), _dt.UTC).strftime("%Y-%m-%d")
+                elif created:
+                    published = str(created)[:10]
+            except (ValueError, OverflowError, OSError):
+                published = None
+            cand = identity.Candidate(platform=community_mod.PLATFORM, external_id=f"reddit:{tid}", url=it.get("url") or url, title=it.get("title") or tid,
+                                      canonical_url=it.get("url") or url, tags=list(tags or []),
+                                      fields={"channel": label, "description": (it.get("body") or "")[:2000], "published_at": published,
+                                              "transcript_kind": "community", "view_count": it.get("score")})
+            res = identity.resolve_or_create_source(cand, None, initial_status="proposed", resume_skipped=False)
+            src = res.source
+            db.link_source_collection(src["id"], coll["id"])
+            if src["id"] in member_ids:
+                counts["already_in_project"] += 1
+            elif res.state == identity.NEW:
+                counts["new"] += 1
+            else:
+                counts["already_in_library"] += 1
+            already = src["status"] != "proposed"
+            skipped += already
+            proposed += not already
+            entries.append({"external_id": f"reddit:{tid}", "url": it.get("url") or url, "title": it.get("title"), "description": (it.get("body") or "")[:2000],
+                            "duration": None, "view_count": it.get("score"), "creator": label})
+    from . import candidates as _cand
+    _cand.remember(entries, community_mod.PLATFORM, project_id, {"collection_id": coll["id"], "kind": "subreddit", "title": label})
+    db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": None, "newest_first": True, "project_id": project_id, "max_videos": mx,
+                                                  "ranked": False, "counts": counts, "community": label}))
+    db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx}, lane="priority")
+    return {"kind": "subreddit", "collection_id": coll["id"], "title": label, "found": len(items), "proposed": proposed,
+            "already_ingested": skipped, "counts": counts, "review": proposed > 0}
 
 
 def _cutoff_date(years: float | None) -> str | None:

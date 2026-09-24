@@ -986,6 +986,32 @@ def api_community_threads(body: CommunityThreadsIn) -> dict[str, Any]:
     return {"stored": sum(1 for r in results if r["ok"]), "failed": sum(1 for r in results if not r["ok"]), "results": results}
 
 
+class CommunityProposalsIn(BaseModel):
+    project_id: str
+    platform: str = "reddit"
+    community: str
+    url: str
+    items: list[dict[str, Any]]
+    max_videos: int | None = None
+    tags: list[str] | None = None
+
+
+@app.post("/api/community/proposals", dependencies=[Depends(require_auth)])
+def api_community_proposals(body: CommunityProposalsIn) -> dict[str, Any]:
+    """S95 — "Scan this subreddit": the extension walked a subreddit's listing in the person's browser; the posts
+    become a review card (ranked against the brief, best N pre-selected) and Start ingests the chosen threads —
+    through the browser again when Reddit blocks the server."""
+    if not db.get_project(body.project_id):
+        raise HTTPException(404, "project not found")
+    if len(body.items) > 2000:
+        raise HTTPException(413, "at most 2000 posts per listing")
+    try:
+        return ingest.propose_community_listing(body.project_id, platform=body.platform, community=body.community, url=body.url,
+                                                items=body.items, max_videos=body.max_videos, tags=body.tags)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/api/capture/{job_id}", dependencies=[Depends(require_auth)])
 def api_capture_resolve(job_id: str, body: CaptureIn) -> dict[str, Any]:
     """The extension delivers what the browser saw for a waiting request; the SAME job completes the SAME source."""

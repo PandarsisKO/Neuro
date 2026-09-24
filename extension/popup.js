@@ -416,33 +416,42 @@ load();
 // ---- S93: "Scan this community" — a VIEW of the background walker (cscan:<tabId>), exactly like the course scan.
 const CSCAN_ACTIVE = new Set(['listing', 'reading', 'sending']);
 let CSCAN = null;
+// Two cards, one walker: 'store' adapters (SMB Market) capture every conversation; 'propose' adapters (a subreddit,
+// S95) list the posts for a review card and let the app rank + capture the chosen ones. Each card is its own
+// dedicated button (Kyle: "make a dedicated button so i know about it").
+const CARDS = { store: { card: '#communityCard', label: '#communityLabel', btn: '#communityScan', cancel: '#communityCancel', msg: '#communityMsg', age: '#communityAge', want: null },
+                propose: { card: '#subredditCard', label: '#subredditLabel', btn: '#subredditScan', cancel: '#subredditCancel', msg: '#subredditMsg', age: '#subredditAge', want: '#subredditWant' } };
 async function renderCommunity() {
   if (!TAB) TAB = await currentTab();
   const adapter = TAB && self.NSCommunityAdapters.forUrl(TAB.url);
-  const card = $('#communityCard');
-  if (!adapter) { card.style.display = 'none'; return; }
-  card.style.display = ''; $('#communityLabel').textContent = '· ' + adapter.label;
+  for (const c of Object.values(CARDS)) $(c.card).style.display = 'none';
+  if (!adapter) return;
+  const C = CARDS[adapter.mode === 'propose' ? 'propose' : 'store'];
+  $(C.card).style.display = ''; $(C.label).textContent = '· ' + (adapter.title ? adapter.title(TAB.url) : adapter.label);
   const r = await bg({ type: 'cscan-get', tabId: TAB.id }); CSCAN = r.scan || null;
   const s = CSCAN, active = !!(s && CSCAN_ACTIVE.has(s.status));
-  $('#communityScan').disabled = active; $('#communityCancel').style.display = active ? '' : 'none';
-  if (!s) { $('#communityMsg').textContent = ''; return; }
+  $(C.btn).disabled = active; $(C.cancel).style.display = active ? '' : 'none';
+  if (!s) { $(C.msg).textContent = ''; return; }
   const errs = s.errors && s.errors.length ? ` <span class="warn">${s.errors.length} problem${s.errors.length === 1 ? '' : 's'}</span>` : '';
-  if (active) { $('#communityMsg').innerHTML = `${esc(s.current || s.status)}<br>${s.listed} listed · ${s.read} read · ${s.stored} stored${s.failed ? ` · ${s.failed} failed` : ''}${errs}`; return; }
-  const why = { nothing_in_window: 'no posts in that time window', feed_unreadable: 'the community feed could not be read — are you signed in on this tab?', cancelled: 'you stopped it', runner_error: 'the walker hit an error' }[s.reason] || '';
-  const head = s.status === 'done' ? `<span class="ok">Done — ${s.stored} conversation${s.stored === 1 ? '' : 's'} stored in Neuro Search</span>` : `<span class="bad">${s.status === 'cancelled' ? 'Stopped' : 'Failed'}${why ? ' — ' + esc(why) : ''}</span>`;
-  $('#communityMsg').innerHTML = `${head}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
+  if (active) { $(C.msg).innerHTML = `${esc(s.current || s.status)}<br>${s.listed} listed${s.mode === 'propose' ? '' : ` · ${s.read} read · ${s.stored} stored`}${s.failed ? ` · ${s.failed} failed` : ''}${errs}`; return; }
+  const why = { nothing_in_window: 'no posts in that time window', feed_unreadable: 'the listing could not be read — are you signed in on this tab?', cancelled: 'you stopped it', runner_error: 'the walker hit an error', send_failed: 'Neuro Search did not accept the listing' }[s.reason] || '';
+  const head = s.status === 'proposed' ? `<span class="ok">Sent ${s.listed} post${s.listed === 1 ? '' : 's'} to Neuro Search for review${s.already ? ` (${s.already} already in your library)` : ''}.</span><br>Open Neuro Search → Sources: the review card ranks them against your brief with the best ${s.want || 20} pre-selected. Press Start there; keep any reddit.com tab open and the extension captures the chosen posts on its own.`
+    : s.status === 'done' ? `<span class="ok">Done — ${s.stored} conversation${s.stored === 1 ? '' : 's'} stored in Neuro Search</span>` : `<span class="bad">${s.status === 'cancelled' ? 'Stopped' : 'Failed'}${why ? ' — ' + esc(why) : ''}</span>`;
+  $(C.msg).innerHTML = `${head}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
 }
-$('#communityScan').onclick = async () => {
-  if (!TAB) TAB = await currentTab();
-  const pid = $('#pageProject').value; if (!pid) { $('#communityMsg').innerHTML = '<span class="bad">Pick a project above first.</span>'; return; }
-  chrome.storage.local.set({ lastProject: pid });
-  $('#communityScan').disabled = true; $('#communityMsg').textContent = 'Listing conversations…';
-  const age = $('#communityAge').value;
-  const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null });
-  if (r.error) { $('#communityMsg').innerHTML = `<span class="bad">${esc(r.error)}</span>`; $('#communityScan').disabled = false; }
-  renderCommunity();
-};
-$('#communityCancel').onclick = async () => { if (!TAB) return; $('#communityCancel').disabled = true; await bg({ type: 'cscan-cancel', tabId: TAB.id }); $('#communityCancel').disabled = false; renderCommunity(); };
+for (const C of Object.values(CARDS)) {
+  $(C.btn).onclick = async () => {
+    if (!TAB) TAB = await currentTab();
+    const pid = $('#pageProject').value; if (!pid) { $(C.msg).innerHTML = '<span class="bad">Pick a project above first.</span>'; return; }
+    chrome.storage.local.set({ lastProject: pid });
+    $(C.btn).disabled = true; $(C.msg).textContent = 'Listing…';
+    const age = $(C.age).value; const want = C.want ? +$(C.want).value || 20 : null;
+    const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null, want });
+    if (r.error) { $(C.msg).innerHTML = `<span class="bad">${esc(r.error)}</span>`; $(C.btn).disabled = false; }
+    renderCommunity();
+  };
+  $(C.cancel).onclick = async () => { if (!TAB) return; $(C.cancel).disabled = true; await bg({ type: 'cscan-cancel', tabId: TAB.id }); $(C.cancel).disabled = false; renderCommunity(); };
+}
 chrome.storage.onChanged.addListener((changes) => { if (TAB && changes[`cscan:${TAB.id}`]) renderCommunity(); });
 renderCommunity();
 
