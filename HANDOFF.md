@@ -3512,3 +3512,54 @@ backfilled once at app startup (inside the app; idempotent by intake id). Verifi
 the top of the business project's Chats. Tests: `tests/test_s84_external_chats.py` (7). Suite 2,478 passed.
 Open: when the person asked ChatGPT to archive the whole conversation, the chat shows only "Conversation archive
 (1 part)" — rendering that transcript inside the chat is the natural next step.
+
+## Two tunnels: the boot race and the header a re-init drops (Claude Code, 2026-09-23 evening)
+
+Both gaps flagged at the end of the per-tunnel-resource work, closed and tested by simulating the boot order
+that causes them.
+
+**1. A tunnel that starts before Neuro stayed broken until someone noticed.** tunnel-client fetches Neuro's
+protected-resource metadata **once**, at startup, and never retries. Kyle's tunnel started 08:22:22, discovery
+failed 08:23:49, Neuro first answered 08:24:53 — and `/readyz` stayed 503 for two and a half hours until a manual
+restart. All three agents are `RunAtLoad`, so at login this is a race the tunnel can lose, silently: the daemon
+is up, the agent is "running", and only `/readyz` says otherwise.
+
+`tools/tunnel_agent.py` now waits for `http://127.0.0.1:8000/` (override `NEUROSEARCH_HEALTH_URL` /
+`NEUROSEARCH_PORT`) before exec'ing tunnel-client, up to `TUNNEL_WAIT_FOR_NEURO_S` (180s), then exits **75
+(EX_TEMPFAIL)** so `KeepAlive` retries rather than leaving a permanently half-dead daemon. An HTTP error status
+counts as "answering" — a 401 is Neuro, only a dead socket is not.
+
+**2. `tunnel-client init` drops `X-Neuro-Tunnel`, and Neuro fails silently without it.** Neuro picks the resource
+to advertise from that header; with it missing it falls back to the FIRST configured resource, which for Gio's
+tunnel is Kyle's — exactly the bug just fixed, reappearing with no error anywhere. Proved the gap is real: a real
+`tunnel-client init --force` into a throwaway profile dir produces a profile with no header.
+
+`tunnel_agent.py --ensure-profile <name>` now writes it (idempotent; corrects a stale value; refuses a profile
+with no `tunnel_id` or no `mcp:` block rather than guessing), `install_tunnel_agent.sh` calls it before
+bootstrapping, and the agent calls it again on every start — so a re-init is repaired by the next launch.
+
+**Tested by simulating the bad boot order**, not by reasoning about it: all three agents booted out, both tunnels
+bootstrapped **first** with Neuro down, then Neuro. Eight seconds in, both agents were alive as `tunnel_agent.py`
+with **no tunnel-client process and ports 8080/8081 closed** — the wait, visible. Neuro bootstrapped at 20:10:16;
+both logged `Neuro answered after 20s — starting tunnel-client` and both reached `/readyz` **200 by 20:10:20**,
+`tunnel metadata fetched` for "Neuro" and "Neuro (Gio)", `target_count: 1`, zero control-plane errors. PRMD still
+resolves per tunnel afterwards (Kyle's header → Kyle's resource, Gio's → Gio's).
+
+**`list_projects` verified through the real `/ext/mcp/` surface**, not in-process: a temporary credential issued
+for actor `kyle`, `tools/call list_projects` → HTTP 200, `isError: false`, his three projects with `contribute`,
+credential revoked immediately (`revoke_reason: "verification finished"`). **This is not the same as Kyle's
+ChatGPT round trip** — that path carries a WorkOS token through the tunnel and only Kyle can run it. The client
+row `verification (temporary)` remains because clients are append-only by design; its only credential is revoked.
+
+Tests: `tests/test_p11_tunnel_agent.py` (3) covers the header add/correct/idempotence/refusal and the wait's
+three outcomes. **Suite: 2,495 passed, 2 deselected.** The two deselected —
+`test_s51_test_isolation::test_no_module_relies_on_setdefault_for_the_data_dir` and
+`test_s12_recall_precision::test_an_old_suggestion_is_never_pre_ticked` — fail identically with this session's
+changes stashed and are **another session's in-flight work in this shared checkout**: an untracked
+`tests/test_s85_rank_loop_and_boot_picks.py` (created 19:46) pushes the setdefault ratchet 71→72, and uncommitted
+edits to `neurosearch/web/js/research.js` remove the string S12 asserts. Not this session's to fix or to commit.
+
+**Still open, and still only Kyle's to do:** add Gio's tunnel-service URL to WorkOS as a resource indicator —
+`https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_6ab3f6cb1ee08191a02f450fff535d28`.
+`NEUROSEARCH_OAUTH_AUDIENCE` already lists it; WorkOS must be willing to issue for it before Gio's ChatGPT can
+complete a token exchange. Until then her requests reach `/ext/mcp/` and every one is 401 with no token.

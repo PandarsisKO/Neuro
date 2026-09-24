@@ -12,6 +12,12 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 mkdir -p "$SUPPORT" "$HOME/Library/LaunchAgents"
 PYTHON="${NEUROSEARCH_TUNNEL_PYTHON:-$REPO/.venv/bin/python}"
 [ -x "$PYTHON" ] || { echo "python not found at $PYTHON" >&2; exit 1; }
+# The profile must carry X-Neuro-Tunnel or Neuro cannot tell this tunnel from the other one and falls back to the
+# FIRST configured resource -- for a second tunnel that is someone else's. `tunnel-client init` knows nothing about
+# Neuro, so a re-init drops the header; setting it here (idempotent) means installing the agent restores it.
+"$PYTHON" "$REPO/tools/tunnel_agent.py" --ensure-profile "$PROFILE" || {
+  echo "could not set the X-Neuro-Tunnel header on profile '$PROFILE'" >&2; exit 1; }
+
 sed -e "s|__REPO__|$REPO|g" -e "s|__SUPPORT__|$SUPPORT|g" -e "s|__PYTHON__|$PYTHON|g" \
     -e "s|__LABEL__|$LABEL|g" -e "s|__LOGNAME__|$LOGNAME|g" -e "s|__PROFILE__|$PROFILE|g" \
     "$REPO/tools/com.neurosearch.tunnel.plist.template" > "$PLIST"
