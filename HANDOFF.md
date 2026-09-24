@@ -3658,6 +3658,16 @@ its select-all/none/filter row under a hidden list, so it read as EMPTY. Folded 
 title, no list controls (`.rvctl`), one primary "▾ Show the N videos to review" button with a line saying why it is
 folded; the R8 fold itself (first card open) is unchanged.
 
+**S90 — the findings tab landed on an empty filter (Kyle, 21:52: "something is seriously broken with the findings
+tab... why is nothing showing up?").** Nothing was broken: the tab opened on Approved, the project had 0 approved and
+126 suggested, and the empty filter read as an empty project — this is also what both earlier "blank findings"
+reports were. Now, once per project, if the current status is empty and another has rows the tab goes there (never
+overriding a chip the person clicked), every chip shows its count (Approved 0 · Suggested 192 · …), and the empty
+state links to the statuses that have findings. Verified live in Kyle's Chrome: opens on Suggested, 17 groups open,
+per-group Approve all present. Test added to `tests/test_s87_findings_per_source_approve.py`. Claude Code committed
+S88 (`ed66aa9`) and S89 (`ad61865`) itself while this was being written; its post-commit checkout overwrote the S90
+`research.js` once — re-applied at 22:00.
+
 Two existing gates tripped and were
 fixed: `test_s51` (the S85 test no longer uses `setdefault` for the data dir — the 71-module ratchet stays) and
 `test_s12::test_an_old_suggestion_is_never_pre_ticked` (now asserts the same rule where it moved, `bootPicked`).

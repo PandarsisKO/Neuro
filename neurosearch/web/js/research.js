@@ -1136,7 +1136,7 @@ globalThis.openSourceSuggestions = async function openSourceSuggestions(sid, sta
 }
 globalThis.clearFindingSource = function clearFindingSource() { FB.source = null; FB.offset = 0; loadWorkbench(); }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
-globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false, rows: [] };
+globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false, rows: [], statusCounts: {}, autoFor: null, userStatus: false };
 globalThis.FGRP = { collapsed: new Set(), project: null };   // remembers which source-groups the user closed by hand (title -> closed), per project
 // C1: DESIGN.md's Workbench-row rule caps a normal row at two visible badges; this row used to show up to
 // five (plan/chat/claim/stale/area). The three "where this got used" signals are really one fact — whether
@@ -1163,12 +1163,15 @@ globalThis.useBadges = function useBadges(n) {
 // it now renders as a chip row — like Sources' own status chips — with the <select> kept, hidden, purely as
 // the value store every other bit of code here already reads/writes via $('#fbStatus').value.
 const FB_STATUS_CHIPS = [['approved', 'Approved'], ['suggested', 'Suggested'], ['reserve', 'Reserve'], ['dismissed', 'Dismissed'], ['all', 'All']];
-globalThis.renderFbStatusChips = function renderFbStatusChips(cur) {
+globalThis.renderFbStatusChips = function renderFbStatusChips(cur, counts) {
   const el = $('#fbStatusChips'); if (!el) return;
   cur = cur || $('#fbStatus').value;
-  el.innerHTML = FB_STATUS_CHIPS.map(([k, l]) => `<span class="chipf ${cur === k ? 'on' : ''}" onclick="setFbStatus('${k}')">${l}</span>`).join('');
+  counts = counts || FB.statusCounts || {};
+  const n = k => k === 'all' ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[k] || 0);
+  // S90: each chip says how many are behind it — an empty filter is then a fact, not a broken tab
+  el.innerHTML = FB_STATUS_CHIPS.map(([k, l]) => `<span class="chipf ${cur === k ? 'on' : ''}" onclick="setFbStatus('${k}')">${l}${Object.keys(counts).length ? ` <span class="muted">${n(k)}</span>` : ''}</span>`).join('');
 }
-globalThis.setFbStatus = function setFbStatus(v) { $('#fbStatus').value = v; loadWorkbench(); }
+globalThis.setFbStatus = function setFbStatus(v) { $('#fbStatus').value = v; FB.userStatus = true; loadWorkbench(); }
 globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (reset) FB.offset = 0;
   const p = new URLSearchParams({ limit: FB.limit, offset: FB.offset, status: $('#fbStatus').value, sort: $('#fbSort').value });
@@ -1177,12 +1180,26 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (!FB.loaded) $('#notes').innerHTML = listState('loading', { label: 'Loading findings…' });
   let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
   FB.loaded = true;
+  FB.statusCounts = (r.facets && r.facets.status) || {};
+  // S90 (Kyle, 2026-09-23: "something is seriously broken with the findings tab... why is nothing showing up?").
+  // Nothing was broken: the tab opened on Approved, this project had 0 approved and 126 suggested, and the empty
+  // filter looked like an empty project. A tab that lands on nothing while the work sits one chip over is the wrong
+  // default: once per project, if the current filter is empty and another status has rows, go there — unless the
+  // person picked this filter themselves.
+  if (FB.autoFor !== state.project.id) {
+    FB.autoFor = state.project.id; FB.userStatus = false;
+    const cur = $('#fbStatus').value, c = FB.statusCounts;
+    if (!r.total && !FB.source && !$('#fbQ').value) {
+      const go = ['suggested', 'approved', 'reserve'].find(k => k !== cur && c[k]);
+      if (go) { $('#fbStatus').value = go; toast(`No ${cur} findings yet — showing the ${c[go]} ${go === 'reserve' ? 'beyond the cap' : go}`); return loadWorkbench(); }
+    }
+  }
   FB.rows = r.findings || [];        // what focus review walks: exactly the page on screen, filters and all
   // area facet options (keep the current choice)
   const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
   const f = r.facets; const st = $('#fbStatus').value;
-  renderFbStatusChips(st);
+  renderFbStatusChips(st, FB.statusCounts);
   $('#fbSrcChip').innerHTML = FB.source ? `<div class="row muted" style="font-size:12.5px;padding:2px 0"><span class="grow">Showing one source only</span><button class="small ghost" onclick="clearFindingSource()">show every source</button></div>` : '';
   const bg = r.badges || {};
   // 0.61.5: use/staleness/area come from a cache that is deliberately allowed to lag the rows, so the counts say
@@ -1240,7 +1257,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
     const grpBulk = sugg.length ? `<button class="small" title="Approve the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'approved')">Approve all ${sugg.length}</button><button class="small ghost" title="Dismiss the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source (nothing is deleted)" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'dismissed')">Dismiss all</button>` : '';
     return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${grpBulk}${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
       list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</details>`; }).join('')
-    : `<div class="empty">${r.total ? '' : st === 'approved' && !$('#fbQ').value && !$('#fbUsed').value ? 'Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.' : 'No findings match these filters.'}</div>`;
+    : `<div class="empty">${r.total ? '' : (() => { const c = FB.statusCounts || {}; const other = FB_STATUS_CHIPS.filter(([k]) => k !== st && k !== 'all' && c[k]); return `No ${st === 'all' ? '' : st + ' '}findings${$('#fbQ').value || $('#fbUsed').value || $('#fbImp').value || $('#fbStale').value || $('#fbArea').value ? ' match these filters' : ' in this project yet'}.` + (other.length ? ` There are ${other.map(([k, l]) => `<a href="#" onclick="setFbStatus('${k}');return false"><b>${c[k]}</b> ${l.toLowerCase()}</a>`).join(', ')}.` : st === 'approved' ? ' Approve suggestions as they arrive, or ask questions in a chat and pin the answers worth keeping.' : ''); })()}</div>`;
   const pages = Math.ceil(r.total / FB.limit);
   $('#fbPager').innerHTML = pages > 1 ? `<button class="small ghost" ${FB.offset === 0 ? 'disabled' : ''} onclick="FB.offset=Math.max(0,FB.offset-FB.limit);loadWorkbench(false)">‹ prev</button><span class="muted" style="margin:0 8px">${Math.floor(FB.offset / FB.limit) + 1} / ${pages}</span><button class="small ghost" ${FB.offset + FB.limit >= r.total ? 'disabled' : ''} onclick="FB.offset+=FB.limit;loadWorkbench(false)">next ›</button>` : '';
 }

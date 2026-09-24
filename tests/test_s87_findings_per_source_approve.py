@@ -23,3 +23,15 @@ def test_each_source_group_has_its_own_approve_all():
 def test_groups_open_by_default_and_a_collapse_never_leaks_between_projects():
     assert "if (FGRP.project !== state.project.id) { FGRP.project = state.project.id; FGRP.collapsed = new Set(); }" in JS
     assert "const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);" in JS, "open unless closed by hand"
+
+
+def test_the_tab_lands_where_the_findings_are_and_the_chips_count():
+    """S90 — Kyle: "something is seriously broken with the findings tab... why is nothing showing up?" Nothing was:
+    the tab opened on Approved (0) while 126 suggested waited one chip over. Once per project the tab moves to the
+    status that has rows (never overriding a filter the person picked), every chip shows its count, and the empty
+    state links to where the findings are."""
+    assert "FB.statusCounts = (r.facets && r.facets.status) || {};" in JS
+    assert "if (FB.autoFor !== state.project.id) {" in JS and "FB.userStatus = true; loadWorkbench();" in JS
+    assert "const go = ['suggested', 'approved', 'reserve'].find(k => k !== cur && c[k]);" in JS
+    assert "renderFbStatusChips(st, FB.statusCounts);" in JS
+    assert "There are ${other.map(" in JS, "the empty state names the other statuses with counts"
