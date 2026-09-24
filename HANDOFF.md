@@ -3723,3 +3723,24 @@ rank them for a wealth-transfer brief without flooding the card. What he is desc
 trusted this channel in another project; 46 of his videos are ready; scan them for this one?" — a channel-level
 suggestion the app does not have (the Pool's "same creator as a priority source" is within-project). Not built;
 his call.
+
+## S92 — "Open & capture in Chrome" from the progress row, and the extension captures on its own (Claude Desktop, 2026-09-24)
+
+Kyle: *"reddit posts are getting blocked, but the chrome extension would work. from the sources progress window we need
+a button to launch it in a new tab and trigger the chrome extension. it should be obvious, especially because I
+frequently copy paste URLs without actually opening them in a new browser window and then forget about them once I
+hit ADD."* B1 already parked the job (`external_pending`, provider `browser`) and lit the extension badge; the
+Browser-capture card had "Open & Capture", but it only opened the tab and the person still had to find the card and
+then press the extension's button. Now: the job's own row in the In-progress box says "needs your browser" and
+carries a primary "Open & capture in Chrome" (the job counts as hot, so the collapsed box shows it); the
+label carries no emoji — `test_s50_design_drift::test_emoji_beside_a_label_the_button_already_states_is_removed`
+has a ceiling of 0 and caught the first version of this button;
+`openAndCapture` opens the URL with `#neuro-capture`; the extension's background worker (`autoCapture`, on
+`tabs.onUpdated` complete) sees that fragment on a URL it has a pending request for and runs the same producer the
+popup button runs, posts it, and sets the badge to OK (or "!" with the fallback instruction). A tab the person opened
+by hand — no fragment — is never captured without the popup button (rule 2 of background.js holds). The producers
+moved from popup.js to `extension/thread-capture.js` (`self.NSThreadCapture`), loaded by popup.html and by the
+worker (`importScripts`), so nothing is duplicated; the `// ---- B1:` / `async function load()` markers the
+extension-auth harness slices on are kept. Extension 1.9.6 → **1.9.7** (`CLAUDE.md` updated). Tests:
+`tests/test_s92_open_and_capture.py` (5); S54, S74, L1 green with it. **Kyle must reload the unpacked extension in
+chrome://extensions once** for 1.9.7 to take effect.

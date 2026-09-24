@@ -294,6 +294,8 @@ async function execFn(tabId, func, args) {
 // PURE (non-DOM) tiling/ceiling/rate-limit/reconciliation helpers used directly below, and capture-blob-store.js
 // carries the durable IndexedDB blob store (service-worker-only — never page-injected, unlike capture-lib.js).
 importScripts('capture-lib.js', 'capture-blob-store.js');
+importScripts('thread-capture.js');     // S92: the same producers the popup button runs (auto-capture below)
+const { redditCapture, pageCapture } = self.NSThreadCapture;
 const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsHideScrollbars, nsRestoreScrollbars, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
         nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity } = self.NSCaptureLib;
 const NSBlobStore = self.NSCaptureBlobStore;
@@ -823,8 +825,44 @@ chrome.alarms.onAlarm.addListener(async a => {
     for (const rec of active) await checkAlive(rec.tab_id, 'runner_silent');
   }
 });
+// ---- S92: auto-capture when the APP opened the tab (Kyle, 2026-09-24: "I frequently copy paste URLs without
+// actually opening them in a new browser window and then forget about them once I hit ADD"). The app's
+// "Open & capture" button opens the wanted URL with `#neuro-capture` on it. That fragment is the person's click:
+// the page loads, this worker sees a pending request for exactly this URL, runs the same producer the popup
+// button would, posts it, and lights the badge. A tab the person opened by hand (no fragment) still captures
+// only from the popup button — rule 2 at the top of this file holds for everything not started from the app.
+const AUTO_MARK = 'neuro-capture';
+async function autoCapture(tab) {
+  if (!tab || !tab.id || !tab.url) return;
+  let hash = ''; try { hash = new URL(tab.url).hash; } catch (e) { return; }
+  if (!hash.includes(AUTO_MARK)) return;
+  const list = (await chrome.storage.local.get('pending')).pending || [];
+  const want = canon(tab.url);
+  const hit = list.find(i => canon(i.canonical_url || i.url || '') === want);
+  if (!hit) return;
+  const key = `autocap:${tab.id}:${hit.job_id}`;
+  const done = (await chrome.storage.local.get(key))[key];
+  if (done && Date.now() - done < 10 * 60 * 1000) return;              // once per tab per request
+  await chrome.storage.local.set({ [key]: Date.now() });
+  try {
+    chrome.action.setBadgeText({ tabId: tab.id, text: '…' });
+    const payload = hit.adapter === 'reddit_thread' ? await redditCapture(tab) : await pageCapture(tab);
+    if (!payload) throw new Error('nothing could be read from this page');
+    await api(`/api/capture/${hit.job_id}`, { method: 'POST', body: JSON.stringify(payload) });
+    chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#1a7f37' });
+    chrome.action.setBadgeText({ tabId: tab.id, text: 'OK' });
+    chrome.action.setTitle({ tabId: tab.id, title: 'Neuro Search: captured — the app is finishing it' });
+    await refreshPending();
+  } catch (e) {
+    chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#b42318' });
+    chrome.action.setBadgeText({ tabId: tab.id, text: '!' });
+    chrome.action.setTitle({ tabId: tab.id, title: 'Neuro Search: automatic capture failed — open the extension and press Capture' });
+  }
+}
+
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status === 'complete' || info.url) paint(tab);
+  if (info.status === 'complete') setTimeout(() => autoCapture(tab).catch(() => {}), 1500);   // let Reddit's client render
   // a document load may or may not have killed the runner: ask it, after it has had a moment to (re)appear
   if (info.status === 'loading') setTimeout(() => checkAlive(tabId, 'navigated'), 1500);
 });

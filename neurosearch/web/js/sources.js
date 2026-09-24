@@ -728,7 +728,8 @@ globalThis.reserveVerdict = async function reserveVerdict(id, status, sid) { awa
 globalThis.bulkReserve = async function bulkReserve(ids, status, sid) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadSources(); toast(`${ids.length} finding${ids.length === 1 ? '' : 's'} ${status === 'dismissed' ? 'dismissed' : 'sent to Suggested'}`); }
 globalThis.extLine = function extLine() { return EXT.state === 'ready' ? '✓ extension ready' : EXT.state === 'stale' ? `extension last seen ${ago(EXT.last_seen)} ago` : EXT.state === 'not_detected' ? '⚠ extension not detected — see How this works' : ''; }
 globalThis.toggleCaptureHelp = function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.hidden = !d.hidden; }
-globalThis.openAndCapture = function openAndCapture(url) { window.open(url, '_blank'); }
+// S92: the fragment is what tells the extension "the app opened this for you — capture it" (background.js autoCapture)
+globalThis.openAndCapture = function openAndCapture(url) { try { const u = new URL(url); u.hash = 'neuro-capture'; url = u.toString(); } catch (e) {} window.open(url, '_blank'); toast('🌐 opened in a new tab — the extension captures it as soon as the page loads'); }
 globalThis.cancelCapture = async function cancelCapture(jobId) { await del(`/api/capture/${jobId}`); loadSources(); loadJobs(); }
 globalThis.loadCaptureQueue = async function loadCaptureQueue(rows, quiet) {
   try {
