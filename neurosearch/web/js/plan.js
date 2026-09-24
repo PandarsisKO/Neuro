@@ -202,7 +202,7 @@ globalThis.rebuildWithAnswers = async function rebuildWithAnswers() {
 globalThis.checkUpdates = async function checkUpdates() {
   $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" id="chk"><span class="spin"></span> comparing new research against the plan…</div>');
   try { const r = await post(`/api/projects/${state.project.id}/plan/check-updates`); await loadPlan(); if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted mb-2">No material changes — the plan still holds.</div>'); }
-  catch (e) { alert(e.message); $('#chk')?.remove(); }
+  catch (e) { toast(e.message || e, 'err'); $('#chk')?.remove(); }
 }
 globalThis.updStatus = async function updStatus(id, status) { await post(`/api/plan-updates/${id}`, { status }); await loadPlan(); }
 globalThis.applyUpdates = async function applyUpdates() { $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding the plan with the accepted changes…</div>'); try { await post(`/api/projects/${state.project.id}/plan/apply`); } catch (e) { alert(e.message); } await loadPlan(); }
