@@ -3708,7 +3708,11 @@ def pending_reviews(project_id: str) -> list[dict[str, Any]]:
     for c in connect().execute(
         """SELECT c.* FROM collections c JOIN project_collections pc ON pc.collection_id=c.id WHERE pc.project_id=?""",
         (project_id,)).fetchall():
-        props = proposed_sources(c["id"])
+        # S89 (Kyle, 2026-09-23, screenshot): a channel he had added to an earlier project showed "Newest first" with
+        # 380 of 380 ticked, though rank_proposed had scored all 380 for THIS project. proposed_sources() with no
+        # project fell back to collection_project() — the FIRST project ever linked to the channel — so the card read
+        # its relevance from the wrong project and found none. Relevance is project-relative; ask for this one.
+        props = proposed_sources(c["id"], project_id)
         if props:
             from . import usage
             rate = usage.observed_rate_per_minute()

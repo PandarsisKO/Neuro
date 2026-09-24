@@ -293,7 +293,7 @@
   .rv .sc.hi{background:#dcfce7;color:#166534}.rv .sc.mid{background:#fef3c7;color:#92400e}
   [data-theme="dark"] .rv .sc.hi{background:#14532d;color:#bbf7d0}[data-theme="dark"] .rv .sc.mid{background:#78350f;color:#fde68a}
   .rv .list{max-height:320px;overflow:auto;margin-top:6px}
-  .rv.folded .list, .rv.folded .rvfoot{display:none}
+  .rv.folded .list, .rv.folded .rvfoot, .rv.folded .rvctl{display:none}
   .rv .rvfold{cursor:pointer;user-select:none;color:var(--muted);font-size:12px;margin-left:6px}
   .fgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px;box-shadow:var(--shadow)}
   .fgroup .gh{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}

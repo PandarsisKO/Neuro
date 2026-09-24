@@ -3647,12 +3647,23 @@ collapsed by default with a one-line summary (SM-6), which is where ⏸ and ✕ 
 per-channel "pause/cancel these 20" — only per job or the whole queue. Gate: `tests/test_s88_usability_sweep.py` (4).
 Verified in the container: 285 UI-contract tests green (drawer, findings tab, click-feedback, design-drift, S5/S44).
 
+**S89 — review cards read the WRONG project's scores (Kyle's screenshot, 21:49).** Myron Golden's card: "Newest
+first", 380 of 380 ticked — yet `a1a680d9` had scored all 380 for project `4f310029` (5 batches, `job done` 20:15).
+`db.pending_reviews` called `proposed_sources(collection_id)` with no project → `collection_project()` → the FIRST
+project ever linked to that channel (he had used it before) → relevance read from the wrong project → None. Now
+`proposed_sources(c["id"], project_id)`. Reproduced in `tests/test_s89_reviews_read_this_projects_scores.py`
+(channel linked to two projects, scored for the second; before: `[None, None, None]`). Same screenshot, Kyle: *"I had
+no idea that the Sharran card was folded... thats not obvious enough. I was honestly perplexed."* A folded card kept
+its select-all/none/filter row under a hidden list, so it read as EMPTY. Folded now = a "list folded" tag by the
+title, no list controls (`.rvctl`), one primary "▾ Show the N videos to review" button with a line saying why it is
+folded; the R8 fold itself (first card open) is unchanged.
+
 Two existing gates tripped and were
 fixed: `test_s51` (the S85 test no longer uses `setdefault` for the data dir — the 71-module ratchet stays) and
 `test_s12::test_an_old_suggestion_is_never_pre_ticked` (now asserts the same rule where it moved, `bootPicked`).
 Uncommitted at the time of writing — Claude Code commits (stage only: `neurosearch/relevance.py`, `neurosearch/db.py`, `neurosearch/jobs.py`, `neurosearch/api.py`,
-`neurosearch/claude_code.py`, `neurosearch/web/js/sources.js`, `neurosearch/web/js/research.js`, `neurosearch/web/js/plan.js`,
+`neurosearch/claude_code.py`, `neurosearch/web/js/sources.js`, `neurosearch/web/js/research.js`, `neurosearch/web/js/plan.js`, `neurosearch/web/styles.css`,
 `tools/server_agent.py`,
-`tests/test_s85_rank_loop_and_boot_picks.py`, `tests/test_s86_pause_resume_job.py`, `tests/test_s87_findings_per_source_approve.py`, `tests/test_s88_usability_sweep.py`, `tests/test_s12_recall_precision.py`,
+`tests/test_s85_rank_loop_and_boot_picks.py`, `tests/test_s86_pause_resume_job.py`, `tests/test_s87_findings_per_source_approve.py`, `tests/test_s88_usability_sweep.py`, `tests/test_s89_reviews_read_this_projects_scores.py`, `tests/test_s12_recall_precision.py`,
 `HANDOFF.md`; the pre-existing edits to `tests/test_s35_pool_cache.py` / `tests/test_s68_sources_list_diet.py`
 are not part of this) and runs the full suite on the Mac.
