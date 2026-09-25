@@ -3831,3 +3831,14 @@ extension reports `chrome.runtime.id` on heartbeat (`extension:id` kv, returned 
 a 20-post card parks them one by one as the server tries and fails each) instead of waiting for a poll. Extension
 **1.11.1** (`CLAUDE.md`). Test added to `tests/test_s95_scan_subreddit.py`; S74's sandboxed refreshPending harness
 needed `chrome.runtime`/`chrome.alarms` guards.
+
+**S97b** Kyle, after the 1.11.1 reload: *"when I click on the extension, it is not automatically prompting me to
+open the next tab with the next post thats waiting in progress window."* 37 r/fatFIRE captures sat pending with
+the extension alive (heartbeat 169 s old). Two holes: `fulfilRedditCaptures` only ever worked through a reddit.com
+tab that happened to be open (none was), and `refreshPending` created the FAST alarm *after* `paintAll`, so a badge
+call on a just-closed tab could throw before the alarm existed. Now: `redditTab()` opens `https://www.reddit.com/`
+itself (`active:false`, waits ≤15 s for load) when no reddit tab exists, and the fulfil loop works the whole queue
+through it; the alarm and the fulfil pass run before painting, painting is wrapped so a stale tab cannot abort
+either. The popup's queue block now says "N Reddit posts waiting — captured automatically through a reddit.com tab"
+with a **Capture them now** button (`refresh-pending`), and only non-Reddit items name the next page to open.
+Extension **1.11.2** (`CLAUDE.md`, S92 canonical-agreement test, S93 tuple).

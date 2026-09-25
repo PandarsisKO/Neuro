@@ -116,8 +116,29 @@ def test_list_sources_ids_predicate(fresh):
     assert {r["id"] for r in db.list_sources(ids=[a["id"], a["id"], "nope"])} == {a["id"]}
 
 
+def _function_source(module, name: str) -> str:
+    """A function's source, by re-parsing the module file rather than trusting cached line numbers.
+
+    `inspect.getsource` resolves `co_firstlineno` from the ALREADY-IMPORTED module but reads the file from
+    disk now. When another session edits that file while the suite runs — routine in this repo, where a VM
+    session edits the same checkout — the line numbers have shifted and it silently returns whatever else now
+    occupies them. The assertion then tests the wrong function and fails for a reason that has nothing to do
+    with the code under test. Seen 2026-09-22: this test failed in a full run, passed in isolation, passed on
+    re-run, while `neurosearch/db.py` was being edited concurrently. Re-parsing removes the race; it does not
+    weaken what is asserted.
+    """
+    import ast
+    import pathlib
+
+    path = pathlib.Path(module.__file__)
+    text = path.read_text()
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return ast.get_source_segment(text, node) or ""
+    raise AssertionError(f"{name} is not defined in {path} — the contract this test guards has moved or gone")
+
+
 def test_review_cards_still_carry_relevance_from_their_own_endpoint(fresh):
     """`relevance`/`relevance_why` left the list; the review card is their reader and has its own source."""
-    import inspect
-    src = inspect.getsource(db.proposed_sources)
-    assert "relevance" in src
+    src = _function_source(db, "proposed_sources")
+    assert "relevance" in src, "db.proposed_sources no longer mentions relevance — the review card lost its source"

@@ -59,11 +59,12 @@ async function refreshPending() {
     const p = await api('/api/capture/pending');
     const items = (p && p.items) || [];
     await chrome.storage.local.set({ pending: items, pendingAt: Date.now() });
-    await paintAll(items);
     // S97 (Kyle: "laggy or slow to pick up the next reddit thread"): the 5-minute heartbeat was the only thing
     // noticing new requests. While anything is waiting, look every 30 s (the MV3 alarm floor); stop when empty.
+    // Before painting: a badge call on a tab that just closed throws, and this must not depend on it.
     if (chrome.alarms) { if (items.length) chrome.alarms.create(FAST, { periodInMinutes: 0.5 }); else chrome.alarms.clear(FAST); }
     fulfilRedditCaptures(items).catch(() => {});
+    try { await paintAll(items); } catch (e) {}
   } catch (e) {
     // Keep ordinary offline polling quiet. The popup can ask for this state and surface auth failures;
     // do not turn a transient network failure into a persistent notification.
@@ -844,6 +845,19 @@ chrome.alarms.onAlarm.addListener(async a => {
 // the walk-and-pick flow ("Scan this subreddit") ends with the chosen threads captured without a click per post.
 // Each request is tried once per FULFIL_RETRY_MS; a failure leaves the request for the popup / Open & capture path.
 const FULFIL_RETRY_MS = 10 * 60 * 1000;
+// A reddit.com tab to read through. Any open one will do; when there is none (Kyle: "it is not automatically
+// prompting me to open the next tab") the extension opens ONE, in the background, and keeps it for the whole queue.
+async function redditTab() {
+  const tabs = await chrome.tabs.query({ url: 'https://www.reddit.com/*' });
+  const ready = tabs.find(t => t.status === 'complete') || tabs[0];
+  if (ready) return ready;
+  let tab; try { tab = await chrome.tabs.create({ url: 'https://www.reddit.com/', active: false }); } catch (e) { return null; }
+  for (let i = 0; i < 30; i++) {                          // wait for it to finish loading (≤ 15 s)
+    await sleep(500);
+    try { const t = await chrome.tabs.get(tab.id); if (t.status === 'complete') return t; } catch (e) { return null; }
+  }
+  return tab;
+}
 let fulfilling = false;
 async function fulfilRedditCaptures(items) {
   if (fulfilling) return;
@@ -854,8 +868,7 @@ async function fulfilRedditCaptures(items) {
     for (let round = 0; round < 25; round++) {
       const wanted = (items || []).filter(i => i.adapter === 'reddit_thread' && i.status !== 'expired');
       if (!wanted.length) break;
-      const tabs = await chrome.tabs.query({ url: 'https://www.reddit.com/*' });
-      const tab = tabs.find(t => t.status === 'complete') || tabs[0];
+      const tab = await redditTab();
       if (!tab) break;
       let did = 0;
       for (const it of wanted) {

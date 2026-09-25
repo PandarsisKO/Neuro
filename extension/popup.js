@@ -40,8 +40,13 @@ async function load() {
       }
       const others = items.filter(i => i !== WANTED);
       if (others.length) {
+        const reddit = others.filter(i => i.adapter === 'reddit_thread'), rest = others.filter(i => i.adapter !== 'reddit_thread');
         $('#queue').style.display = '';
-        $('#queue').innerHTML = `${others.length} more page${others.length === 1 ? '' : 's'} waiting for your browser — next: <a href="${esc(others[0].canonical_url || others[0].url)}" target="_blank">${esc(others[0].title || others[0].canonical_url || others[0].url)}</a>`;
+        // S97: Reddit requests need no tab of yours — the extension reads them through a reddit.com tab it keeps
+        // in the background; the button forces a pass right now. Anything else still names the next page to open.
+        $('#queue').innerHTML = (reddit.length ? `<div style="border:1px solid #2f5bea;border-radius:8px;background:#eef2ff;padding:8px 10px;margin-bottom:6px"><b>${reddit.length} Reddit post${reddit.length === 1 ? '' : 's'} waiting</b> <span class="muted">— captured automatically through a reddit.com tab (opened in the background if none is open)</span><br><button class="primary" id="fulfilNow" style="margin-top:6px">Capture them now</button> <span id="fulfilMsg" class="muted"></span></div>` : '')
+          + (rest.length ? `${rest.length} more page${rest.length === 1 ? '' : 's'} waiting for your browser — next: <a href="${esc(rest[0].canonical_url || rest[0].url)}" target="_blank">${esc(rest[0].title || rest[0].canonical_url || rest[0].url)}</a>` : '');
+        const fb = $('#fulfilNow'); if (fb) fb.onclick = () => { fb.disabled = true; $('#fulfilMsg').textContent = 'capturing… you can close this'; chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError); };
       }
       chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
     } catch (e) {

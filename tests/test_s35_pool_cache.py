@@ -278,8 +278,15 @@ def test_an_open_question_moves_the_pool_revision(fresh):
 def test_the_pool_is_in_the_background_warm_set():
     """A cached pass with no background writer is cold on every restart, which is a silent failure — nothing
     breaks, someone just waits (0.63.7). So the warm set is asserted by name."""
-    import inspect
+    import ast
+    import pathlib
 
     from neurosearch import jobs
-    src = inspect.getsource(jobs._warm_quality)
+    # Re-parse the file instead of inspect.getsource: that resolves line numbers from the imported module but
+    # reads the file from disk, so a concurrent edit in this shared checkout makes it return a DIFFERENT
+    # function and the assertion fails for an unrelated reason (proved 2026-09-22, S68).
+    text = pathlib.Path(jobs.__file__).read_text()
+    src = next((ast.get_source_segment(text, n) or "" for n in ast.walk(ast.parse(text))
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "_warm_quality"), None)
+    assert src is not None, "jobs._warm_quality is gone — the background warm set no longer exists to assert"
     assert 'candidates.pool' in src

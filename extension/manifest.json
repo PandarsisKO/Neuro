@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Neuro Search",
-  "version": "1.11.1",
+  "version": "1.11.2",
   "description": "Send the page you are reading, a screenshot of it, or the videos of a course you are logged into, to your Neuro Search project.",
   "permissions": [
     "activeTab",
@@ -18,7 +18,7 @@
     "<all_urls>"
   ],
   "externally_connectable": {
-    "matches": ["http://localhost:8000/*", "http://127.0.0.1:8000/*", "http://localhost/*", "http://127.0.0.1/*", "http://*.local/*", "http://192.168.*/*", "http://10.*/*"]
+    "matches": ["http://localhost:8000/*", "http://127.0.0.1:8000/*", "http://localhost/*", "http://127.0.0.1/*"]
   },
   "action": {
     "default_popup": "popup.html",
