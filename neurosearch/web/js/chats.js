@@ -142,7 +142,7 @@ globalThis.shareMenu = function shareMenu(btn) {
   m.innerHTML = [['short|cited', 'Short + sources (2–3 sentences)'], ['medium|cited', 'Medium + sources (one paragraph)'], ['full|cited', 'Full answer + sources'],
                  ['sep', ''],
                  ['short|plain', '👥 Plain, short — no sources or names'], ['medium|plain', '👥 Plain, one paragraph'], ['long|plain', '👥 Plain, a few paragraphs']]
-    .map(([k, l]) => k === 'sep' ? '<div style="border-top:1px solid var(--line);margin:4px 0"></div>' : `<button onclick="shareMsg(this,'${k}')">${l}</button>`).join('');
+    .map(([k, l]) => k === 'sep' ? '<div class="menu-sep"></div>' : `<button onclick="shareMsg(this,'${k}')">${l}</button>`).join('');
   bar.appendChild(m);
   setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
 }
@@ -182,9 +182,13 @@ globalThis.shareMsg = async function shareMsg(btn, spec) {
 // back-and-forth — so this is one call over what was already written, never a new research pass.
 globalThis.shareChatMenu = async function shareChatMenu(btn) {
   const bar = btn.parentElement; const open = bar.querySelector('.menu'); if (open) { open.remove(); return; }
-  const m = document.createElement('div'); m.className = 'menu';
-  m.innerHTML = [['long|plain', '👥 Plain retelling (a few paragraphs)'], ['medium|plain', '👥 Plain, one paragraph'], ['long|cited', 'With sources (a few paragraphs)']]
-    .map(([k, l]) => `<button onclick="shareChat(this,'${k}')">${l}</button>`).join('');
+  const m = document.createElement('div'); m.className = 'menu right';   // the button sits at the window's right edge
+  // S101 (Kyle, 2026-09-25): "share an entire chat, copy pasted AS IS with sources so I can feed to other LLMs
+  // for collaboration". The verbatim options come first and cost nothing; the three retellings stay as they were.
+  m.innerHTML = [['asis|sources', '⧉ Whole chat, as is + sources'], ['asis|bare', '⧉ Whole chat, as is — no source lists'], ['asis|download', '⬇ Download whole chat (.md)'],
+                 ['sep', ''],
+                 ['long|plain', '👥 Plain retelling (a few paragraphs)'], ['medium|plain', '👥 Plain, one paragraph'], ['long|cited', 'With sources (a few paragraphs)']]
+    .map(([k, l]) => k === 'sep' ? '<div class="menu-sep"></div>' : `<button onclick="shareChat(this,'${k}')">${l}</button>`).join('');
   bar.appendChild(m);
   setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
 }
@@ -193,6 +197,7 @@ globalThis.shareChat = async function shareChat(btn, spec) {
   const menu = btn.closest('.menu'); if (menu) menu.remove();
   if (!state.conv) return toast('open a chat first', 'err');
   const s = $('#shareChatMsg');
+  if (length === 'asis') return shareChatAsIs(mode);
   try {
     if (s) s.textContent = 'reading the chat back…';
     const v = await post(`/api/conversations/${state.conv}/share`, { length, mode });
@@ -205,6 +210,25 @@ globalThis.shareChat = async function shareChat(btn, spec) {
       setTimeout(() => s.textContent = '', v.warning ? 12000 : 5000);
     }
   } catch (e) { if (s) s.textContent = 'could not retell the chat: ' + (e.message || e); }
+}
+// The verbatim export: the server writes it ($0, no model call, every turn, each answer's own numbered sources
+// under it, a de-duplicated index at the end). Copied to the clipboard, or downloaded as a Markdown file.
+globalThis.shareChatAsIs = async function shareChatAsIs(mode) {
+  const s = $('#shareChatMsg');
+  const url = `/api/conversations/${state.conv}/transcript.md?sources=${mode === 'bare' ? 'false' : 'true'}`;
+  if (mode === 'download') { window.open(url + '&download=true', '_blank'); if (s) { s.textContent = 'Downloading the whole chat as Markdown'; setTimeout(() => s.textContent = '', 4000); } return; }
+  try {
+    if (s) s.textContent = 'copying the whole chat…';
+    const r = await uiFetch(url);
+    if (!r.ok) throw new Error(r.statusText);
+    const text = await r.text();
+    await toClipboard(text);
+    const turns = (text.match(/^### (You|Neuro)/gm) || []).length, srcs = (text.match(/^\d+\. /gm) || []).length;
+    if (s) {
+      s.textContent = `Copied the whole chat as is — ${turns} message${turns === 1 ? '' : 's'}` + (mode === 'bare' ? ', source lists left out' : `, ${srcs} source citation${srcs === 1 ? '' : 's'}`);
+      setTimeout(() => s.textContent = '', 5000);
+    }
+  } catch (e) { if (s) s.textContent = 'could not copy the chat: ' + (e.message || e); }
 }
 globalThis.copyMsg = async function copyMsg(btn, mode) {
   const d = btn.closest('.msg'); const out = exportMsg(d, mode); const n = JSON.parse(d.dataset.cites || '[]').length;

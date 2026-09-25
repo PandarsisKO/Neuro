@@ -3911,3 +3911,23 @@ and in the bulk bar the "select the N shown" checkbox was flexed away from its o
 - Inline styles on the surface retired into classes; `test_s50` ceiling lowered 287 → 77. Verified in Kyle's
   Chrome on the live project (3,767 approved): chips, a strength pick (●●○○○ → 26), select-all and the bar all
   render as intended.
+
+## S101 — share a whole chat AS IS, with sources, for another AI (Cowork, 2026-09-25)
+
+Kyle: *"we need to expand the 'share this chat' function in each chat. I want to be able to share an entire chat,
+copy pasted AS IS with sources so I can feed to other LLMs for collaboration. do not remove the other versions of
+the share chat feature unless you see opportunity to improve whats already there for flexibility."*
+
+**0.64.3**. `export.conversation_markdown(conversation_id, sources=True)` — $0, no model call, no retrieval, no
+rewording: `# title`, a one-line header (project, message count, date), a short note telling the reader how `[n]`
+markers resolve, then every user/assistant turn verbatim, oldest first, as `### You` / `### Neuro` (turns held in
+an outside AI say `### You (in ChatGPT)`), each answer's `⚠` caveat kept and its own numbered `Sources` list right
+under it (numbered with the `n` the text uses — 3, 4, 8… — never renumbered), and a de-duplicated `## All sources
+cited` index at the end. `GET /api/conversations/{id}/transcript.md?sources=true|false&download=true|false`
+(text/markdown; `download` sets Content-Disposition). `db.get_conversation()` added.
+
+"↗ Share this chat ▾" now leads with **⧉ Whole chat, as is + sources · ⧉ Whole chat, as is — no source lists ·
+⬇ Download whole chat (.md)**, then a separator, then the three 0.60.0 retellings exactly as they were. The menu
+is right-aligned (`.menu.right`) so it no longer runs off the window's edge (it did before this — pre-existing).
+Verified in Kyle's Chrome on "2 Player Credit Card Points": *"Copied the whole chat as is — 24 messages, 132
+source citations"*, and the served Markdown reads correctly. Gate `tests/test_s101_share_chat_as_is.py` (10).

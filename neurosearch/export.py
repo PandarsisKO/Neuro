@@ -90,6 +90,71 @@ def conversations_markdown(project_id: str) -> str:
     return "\n".join(out) or "(no conversations yet)"
 
 
+def _chat_cite(c: dict[str, Any]) -> str:
+    """One source line for a chat transcript; tolerant of every citation shape a message can carry (a video
+    moment, a document page, a web result with no timestamp, a source that was since removed)."""
+    label = str(c.get("title") or c.get("url") or "Untitled source")
+    ts = c.get("timestamp")
+    if ts:
+        label += f" @ {ts}"
+    if c.get("removed"):
+        label = "[source removed] " + label
+    link = c.get("link") or c.get("url") or ""
+    return f"{label} — {link}" if link else label
+
+
+def conversation_markdown(conversation_id: str, *, sources: bool = True) -> str:
+    """S101 (Kyle, 2026-09-25: "share an entire chat, copy pasted AS IS with sources so I can feed to other LLMs
+    for collaboration"). The conversation exactly as it happened — every turn, verbatim, oldest first, with each
+    answer's own numbered source list right under it so a [n] marker resolves where it is read — plus a de-duplicated
+    index of every source cited, at the end. $0: no model call, no retrieval, no rewording. `sources=False` keeps
+    the text and the [n] markers but drops the lists, for a reader who only wants the exchange."""
+    conv = db.get_conversation(conversation_id)
+    if not conv:
+        raise RuntimeError("no such conversation")
+    msgs = [m for m in db.get_messages(conversation_id, limit=2000)
+            if m.get("role") in ("user", "assistant") and str(m.get("content") or "").strip()]
+    proj = db.get_project(conv["project_id"]) if conv.get("project_id") else None
+    title = conv.get("title") or (msgs[0]["content"].strip().splitlines()[0][:80] if msgs else "Chat")
+    out = [f"# {title}",
+           f"_Neuro Search chat · {'project: ' + proj['name'] + ' · ' if proj else ''}{len(msgs)} message{'' if len(msgs) == 1 else 's'} "
+           f"· exported {date.today().isoformat()}_", ""]
+    if sources:
+        out += ["> The conversation as it happened, unedited. In each answer, a marker like [3] points at entry 3 of the "
+                "Sources list directly under that answer; each entry links to the exact moment or page in the source. "
+                "Treat those sources as the evidence behind the answer, and the ⚠ lines as caveats the app attached "
+                "at the time.", ""]
+    index: dict[str, str] = {}
+    for m in msgs:
+        meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
+        ext = meta.get("client") if meta.get("kind") in ("external_transcript", "external_sync") else None
+        who = "You" if m["role"] == "user" else "Neuro"
+        if ext:
+            who += f" (in {ext})"
+        out.append(f"### {who}")
+        out.append(str(m["content"]).strip())
+        if meta.get("warning"):
+            out.append(f"⚠ {meta['warning']}")
+        cites = m.get("citations") if isinstance(m.get("citations"), list) else []
+        if sources and cites:
+            out.append("")
+            out.append("Sources")
+            for i, c in enumerate(cites, 1):
+                if not isinstance(c, dict):
+                    continue
+                n = c.get("n") or i
+                line = _chat_cite(c)
+                out.append(f"{n}. {line}")
+                key = str(c.get("link") or c.get("url") or line)
+                index.setdefault(key, line)
+        out.append("")
+    if sources and index:
+        out.append("## All sources cited")
+        out += [f"- {v}" for v in index.values()]
+        out.append("")
+    return "\n".join(out)
+
+
 def transcript_markdown(source: dict[str, Any]) -> str:
     segs = db.get_segments(source["id"])
     head = [f"# {source['title']}", f"- Channel: {source.get('channel') or ''}", f"- Published: {source.get('published_at') or ''}",

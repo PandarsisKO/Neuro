@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.64.2">
+<meta name="neurosearch-ui-version" content="0.64.3">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -51,7 +51,7 @@
       <div id="chatHead">
         <div class="title" id="chatTitle">New chat</div>
         <button class="small ghost" onclick="renameChat()">Rename</button>
-        <div style="position:relative"><button class="small ghost" title="Retell this whole chat as one readable piece — for someone who wants to know what came out of it, not where it came from" onclick="shareChatMenu(this)">↗ Share this chat ▾</button></div>
+        <div style="position:relative"><button class="small ghost" title="Copy the whole chat exactly as it happened, with every answer's sources (for another AI, or a person who wants to check) — or have it retold as one readable piece" onclick="shareChatMenu(this)">↗ Share this chat ▾</button></div>
         <span class="muted text-xs" id="shareChatMsg"></span>
         <button class="small ghost danger" onclick="deleteChat()">Delete</button>
       </div>

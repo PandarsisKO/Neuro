@@ -5421,6 +5421,11 @@ def count_messages(conversation_id: str) -> int:
     return int(r["n"] or 0)
 
 
+def get_conversation(conversation_id: str) -> dict[str, Any] | None:
+    r = connect().execute("SELECT * FROM conversations WHERE id=?", (conversation_id,)).fetchone()
+    return dict(r) if r else None
+
+
 def conversation_project(conversation_id: str) -> str | None:
     r = connect().execute("SELECT project_id FROM conversations WHERE id=?", (conversation_id,)).fetchone()
     return r["project_id"] if r else None

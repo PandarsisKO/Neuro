@@ -3874,6 +3874,18 @@ def api_conversation(conversation_id: str) -> list[dict[str, Any]]:
     return db.get_messages(conversation_id, limit=200)
 
 
+@app.get("/api/conversations/{conversation_id}/transcript.md", dependencies=[Depends(require_auth)])
+def api_conversation_transcript(conversation_id: str, sources: bool = True, download: bool = False) -> Any:
+    """S101: the whole chat as it happened, verbatim, with each answer's numbered sources under it ($0 — no model
+    call). `sources=false` drops the source lists; `download=true` sends it as a file instead of inline text."""
+    from .export import conversation_markdown
+    if not db.get_conversation(conversation_id):
+        raise HTTPException(404, "no such conversation")
+    text = conversation_markdown(conversation_id, sources=sources)
+    headers = {"Content-Disposition": f"attachment; filename=chat-{conversation_id[:8]}.md"} if download else {}
+    return StreamingResponse(iter([text]), media_type="text/markdown; charset=utf-8", headers=headers)
+
+
 @app.delete("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
 def api_delete_conversation(conversation_id: str) -> dict[str, Any]:
     db.delete_conversation(conversation_id)

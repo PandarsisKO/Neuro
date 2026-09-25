@@ -204,6 +204,7 @@
   .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
   .msg .tools{margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;position:relative}
   .menu{position:absolute;z-index:5;top:100%;left:0;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);min-width:220px;padding:4px}
+  .menu.right{left:auto;right:0}
   .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;padding:7px 10px;border-radius:6px;font-size:13px}
   .menu button:hover{background:var(--line)}
   #askbar{border-top:1px solid var(--line);padding:10px 22px 12px;background:var(--bg)}
@@ -247,6 +248,7 @@
   .f:last-child{border-bottom:0}
   /* S100: the Findings toolbar. Rows never stretch their children (unlike .row), so chips and labels sit where
      they were put; wrapping happens between groups, not inside a label. */
+  .menu-sep{border-top:1px solid var(--line);margin:4px 0}
   .wb-tools{display:flex;flex-direction:column;gap:8px;margin:14px 0 8px}
   .wb-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
   .wb-row>*{flex:0 0 auto}
