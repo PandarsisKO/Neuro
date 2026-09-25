@@ -368,7 +368,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return discover(payload["project_id"], payload.get("refine"), progress=progress, mode=payload.get("mode") or "library_first")
     if kind == "rank_proposed":
         from .relevance import rank_collection
-        return rank_collection(payload["collection_id"], payload.get("project_id"), want=payload.get("want"), progress=progress)
+        return rank_collection(payload["collection_id"], payload.get("project_id"), want=payload.get("want"), progress=progress,
+                               only_unscored=bool(payload.get("only_unscored")))
     if kind == "reembed":
         return {"embedded": embed_pending(limit=payload.get("limit", 100000))}
     if kind == "refresh_skipped_metadata":

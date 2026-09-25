@@ -1162,6 +1162,7 @@ def api_ingest_with_session(project_id: str, body: SessionIngestIn) -> dict[str,
 class RankIn(BaseModel):
     project_id: str | None = None
     want: int | None = None
+    only_unscored: bool = False     # S98: score only what no run has scored yet; existing scores stand
 
 
 @app.post("/api/collections/{collection_id}/rank", dependencies=[Depends(require_auth)])
@@ -1173,7 +1174,7 @@ def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
         meta["max_videos"] = body.want
     db.kv_set(f"review:{collection_id}", json.dumps(meta))
     job = db.create_job("rank_proposed", {"collection_id": collection_id, "project_id": body.project_id or meta.get("project_id"),
-                                          "want": body.want or meta.get("max_videos")}, lane="priority")
+                                          "want": body.want or meta.get("max_videos"), "only_unscored": body.only_unscored}, lane="priority")
     return {"job_id": job["id"]}
 
 

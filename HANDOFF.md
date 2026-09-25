@@ -3842,3 +3842,15 @@ through it; the alarm and the fulfil pass run before painting, painting is wrapp
 either. The popup's queue block now says "N Reddit posts waiting — captured automatically through a reddit.com tab"
 with a **Capture them now** button (`refresh-pending`), and only non-Reddit items name the next page to open.
 Extension **1.11.2** (`CLAUDE.md`, S92 canonical-agreement test, S93 tuple).
+
+## S98 — a subreddit walk ranks every post, not the newest 400 (Claude Desktop, 2026-09-24)
+
+Kyle: *"we seem to be having issues ranking posts from an entire subreddit."* Live: r/Bogleheads 999, r/awardtravel
+990, r/churning 989 — each with ~600 posts scored 0 "beyond ranking pool (older)". `relevance.POOL = 400` (newest
+first) is right for a channel's unbounded back-catalogue and wrong for a window the person chose in the popup
+("walk back 365 days, best 20 of those"). Now `relevance.pool_cap(collection_id)`: `UNCAPPED_KINDS = ("subreddit",
+"community")` rank everything; channels/playlists keep POOL. `_pool(rows, cap, only_unscored)` — `only_unscored`
+("finish the ranking", `RankIn.only_unscored`, job payload) scores only rows never actually scored (unscored or the
+old placeholder `BEYOND_POOL`), so the 400 real scores each card already paid for stand; a plain re-rank still
+re-scores all. Used live on the three cards. `tests/test_s98_rank_whole_subreddit.py` (3); S24's `_pool` stub now
+takes `*a, **k`.

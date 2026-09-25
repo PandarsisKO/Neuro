@@ -16,6 +16,12 @@ from .config import settings
 log = logging.getLogger(__name__)
 
 POOL = 400          # never rank more than this many (newest first); keeps the cost bounded
+UNCAPPED_KINDS = ("subreddit", "community")
+# S98 (Kyle, 2026-09-24: "we seem to be having issues ranking posts from an entire subreddit"). POOL exists for a
+# channel's back-catalogue, where the newest 400 videos are a sensible sample of an unbounded list. A community walk
+# is the opposite: the person chose the window in the popup ("walk back 365 days") and asked for the best N OF THOSE.
+# Capping that at 400 silently scored ~600 of every 999 posts 0 with "beyond ranking pool (older)" -- three subreddit
+# cards in a row, the exact posts he walked back a year to get. Listing kinds here rank every proposed row.
 BATCH = 80
 BATCHES_PER_RUN = 2    # 0.55.1 — then the job hands its worker back (jobs.Yield). A 398-video channel is five
                        # batches at 59-92 s each: 5-8 minutes holding one of three AI workers while every findings
@@ -193,19 +199,40 @@ def _job_started() -> float | None:
         return None
 
 
-def _pool(rows: list[dict[str, Any]], since: float | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def pool_cap(collection_id: str | None) -> int | None:
+    """How many of a listing's proposed rows get ranked: POOL for a channel/playlist, everything for a community walk."""
+    if not collection_id:
+        return POOL
+    try:
+        coll = db.get_collection(collection_id)
+    except Exception:  # noqa: BLE001 — never let bookkeeping stop a ranking
+        coll = None
+    if coll and (coll.get("kind") or "") in UNCAPPED_KINDS:
+        return None
+    return POOL
+
+
+BEYOND_POOL = "beyond ranking pool (older)"
+
+
+def _pool(rows: list[dict[str, Any]], cap: int | None = POOL, only_unscored: bool = False) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     # 2026-09-18 (Kyle): a gated (members-only / premium / sign-in) video IS ranked — its relevance is what the
     # Candidate Index remembers, so a 90+ can be worth a membership — but it sorts last in the review and is never
     # auto-ticked (db.proposed_sources, the review card). Ranking is what makes the memory worth keeping.
     rows.sort(key=lambda r: r.get("created_at") or 0)      # listing order (newest first for channels)
-    pool, rest = rows[:POOL], rows[POOL:]
+    pool, rest = (rows[:cap], rows[cap:]) if cap else (list(rows), [])
     # Resume only what is still unscored BY THIS JOB. A score written before the job was created is the previous
     # ranking, not progress. 2026-09-23 (Kyle: "the new rankings seem to be looping again"): he pressed re-rank on two
     # fully-scored channels; each run ranked two batches, yielded, and the next run found nothing "unscored" — every
     # row already carried its OLD score — so it started from batch 0 again, forever (13 batches for a 5-batch list).
+    since = _job_started()
     def fresh(r: dict[str, Any]) -> bool:
         if r.get("relevance") is None:
             return False
+        if only_unscored:
+            # S98: "finish the ranking" -- a real score from any earlier run stands; only rows that were never
+            # actually scored (unscored, or the old cap's 0 placeholder) go to the model.
+            return (r.get("relevance_why") or "") != BEYOND_POOL
         return since is None or (r.get("relevance_at") or 0) >= since
     unscored = [r for r in pool if not fresh(r)]
     if unscored and len(unscored) < len(pool):
@@ -237,14 +264,14 @@ def canonical_requests(collection_id: str, project_id: str, want: int | None = N
     rows = db.proposed_sources(collection_id, project_id)
     if not rows or not project:
         return []
-    pool, _ = _pool(rows)
+    pool, _ = _pool(rows, pool_cap(collection_id))
     head = _head(project, want)
     return [{"system": _system_blocks(SYSTEM, head), "messages": [{"role": "user", "content": _user(pool[b:b + BATCH])}]}
             for b in range(0, len(pool), BATCH)]
 
 
 def rank_collection(collection_id: str, project_id: str | None, want: int | None = None,
-                    progress: Callable[[float, str], None] | None = None) -> dict[str, Any]:
+                    progress: Callable[[float, str], None] | None = None, only_unscored: bool = False) -> dict[str, Any]:
     """Score every proposed source in the collection and store relevance/relevance_why on each.
     Sources beyond POOL (oldest) get score 0 so they stay unticked."""
     project = db.get_project(project_id) if project_id else None
@@ -255,7 +282,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
         # nothing to rank against: keep newest-first, mark as ranked so the UI stops waiting
         db.mark_review_ranked(collection_id, note="no brief to rank against — newest first")
         return {"ranked": 0, "skipped": "no brief"}
-    pool, rest = _pool(rows, since=_job_started())
+    pool, rest = _pool(rows, pool_cap(collection_id), only_unscored=only_unscored)
     head = _head(project, want)
     scored: dict[str, tuple[int, str]] = {}
     persisted: set[str] = set()
@@ -330,7 +357,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
             else:
                 db.set_relevance(s["id"], 0, "not scored", project_id=project_id, input_hash=input_hash(project, s), **prov)
         for s in rest:
-            db.set_relevance(s["id"], 0, "beyond ranking pool (older)", project_id=project_id, input_hash=input_hash(project, s), **prov)
+            db.set_relevance(s["id"], 0, BEYOND_POOL, project_id=project_id, input_hash=input_hash(project, s), **prov)
     note = None
     if failed_batches or len(scored) < len(pool):
         note = f"{len(pool) - len(scored)} of {len(pool)} videos could not be scored — press re-rank to try those again."
