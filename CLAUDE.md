@@ -13,7 +13,7 @@ separately and is not it). Historical checklists are not assignments. The Founda
 
 Runtime: the released application version is whatever `pyproject.toml` / `neurosearch/__init__.py` /
 `web/js/state.js` (`UI_VERSION`) agree on — 0.64.0 at the time of writing — and the extension version is
-`extension/manifest.json` (1.11.0). Do not trust a version number quoted in prose anywhere else. Delivery and
+`extension/manifest.json` (1.11.1). Do not trust a version number quoted in prose anywhere else. Delivery and
 validation status live in `HANDOFF.md` and the newest `STATE-OF-THE-APP-*.md`.
 
 **Production model defaults that live in `.env`, not in code:** `findings.extract` runs on `claude-haiku-4-5` via

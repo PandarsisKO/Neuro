@@ -9,6 +9,7 @@
 //      at any time: that is fine because each message from the page wakes it and nothing lives only in memory —
 //      never because it "stays alive".
 const ALARM = 'neurosearch-heartbeat';
+const FAST = 'neurosearch-pending-fast';    // S97: 30 s while captures are waiting
 const WATCH = 'neurosearch-scan-watch';
 const VERSION = chrome.runtime.getManifest().version;
 
@@ -54,11 +55,14 @@ function canon(u) {
 
 async function refreshPending() {
   try {
-    await api('/api/extension/heartbeat', { method: 'POST', body: JSON.stringify({ version: VERSION }) });
+    await api('/api/extension/heartbeat', { method: 'POST', body: JSON.stringify({ version: VERSION, extension_id: (chrome.runtime && chrome.runtime.id) || null }) });
     const p = await api('/api/capture/pending');
     const items = (p && p.items) || [];
     await chrome.storage.local.set({ pending: items, pendingAt: Date.now() });
     await paintAll(items);
+    // S97 (Kyle: "laggy or slow to pick up the next reddit thread"): the 5-minute heartbeat was the only thing
+    // noticing new requests. While anything is waiting, look every 30 s (the MV3 alarm floor); stop when empty.
+    if (chrome.alarms) { if (items.length) chrome.alarms.create(FAST, { periodInMinutes: 0.5 }); else chrome.alarms.clear(FAST); }
     fulfilRedditCaptures(items).catch(() => {});
   } catch (e) {
     // Keep ordinary offline polling quiet. The popup can ask for this state and surface auth failures;
@@ -813,6 +817,7 @@ chrome.runtime.onStartup.addListener(async () => {
   for (const rec of await anyActive()) await withScan(rec.tab_id, () => finishScan(rec, rec.lessons.length ? 'partial' : 'interrupted', 'browser_restarted'));
 });
 chrome.alarms.onAlarm.addListener(async a => {
+  if (a.name === FAST) { refreshPending(); return; }
   if (a.name === ALARM) {
     refreshPending();
     // repair round 2 (gap #3): pruneExpired's 2h/5-blob/200MB retention bounds were only ever enforced at
@@ -842,22 +847,32 @@ const FULFIL_RETRY_MS = 10 * 60 * 1000;
 let fulfilling = false;
 async function fulfilRedditCaptures(items) {
   if (fulfilling) return;
-  const wanted = (items || []).filter(i => i.adapter === 'reddit_thread' && i.status !== 'expired');
-  if (!wanted.length) return;
-  const tabs = await chrome.tabs.query({ url: 'https://www.reddit.com/*' });
-  const tab = tabs.find(t => t.status === 'complete') || tabs[0];
-  if (!tab) return;
   fulfilling = true;
   try {
-    for (const it of wanted) {
-      const key = `fulfil:${it.job_id}`;
-      const last = (await chrome.storage.local.get(key))[key];
-      if (last && Date.now() - last < FULFIL_RETRY_MS) continue;
-      await chrome.storage.local.set({ [key]: Date.now() });
-      const payload = await redditCaptureUrl(tab, it.canonical_url || it.url);
-      if (!payload || payload.error) continue;
-      await api(`/api/capture/${it.job_id}`, { method: 'POST', body: JSON.stringify(payload) });
-      await sleep(1000);
+    // keep going while the app keeps handing out requests (Start on a 20-post card parks them one by one as the
+    // server tries and fails each): re-read the queue after every pass, up to a bound, instead of waiting a poll
+    for (let round = 0; round < 25; round++) {
+      const wanted = (items || []).filter(i => i.adapter === 'reddit_thread' && i.status !== 'expired');
+      if (!wanted.length) break;
+      const tabs = await chrome.tabs.query({ url: 'https://www.reddit.com/*' });
+      const tab = tabs.find(t => t.status === 'complete') || tabs[0];
+      if (!tab) break;
+      let did = 0;
+      for (const it of wanted) {
+        const key = `fulfil:${it.job_id}`;
+        const last = (await chrome.storage.local.get(key))[key];
+        if (last && Date.now() - last < FULFIL_RETRY_MS) continue;
+        await chrome.storage.local.set({ [key]: Date.now() });
+        const payload = await redditCaptureUrl(tab, it.canonical_url || it.url);
+        if (!payload || payload.error) continue;
+        await api(`/api/capture/${it.job_id}`, { method: 'POST', body: JSON.stringify(payload) });
+        did++;
+        await sleep(1000);
+      }
+      if (!did) break;
+      await sleep(2500);                                   // let the app finish those and park the next ones
+      const p = await api('/api/capture/pending'); items = (p && p.items) || [];
+      await chrome.storage.local.set({ pending: items, pendingAt: Date.now() });
     }
   } finally { fulfilling = false; }
   await refreshPendingQuiet();
@@ -1016,6 +1031,11 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
 });
 chrome.tabs.onRemoved.addListener(tabId => { checkAlive(tabId, 'tab_closed'); });
 chrome.tabs.onActivated.addListener(async ({ tabId }) => { try { paint(await chrome.tabs.get(tabId)); } catch (e) {} });
+// S97: the Neuro page messages this extension directly (externally_connectable) the moment it sees captures
+// waiting — Start on a review card, a parked job — so the pick-up is immediate instead of "next poll".
+chrome.runtime.onMessageExternal.addListener((msg, sender, reply) => {
+  if (msg && msg.type === 'nudge') { refreshPending().then(() => reply({ ok: true })); return true; }
+});
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg) return;
   if (msg.type === 'refresh-pending') { refreshPending().then(() => reply({ ok: true })); return true; }

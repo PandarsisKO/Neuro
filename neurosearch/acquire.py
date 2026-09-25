@@ -237,10 +237,12 @@ def cancel_capture(job_id: str) -> bool:
 
 # ---------------------------------------------------------------- extension presence + attention
 
-def heartbeat(version: str | None, seen_url: str | None = None) -> dict[str, Any]:
+def heartbeat(version: str | None, seen_url: str | None = None, extension_id: str | None = None) -> dict[str, Any]:
     db.kv_set("extension:last_seen", str(time.time()))
     if version:
         db.kv_set("extension:version", version)
+    if extension_id:
+        db.kv_set("extension:id", extension_id)          # S97: lets the app page nudge the extension the moment captures appear
     return extension_status()
 
 
@@ -248,7 +250,8 @@ def extension_status() -> dict[str, Any]:
     ts = float(db.kv_get("extension:last_seen") or 0)
     age = time.time() - ts if ts else None
     state = "not_detected" if not ts else ("ready" if age < 600 else "stale")
-    return {"state": state, "last_seen": ts or None, "age_s": round(age) if age is not None else None, "version": db.kv_get("extension:version")}
+    return {"state": state, "last_seen": ts or None, "age_s": round(age) if age is not None else None, "version": db.kv_get("extension:version"),
+            "id": db.kv_get("extension:id")}
 
 
 def attention(project_id: str) -> dict[str, Any]:

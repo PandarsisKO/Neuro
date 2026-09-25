@@ -5,13 +5,14 @@ forget about them once I hit ADD."
 
 The machinery existed (B1: the job parks as external_pending/browser, the extension badge lights on the tab, the
 Browser-capture card's "Open & Capture" opened the tab) but the person still had to find the card, and then press
-the extension's button. Now: the job's own row in the In-progress box carries "🌐 Open & capture in Chrome" (and the
+the extension's button. Now: the job's own row in the In-progress box carries "Open & capture in Chrome" (and the
 job is hot, so it is visible collapsed); the app opens the URL with `#neuro-capture`; the extension's background
 worker sees that fragment on a page it has a pending request for and runs the capture itself, no popup click."""
 from __future__ import annotations
 
 import json
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 R = (ROOT / "neurosearch" / "web" / "js" / "research.js").read_text()
@@ -53,5 +54,15 @@ def test_the_producers_are_shared_not_duplicated():
     assert "// ---- B1:" in POP and "async function load()" in POP, "markers the extension-auth harness slices on"
 
 
-def test_extension_version_bumped():
-    assert json.loads((ROOT / "extension" / "manifest.json").read_text())["version"] in ("1.9.7", "1.10.0", "1.11.0")
+def test_the_canonical_version_and_the_manifest_agree():
+    """CLAUDE.md calls manifest.json canonical and says not to trust a version quoted in prose anywhere else --
+    but the version IS quoted in its own prose, and nothing compared the two. It silently went backwards twice
+    (c2a399d reverted 1.9.7 to 1.9.6 while the manifest went to 1.10.0; the same stale line came back at 1.11.1),
+    because a concurrent session's copy of CLAUDE.md predated the last bump. A hard-coded list of accepted
+    versions cannot catch that -- only agreement can."""
+    version = json.loads((ROOT / "extension" / "manifest.json").read_text())["version"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"manifest version is not x.y.z: {version!r}"
+    quoted = re.search(r"`extension/manifest\.json` \((\d+\.\d+\.\d+)\)", (ROOT / "CLAUDE.md").read_text())
+    assert quoted, "CLAUDE.md no longer quotes the extension version where this test looks for it"
+    assert quoted.group(1) == version, (
+        f"CLAUDE.md says {quoted.group(1)}, manifest.json says {version} — the canonical pointer is stale")

@@ -113,3 +113,22 @@ def test_a_review_card_scanned_into_the_wrong_project_can_be_moved(client):
     ranks = [j for j in (db.claim_job(kinds=("rank_proposed",), worker_id="w"),) if j]
     assert ranks and ranks[0]["payload"]["project_id"] in (wrong["id"], right["id"])
     assert client.post(f"/api/collections/{out['collection_id']}/move", json={"project_id": "nope"}, headers=H).status_code == 404
+
+
+def test_the_extension_picks_up_new_captures_within_seconds_not_minutes():
+    """S97 — Kyle: "the chrome extension seems to be laggy or slow to pick up the next reddit thread". The only
+    thing noticing new requests was the 5-minute heartbeat. Now: a 30 s poll while anything waits, an instant nudge
+    from the Neuro page (externally_connectable + the extension's id reported on heartbeat), and the fulfil loop
+    re-reads the queue after every pass."""
+    import json
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    bg = (root / "extension" / "background.js").read_text(); man = json.loads((root / "extension" / "manifest.json").read_text())
+    src = (root / "neurosearch" / "web" / "js" / "sources.js").read_text(); acq = (root / "neurosearch" / "acquire.py").read_text()
+    assert "chrome.alarms.create(FAST, { periodInMinutes: 0.5 })" in bg and "chrome.alarms.clear(FAST)" in bg
+    assert "chrome.runtime.onMessageExternal.addListener" in bg and "msg.type === 'nudge'" in bg
+    assert "http://localhost:8000/*" in man["externally_connectable"]["matches"]
+    assert "extension_id: (chrome.runtime && chrome.runtime.id) || null" in bg
+    assert 'db.kv_set("extension:id", extension_id)' in acq and '"id": db.kv_get("extension:id")' in acq
+    assert "globalThis.nudgeExtension = function nudgeExtension(items)" in src and "nudgeExtension(items);" in src
+    assert "for (let round = 0; round < 25; round++)" in bg, "the fulfil loop re-reads the queue instead of waiting for a poll"

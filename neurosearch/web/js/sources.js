@@ -731,6 +731,17 @@ globalThis.extLine = function extLine() { return EXT.state === 'ready' ? '✓ ex
 globalThis.toggleCaptureHelp = function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.hidden = !d.hidden; }
 // S92: the fragment is what tells the extension "the app opened this for you — capture it" (background.js autoCapture)
 globalThis.openAndCapture = function openAndCapture(url) { try { const u = new URL(url); u.hash = 'neuro-capture'; url = u.toString(); } catch (e) {} window.open(url, '_blank'); toast('🌐 opened in a new tab — the extension captures it as soon as the page loads'); }
+// S97: tell the extension NOW that captures are waiting (it otherwise notices on its next poll). Chrome only lets a
+// page message an extension that lists this origin in externally_connectable and whose id the page knows — the
+// extension reports its id on every heartbeat, and /api/capture/pending passes it back. Once per set of job ids.
+globalThis.NUDGED = '';
+globalThis.nudgeExtension = function nudgeExtension(items) {
+  const id = EXT && EXT.id; if (!id || !globalThis.chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
+  const key = items.map(i => i.job_id).sort().join(',');
+  if (key === NUDGED) return;
+  NUDGED = key;
+  try { chrome.runtime.sendMessage(id, { type: 'nudge' }, () => { void chrome.runtime.lastError; }); } catch (e) {}
+}
 globalThis.cancelCapture = async function cancelCapture(jobId) { await del(`/api/capture/${jobId}`); loadSources(); loadJobs(); }
 globalThis.loadCaptureQueue = async function loadCaptureQueue(rows, quiet) {
   try {
@@ -753,6 +764,7 @@ globalThis.loadCaptureQueue = async function loadCaptureQueue(rows, quiet) {
       } catch (e) {}
     }
     if (!items.length) { if (outcome) { card.hidden = false; card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· nothing waiting</span>${outcome}`; } else card.hidden = true; clearTimeout(CAPTURE_TIMER); return; }
+    nudgeExtension(items);
     card.hidden = false;
     const first = items.find(i => i.status !== 'expired') || items[0];
     card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· ${items.length} source${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} your browser · ${extLine() || 'extension state unknown'}</span>${outcome}

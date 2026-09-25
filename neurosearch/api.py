@@ -1114,13 +1114,14 @@ def api_share_conversation(conversation_id: str, body: ShareConversationIn) -> d
 
 class HeartbeatIn(BaseModel):
     version: str | None = None
+    extension_id: str | None = None
 
 
 @app.post("/api/extension/heartbeat", dependencies=[Depends(require_auth)])
 def api_extension_heartbeat(body: HeartbeatIn) -> dict[str, Any]:
     """The extension checks in (every few minutes and when opened): presence for the UI, and the pending count for its badge."""
     from . import acquire
-    st = acquire.heartbeat(body.version)
+    st = acquire.heartbeat(body.version, extension_id=body.extension_id)
     return {"extension": st, "pending": len(acquire.pending_captures())}
 
 

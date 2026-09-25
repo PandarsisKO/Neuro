@@ -3813,3 +3813,21 @@ session — the server is blocked, the browser is not), so titles, bodies, dates
 - Tests: `tests/test_s95_scan_subreddit.py` (3: listing → ranked card through the app with re-walk dedupe / 404 /
   400; Start → parked browser capture on the same row; the extension wiring). L1, K9, S54, S74, S92, S93 green
   with it. Live: Claude-in-Chrome refuses reddit.com, so the first real walk is Kyle's.
+
+## S96/S97 — move a review card; the extension picks up captures in seconds (Claude Desktop, 2026-09-24)
+
+**S96** Kyle: *"I think I just scanned them to the wrong project..."* — r/Bogleheads (999 posts) had landed as a
+review card in the business project. `POST /api/collections/{id}/move {project_id}`: re-links the collection,
+re-points the review meta, queues `rank_proposed` for the new brief (pending reviews only). Used live: card moved
+to Personal Wealth, re-ranking. (No UI button yet.)
+
+**S97** Kyle: *"the chrome extension seems to be laggy or slow to pick up the next reddit thread from the progress
+window ... so I dont have to toggle between tabs so frequently."* The only thing noticing new capture requests was
+the 5-minute heartbeat (plus opening the popup — which is what tab-toggling was doing). Now: (1) a 30 s alarm
+(`FAST`, the MV3 floor) while anything is pending, cleared when the queue is empty; (2) the Neuro page nudges the
+extension the instant `loadCaptureQueue` sees waiting items — `externally_connectable` for the app's origins, the
+extension reports `chrome.runtime.id` on heartbeat (`extension:id` kv, returned in the pending payload),
+`nudgeExtension()` once per set of job ids; (3) `fulfilRedditCaptures` re-reads the queue after every pass (Start on
+a 20-post card parks them one by one as the server tries and fails each) instead of waiting for a poll. Extension
+**1.11.1** (`CLAUDE.md`). Test added to `tests/test_s95_scan_subreddit.py`; S74's sandboxed refreshPending harness
+needed `chrome.runtime`/`chrome.alarms` guards.
