@@ -222,6 +222,7 @@
   .chipf{flex:none;white-space:nowrap;font-size:12px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);cursor:pointer;color:var(--muted)}
   .chipf.on{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
   .chipf b{font-weight:600}
+  .chipf .dim{opacity:.35}
   .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:var(--chip);flex:0 0 auto}
   .src .ico{width:96px;height:54px;border-radius:6px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
   .src .t{font-weight:600;overflow-wrap:anywhere}
@@ -244,6 +245,7 @@
   .d .dlinks{font-size:12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
   .f{display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);align-items:flex-start}
   .f:last-child{border-bottom:0}
+  .f .fsel{flex:0 0 auto;margin:5px 0 0}
   .f .fi{flex:0 0 44px;font-size:9px;letter-spacing:1px;color:var(--warn);padding-top:5px;white-space:nowrap} .f .fi .dim{color:var(--line)}
   .f .main{flex:1;min-width:0}
   /* CL-3: two-line row — title (truncating) then one meaning line (body + badges + source, also truncating).

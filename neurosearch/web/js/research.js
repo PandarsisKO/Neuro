@@ -1139,7 +1139,10 @@ globalThis.openSourceSuggestions = async function openSourceSuggestions(sid, sta
 }
 globalThis.clearFindingSource = function clearFindingSource() { FB.source = null; FB.offset = 0; loadWorkbench(); }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
-globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false, rows: [], statusCounts: {}, autoFor: null, userStatus: false };
+globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false, rows: [], statusCounts: {}, autoFor: null, userStatus: false,
+  // S99: the hand-picked rows (id -> row), kept across pages and filter changes until a bulk action uses them or
+  // the project changes, so a pick on page 2 is not lost by looking at page 3. The bar always says how many.
+  sel: new Map(), selFor: null };
 globalThis.FGRP = { collapsed: new Set(), project: null };   // remembers which source-groups the user closed by hand (title -> closed), per project
 // C1: DESIGN.md's Workbench-row rule caps a normal row at two visible badges; this row used to show up to
 // five (plan/chat/claim/stale/area). The three "where this got used" signals are really one fact — whether
@@ -1175,11 +1178,81 @@ globalThis.renderFbStatusChips = function renderFbStatusChips(cur, counts) {
   el.innerHTML = FB_STATUS_CHIPS.map(([k, l]) => `<span class="chipf ${cur === k ? 'on' : ''}" onclick="setFbStatus('${k}')">${l}${Object.keys(counts).length ? ` <span class="muted">${n(k)}</span>` : ''}</span>`).join('');
 }
 globalThis.setFbStatus = function setFbStatus(v) { $('#fbStatus').value = v; FB.userStatus = true; loadWorkbench(); }
+// S99 (Kyle, 2026-09-25: "a way to filter by strength so I can review findings and bulk select and remove"). Strength
+// is the 1-5 importance every finding already carries; it used to be a floor ("3 and up") buried in the filters
+// panel, which is the wrong shape for the job he described -- he wants the WEAK end, exactly, out in the open.
+// One toggle chip per level, counts from the importance facet (the filtered set minus this dimension, so each
+// chip says what picking it would give), several may be on at once, none on means any strength.
+const FB_IMP_LEVELS = [5, 4, 3, 2, 1, 0];
+globalThis.fbImpLevels = function fbImpLevels() { return new Set(($('#fbImp').value || '').split(',').filter(Boolean).map(Number)); }
+globalThis.renderFbImpChips = function renderFbImpChips(counts) {
+  const el = $('#fbImpChips'); if (!el) return;
+  counts = counts || {};
+  const on = fbImpLevels();
+  const dots = v => v ? '●'.repeat(v) + '<span class="dim">' + '●'.repeat(5 - v) + '</span>' : 'unrated';
+  el.innerHTML = `<span class="muted" style="font-size:12px">strength</span>` + FB_IMP_LEVELS.filter(v => v || counts[v] || on.has(v)).map(v =>
+    `<span class="chipf fi ${on.has(v) ? 'on' : ''}" style="font-size:11px;letter-spacing:1px" title="${v ? `importance ${v}/5` : 'no importance recorded'} — click to ${on.has(v) ? 'drop' : 'add'} it" onclick="fbImpToggle(${v})">${dots(v)}${counts[v] != null ? ` <span class="muted" style="letter-spacing:0">${counts[v]}</span>` : ''}</span>`).join('')
+    + (on.size ? `<a href="#" class="muted" style="font-size:12px" onclick="$('#fbImp').value='';loadWorkbench();return false">any</a>` : '');
+}
+globalThis.fbImpToggle = function fbImpToggle(v) {
+  const on = fbImpLevels(); on.has(v) ? on.delete(v) : on.add(v);
+  $('#fbImp').value = [...on].sort((a, b) => b - a).join(','); loadWorkbench();
+}
+// The hand-picked selection. Rows are kept whole so a pick can go straight into Keep vs Lose without a refetch.
+globalThis.fbSel = function fbSel(id, checked) {
+  const row = (FB.rows || []).find(n => n.id === id);
+  if (checked && row) FB.sel.set(id, row); else FB.sel.delete(id);
+  renderFbBulk();
+}
+globalThis.fbSelAll = function fbSelAll(on) {
+  for (const n of FB.rows || []) { if (on) FB.sel.set(n.id, n); else FB.sel.delete(n.id); }
+  document.querySelectorAll('#notes .fsel').forEach(c => { c.checked = on; });
+  renderFbBulk();
+}
+globalThis.fbSelClear = function fbSelClear() { FB.sel.clear(); document.querySelectorAll('#notes .fsel').forEach(c => { c.checked = false; }); renderFbBulk(); }
+globalThis.fbBulkSelected = async function fbBulkSelected(status) {
+  const ids = [...FB.sel.keys()];
+  if (!ids.length) return toast('nothing selected');
+  const losing = status === 'dismissed' ? [...FB.sel.values()].filter(n => n.status === 'approved') : [];
+  if (losing.length && !confirm(`Dismiss ${ids.length} finding${ids.length === 1 ? '' : 's'}, ${losing.length} of them approved? A dismissed finding stops counting as evidence for chat, exports, the plan and Claims. Nothing is deleted and it is reversible from the Dismissed filter.`)) return;
+  await bulkNotes(ids, status);
+}
+globalThis.fbReviewSelected = function fbReviewSelected() {
+  const rows = [...FB.sel.values()];
+  if (!rows.length) return toast('nothing selected');
+  fbFocusOpen(rows, {
+    title: `Selected findings — ${rows.length} you picked`,
+    subtitle: `Exactly the ${rows.length} you ticked, in the order you see them. Keep files it as approved, Lose as dismissed; `
+      + `anything you do not judge is left exactly as it is. Nothing is deleted either way.`,
+    onDone: fbSelClear,
+  });
+}
+// The bar above the list: select-all-shown, the count, and the three things a selection can become. The
+// suggested-only "Approve all shown" pair (CL-2) is kept as it was, beside it.
+globalThis.renderFbBulk = function renderFbBulk() {
+  const el = $('#fbBulk'); if (!el) return;
+  const rows = FB.rows || [], st = $('#fbStatus').value, total = FB.total || rows.length;
+  if (!rows.length) { el.innerHTML = ''; return; }
+  const n = FB.sel.size, allOn = rows.length && rows.every(r => FB.sel.has(r.id));
+  const bulkIds = rows.map(r => r.id);
+  el.innerHTML = `<div class="row" style="gap:6px;margin:0 0 10px;flex-wrap:wrap;align-items:center">
+      <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="fbSelAll(this.checked)" title="Tick every finding on this page"> select the ${rows.length} shown</label>
+      ${n ? `<span class="muted" style="font-size:12.5px"><b>${n}</b> selected</span>
+      <button class="small" title="Load exactly the selected findings into Keep vs Lose" onclick="fbReviewSelected()">◉ Review ${n} in Keep vs Lose</button>
+      ${st !== 'approved' ? `<button class="small" title="Approve the selected findings" onclick="fbBulkSelected('approved')">Approve ${n}</button>` : ''}
+      ${st !== 'dismissed' ? `<button class="small danger" title="Dismiss the selected findings (nothing is deleted — they stay under Dismissed)" onclick="fbBulkSelected('dismissed')">Dismiss ${n}</button>` : ''}
+      ${st === 'dismissed' ? `<button class="small" title="Put the selected findings back in the review queue" onclick="fbBulkSelected('suggested')">↩ Restore ${n}</button>` : ''}
+      <a href="#" class="muted" style="font-size:12px" onclick="fbSelClear();return false">clear</a>` : ''}
+      ${(st === 'suggested') ? `<span class="grow"></span>
+      <button class="small primary" title="${total > rows.length ? `Approve the ${rows.length} shown here (of ${total})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(bulkIds)},'approved')">Approve ${total > rows.length ? rows.length + ' shown' : 'all'}</button>
+      <button class="small" onclick="bulkNotes(${JSON.stringify(bulkIds)},'dismissed')">Dismiss ${total > rows.length ? rows.length + ' shown' : 'all'}</button>` : ''}
+    </div>`;
+}
 globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (reset) FB.offset = 0;
   const p = new URLSearchParams({ limit: FB.limit, offset: FB.offset, status: $('#fbStatus').value, sort: $('#fbSort').value });
   if (FB.source) p.set('source_id', FB.source);
-  for (const [k, id] of [['q', 'fbQ'], ['min_importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
+  for (const [k, id] of [['q', 'fbQ'], ['importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
   if (!FB.loaded) $('#notes').innerHTML = listState('loading', { label: 'Loading findings…' });
   let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { if (e && e.stale) return; $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
   FB.loaded = true;
@@ -1198,6 +1271,9 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
     }
   }
   FB.rows = r.findings || [];        // what focus review walks: exactly the page on screen, filters and all
+  FB.total = r.total;
+  if (FB.selFor !== state.project.id) { FB.selFor = state.project.id; FB.sel.clear(); }   // a pick never crosses projects
+  renderFbImpChips(r.facets && r.facets.importance);
   // area facet options (keep the current choice)
   const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
@@ -1245,11 +1321,8 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   // CL-2: bulk approve/dismiss for the suggested filter used to live above a separate, now-removed 100-card
   // block fed by its own top-of-page fetch; this uses the same page of rows the workbench is already showing,
   // so "shown" always means what's actually on screen.
-  const bulkIds = rows.map(n => n.id);
-  $('#fbBulk').innerHTML = (st === 'suggested' && rows.length) ? `<div class="row" style="gap:6px;margin:0 0 10px;flex-wrap:wrap">
-      <button class="small primary" title="${r.total > rows.length ? `Approve the ${rows.length} shown here (of ${r.total})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(bulkIds)},'approved')">Approve ${r.total > rows.length ? rows.length + ' shown' : 'all'}</button>
-      <button class="small" onclick="bulkNotes(${JSON.stringify(bulkIds)},'dismissed')">Dismiss ${r.total > rows.length ? rows.length + ' shown' : 'all'}</button>
-    </div>` : '';
+  // S99: the same bar now also carries the hand-picked selection (tick boxes on every row, any filter).
+  renderFbBulk();
   $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => {
     const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);
     const keyJs = JSON.stringify(title).replace(/"/g, '&quot;');
@@ -1259,7 +1332,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
     const sugg = list.filter(n => n.status === 'suggested' || n.status === 'reserve').map(n => n.id);
     const grpBulk = sugg.length ? `<button class="small" title="Approve the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'approved')">Approve all ${sugg.length}</button><button class="small ghost" title="Dismiss the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source (nothing is deleted)" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'dismissed')">Dismiss all</button>` : '';
     return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${grpBulk}${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
-      list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</details>`; }).join('')
+      list.map(n => findingCard({ ...n, _badges: useBadges(n), _sel: FB.sel.has(n.id) }, act(n))).join('') + `</details>`; }).join('')
     : `<div class="empty">${r.total ? '' : (() => { const c = FB.statusCounts || {}; const other = FB_STATUS_CHIPS.filter(([k]) => k !== st && k !== 'all' && c[k]); return `No ${st === 'all' ? '' : st + ' '}findings${$('#fbQ').value || $('#fbUsed').value || $('#fbImp').value || $('#fbStale').value || $('#fbArea').value ? ' match these filters' : ' in this project yet'}.` + (other.length ? ` There are ${other.map(([k, l]) => `<a href="#" onclick="setFbStatus('${k}');return false"><b>${c[k]}</b> ${l.toLowerCase()}</a>`).join(', ')}.` : st === 'approved' ? ' Approve suggestions as they arrive, or ask questions in a chat and pin the answers worth keeping.' : ''); })()}</div>`;
   const pages = Math.ceil(r.total / FB.limit);
   $('#fbPager').innerHTML = pages > 1 ? `<button class="small ghost" ${FB.offset === 0 ? 'disabled' : ''} onclick="FB.offset=Math.max(0,FB.offset-FB.limit);loadWorkbench(false)">‹ prev</button><span class="muted" style="margin:0 8px">${Math.floor(FB.offset / FB.limit) + 1} / ${pages}</span><button class="small ghost" ${FB.offset + FB.limit >= r.total ? 'disabled' : ''} onclick="FB.offset+=FB.limit;loadWorkbench(false)">next ›</button>` : '';
@@ -1468,6 +1541,43 @@ globalThis.fbSecondLook = async function fbSecondLook() {
   });
 }
 
+// S99 (Kyle, 2026-09-25: "select findings by strength and load them into the Keep vs Lose feature so I can have an
+// easier way to view and review, not just the random review we have already built"). The filters on screen --
+// strength chips, status, used, staleness, area, search -- define the set; this serves it into the same reviewer
+// the second look uses, FOCUS_BATCH at a time, weakest first, ignoring the page you happen to be on. On the
+// approved filter it also skips anything already ruled on (`reviewed=no`), which is what lets "press it again"
+// mean "the next 100" rather than "the same 100": Keep on an approved finding changes nothing but `reviewed_at`.
+globalThis.fbReviewFiltered = async function fbReviewFiltered() {
+  const btn = $('#fbFilteredBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = '◉ Review filtered'; } };
+  const st = $('#fbStatus').value;
+  const p = new URLSearchParams({ status: st, sort: 'weakest', limit: FOCUS_BATCH });
+  if (st === 'approved') p.set('reviewed', 'no');
+  if (FB.source) p.set('source_id', FB.source);
+  for (const [k, id] of [['q', 'fbQ'], ['importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
+  let r;
+  try { r = await api(`/api/projects/${state.project.id}/findings?` + p); }
+  catch (e) { restore(); toast('Could not load the filtered set: ' + (e.message || e), 'err'); return; }
+  restore();
+  const rows = r.findings || [];
+  if (!rows.length) { toast(st === 'approved' && FB.total ? 'Everything matching these filters has already been ruled on' : 'Nothing matches these filters'); return; }
+  const lv = fbImpLevels();
+  const what = [
+    st === 'all' ? 'every status' : st,
+    lv.size ? `strength ${[...lv].sort((a, b) => b - a).map(v => v || 'unrated').join(', ')}` : 'any strength',
+    $('#fbUsed').value ? `used: ${$('#fbUsed').value}` : '', $('#fbArea').value ? `area: ${$('#fbArea').value}` : '',
+    $('#fbStale').value ? `source ${$('#fbStale').value}` : '', $('#fbQ').value ? `“${$('#fbQ').value}”` : '',
+  ].filter(Boolean).join(' · ');
+  fbFocusOpen(rows, {
+    title: `Filtered findings — ${what}`,
+    subtitle: `${rows.length} of ${r.total}, weakest first. Keep files it as approved, Lose as dismissed; anything you do not `
+      + `judge is left exactly as it is, and nothing is deleted either way. `
+      + (st === 'approved' ? `Findings you already ruled on are skipped. ` : '')
+      + (r.total > rows.length ? `Press the button again for the next ${FOCUS_BATCH}.` : ''),
+  });
+}
+
 globalThis.fbFocus = function fbFocus() {
   const rows = FB.rows || [];
   if (!rows.length) { toast('Nothing to review here'); return; }
@@ -1511,6 +1621,7 @@ globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
       if (keep.length) await post('/api/notes/bulk-status', { note_ids: keep.map(Number), status: 'approved' });
       if (drop.length) await post('/api/notes/bulk-status', { note_ids: drop.map(Number), status: 'dismissed' });
       toast(`${keep.length} approved · ${drop.length} dismissed`);
+      if (opts.onDone) opts.onDone();
       loadWorkbench(false);
     },
   });
@@ -1529,7 +1640,8 @@ globalThis.findingCard = function findingCard(n, actions) {
       ${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title)} @ ${x.timestamp}</a>`).join('')}
       ${c?.snippet ? `<div class="quote">“${esc(c.snippet)}”</div>` : ''}
     </div>`;
-  return `<div class="f">${imp}<div class="main">
+  const sel = n._sel === undefined ? '' : `<input type="checkbox" class="fsel" ${n._sel ? 'checked' : ''} title="Select this finding for a bulk action or a Keep vs Lose pass" onchange="fbSel(${n.id},this.checked)">`;
+  return `<div class="f">${sel}${imp}<div class="main">
       <div class="ttl">${esc(title)}</div>
       <div class="row2">${body ? `<span class="txt">${esc(body)}</span>` : ''}${n._badges ? n._badges : ''}${srcChip}${hasDetail ? `<a href="#" class="qtoggle" title="area, full source list and quote" onclick="const d=this.closest('.main').querySelector('.detail');d.hidden=!d.hidden;return false">⋯</a>` : ''}</div>
       ${detail}
@@ -1544,6 +1656,7 @@ globalThis.bulkNotes = async function bulkNotes(ids, status) {
   // approved 59 findings, it worked, and the app told him nothing — so he reported the button as broken.
   const n = ids.length, word = status === 'approved' ? 'approved' : status === 'dismissed' ? 'dismissed' : `moved to ${status}`;
   toast(`✓ ${n} finding${n === 1 ? '' : 's'} ${word}`);
+  for (const id of ids) FB.sel.delete(id);      // S99: a pick that has been acted on is done
   loadNotes();
 }
 // Now vs background: the same analysis through two transports. Wording is deliberate — the background option may take

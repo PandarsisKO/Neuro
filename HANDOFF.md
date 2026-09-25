@@ -3854,3 +3854,39 @@ first) is right for a channel's unbounded back-catalogue and wrong for a window 
 old placeholder `BEYOND_POOL`), so the 400 real scores each card already paid for stand; a plain re-rank still
 re-scores all. Used live on the three cards. `tests/test_s98_rank_whole_subreddit.py` (3); S24's `_pool` stub now
 takes `*a, **k`.
+
+## S99 — filter findings by strength, bulk-select, and load a chosen set into Keep vs Lose (Cowork, 2026-09-25)
+
+Kyle: *"in our findings tab, I want a way to filter by strength so I can review findings and bulk select and remove
+if possible. furthermore, I would like to be able to select findings by strength and load them into the Keep vs Lose
+feature so I can have an easier way to view and review, not just the random review we have already built."*
+
+Strength is the 1–5 importance every finding already carries; the only handle on it was a floor ("3 and up") in the
+collapsed filters panel, which cannot reach the weak end. Now, **0.64.1**:
+
+- **Server** — `findings_view.query(importance="1,2")` is an exact SET of levels (`parse_levels`; 0 = unrated;
+  unknown tokens ignored, never a 4xx); `min_importance` stays a floor and the two compose. `GET …/findings`
+  passes `importance` through. The importance facet still ignores its own filter, so every chip says what picking
+  it would give.
+- **Findings bar** — strength toggle chips (●●●●● … ● and `unrated` when present) with facet counts sit beside the
+  status chips; several may be on at once, none on = any. `#fbImp` is now a hidden input carrying the levels.
+- **Bulk select** — a checkbox on every workbench row (`_sel`, opt-in so other `findingCard` callers are
+  unchanged), "select the N shown", and a bar with **◉ Review N in Keep vs Lose · Approve N · Dismiss N** (or
+  **↩ Restore N** on Dismissed). The selection (`FB.sel`, id → row) survives paging and filter changes, never a
+  project change, and is cleared for whatever a bulk action touched. Dismissing picks that include approved rows
+  asks first and says it is reversible. Everything still goes through `/api/notes/bulk-status`.
+- **◉ Review filtered** — serves whatever the filters pick out (strength, status, used, area, staleness, search,
+  one source) into the same reviewer as the second look, `FOCUS_BATCH` (100) at a time, weakest first, ignoring
+  the page offset; on Approved it adds `reviewed=no` so pressing it again means the next 100 (Keep on an approved
+  finding changes only `reviewed_at`). The title names the set ("approved · strength 1, 2 · used: never").
+- **Kept as they were** — ◉ Review one at a time (page on screen, S78), Review suggested, ↻ Second look, the
+  suggested-only Approve/Dismiss all shown pair, the low-value sweep.
+
+Gate `tests/test_s99_findings_strength.py` (15). S78's `limit: FOCUS_BATCH` count is now 3 (one number, three
+passes); S11's "Approve N shown" wording check follows the bar into `renderFbBulk()`. Suite in the Linux VM
+(Python 3.11, temp DBs): every module green except `test_n3_deep_findings::…per_part_progress` (fails identically
+on `7567f8e` without this change — a timing flake, not S99) and the two jsdom modules (`s32`, `s54`), whose node
+harness hangs in this VM; macOS is the gate for those. `release-check` PASS (it caught a fourth version marker,
+`index.html`'s `neurosearch-ui-version` meta — now 0.64.1 with the other three). Also committed first, separately: the S98 subreddit-ranking work that was sitting uncommitted in the tree
+(`7567f8e`). Not yet seen in a browser — the VM cannot reach the live app; a look at the Findings tab on the Mac
+is the one remaining check.

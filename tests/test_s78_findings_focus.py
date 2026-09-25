@@ -154,7 +154,7 @@ def test_it_serves_one_batch_and_says_there_is_more():
 
 def test_the_batch_size_is_one_constant_for_every_focus_pass():
     assert "globalThis.FOCUS_BATCH = 100" in JS
-    assert JS.count("limit: FOCUS_BATCH") == 2, "both passes, one number"
+    assert JS.count("limit: FOCUS_BATCH") == 3, "every pass (suggested, second look, S99 filtered), one number"
 
 
 def test_the_safety_exclusion_is_still_stated():

@@ -158,9 +158,11 @@ def test_the_suggested_block_links_to_the_paged_workbench(project):
     assert "reviewSuggested" in body
     assert "suggested finding" in body and "waiting" in body
     # the bulk approve/dismiss wording (and its "never implies it approved everything" honesty) now lives on the
-    # workbench itself, scoped to whichever page is actually on screen.
-    wb = ui[ui.index("globalThis.loadWorkbench = async function loadWorkbench"):ui.index("globalThis.loadWorkbenchSource")]
-    assert "Approve ${r.total > rows.length ? rows.length + ' shown' : 'all'}" in wb
+    # workbench itself, scoped to whichever page is actually on screen. (S99 moved the bar into renderFbBulk(),
+    # which loadWorkbench calls with the same page of rows; the wording and its honesty are unchanged.)
+    wb = ui[ui.index("globalThis.renderFbBulk = function renderFbBulk"):ui.index("globalThis.loadWorkbenchSource")]
+    assert "Approve ${total > rows.length ? rows.length + ' shown' : 'all'}" in wb
+    assert "renderFbBulk();" in ui[ui.index("globalThis.loadWorkbench = async function loadWorkbench"):ui.index("globalThis.loadWorkbenchSource")]
 
 
 # ------------------------------------------------------------------ feedback on a click

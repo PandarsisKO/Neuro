@@ -12,7 +12,7 @@ separately and is not it). Historical checklists are not assignments. The Founda
 (`docs/archive/FOUNDATION-HANDOFF.md`) is a closed historical record.
 
 Runtime: the released application version is whatever `pyproject.toml` / `neurosearch/__init__.py` /
-`web/js/state.js` (`UI_VERSION`) agree on — 0.64.0 at the time of writing — and the extension version is
+`web/js/state.js` (`UI_VERSION`) agree on — 0.64.1 at the time of writing — and the extension version is
 `extension/manifest.json` (1.11.2). Do not trust a version number quoted in prose anywhere else. Delivery and
 validation status live in `HANDOFF.md` and the newest `STATE-OF-THE-APP-*.md`.
 

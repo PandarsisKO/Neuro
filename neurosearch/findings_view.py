@@ -1,6 +1,6 @@
 """S4 — the Findings workbench query ($0): filter, facet, sort and page the project's findings server-side.
 
-Filters compose (AND): q (words over title + content), status (approved · suggested · reserve · dismissed), min_importance,
+Filters compose (AND): q (words over title + content), status (approved · suggested · reserve · dismissed), min_importance, importance (exact levels, "1,2"),
 source_id, used (plan · chat · claim · never), stale (source stale / current), area (the Research Area the finding's Claim
 belongs to), sort (importance · newest · source · used). Facets are counts over the FILTERED set minus the facet's own
 dimension (so a facet always shows what choosing it would give). Use badges: 📋 plan · 💬 cited N× · 🧠 Claim (strength).
@@ -219,10 +219,27 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
     return out
 
 
+def parse_levels(importance: str | None) -> set[int] | None:
+    """S99: `importance="1,2"` -> {1, 2}; blank/None -> None (no filter). Unknown tokens are ignored rather than
+    rejected, so a stale chip value can never turn the list into an error page. 0 means "unrated"."""
+    if importance is None or not str(importance).strip():
+        return None
+    out: set[int] = set()
+    for tok in str(importance).split(","):
+        tok = tok.strip()
+        if tok.isdigit() and 0 <= int(tok) <= 5:
+            out.add(int(tok))
+    return out or None
+
+
 def query(project_id: str, *, q: str | None = None, status: str | None = "approved", min_importance: int | None = None, source_id: str | None = None,
           used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance",
-          reviewed: str | None = None, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+          reviewed: str | None = None, importance: str | None = None, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    """`importance` (S99, Kyle 2026-09-25: "filter by strength so I can review findings and bulk select and remove")
+    is an exact SET of levels — "1,2" is the weak end, "5" the strongest — where `min_importance` was only ever a
+    floor. Both compose (AND) when given; the workbench sends `importance`, older callers keep `min_importance`."""
     limit = max(1, min(limit, PAGE_MAX))
+    levels = parse_levels(importance)
     needs_decorations = bool(used or stale or area) or sort == "used"
     dec = decorations(project_id, block=needs_decorations)
     rows = _merge(rows_only(project_id), dec["maps"])
@@ -232,6 +249,8 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
         if skip != "status" and status and status != "all" and r["status"] != status:
             return False
         if skip != "importance" and min_importance and int(r.get("importance") or 0) < min_importance:
+            return False
+        if skip != "importance" and levels is not None and int(r.get("importance") or 0) not in levels:
             return False
         # `reviewed_at` is NULL for every row that predates the column and for anything auto-approved, which is
         # precisely the set a second look wants. Not faceted: it is a scope, not a dimension to browse by.
