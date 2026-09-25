@@ -1176,6 +1176,31 @@ def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
     return {"job_id": job["id"]}
 
 
+class MoveIn(BaseModel):
+    project_id: str
+
+
+@app.post("/api/collections/{collection_id}/move", dependencies=[Depends(require_auth)])
+def api_move_review(collection_id: str, body: MoveIn) -> dict[str, Any]:
+    """S96 (Kyle: "I think I just scanned them to the wrong project..."). A review card that has not been started
+    belongs to whichever project it is linked to; move the link, the review's project, and re-rank for the new
+    brief. Only a pending review moves — started ingests belong where they started."""
+    if not db.get_project(body.project_id):
+        raise HTTPException(404, "project not found")
+    meta = db.review_meta(collection_id)
+    rows = db.proposed_sources(collection_id, meta.get("project_id"))
+    if not rows:
+        raise HTTPException(409, "nothing is waiting for review on this collection")
+    old = meta.get("project_id") or db.collection_project(collection_id)
+    if old and old != body.project_id:
+        db.remove_project_collections(old, [collection_id])
+    db.add_project_collections(body.project_id, [collection_id])
+    meta.update({"project_id": body.project_id, "ranked": False}); meta.pop("rank_note", None)
+    db.kv_set(f"review:{collection_id}", json.dumps(meta))
+    job = db.create_job("rank_proposed", {"collection_id": collection_id, "project_id": body.project_id, "want": meta.get("max_videos")}, lane="priority")
+    return {"moved": len(rows), "from": old, "to": body.project_id, "rank_job": job["id"]}
+
+
 @app.post("/api/collections/{collection_id}/approve", dependencies=[Depends(require_auth)])
 def api_approve(collection_id: str, body: ApproveIn) -> dict[str, Any]:
     return ingest.approve_proposed(collection_id, body.source_ids, body.dismissed_ids)

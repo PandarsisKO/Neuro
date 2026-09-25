@@ -98,3 +98,18 @@ def test_the_extension_has_a_dedicated_scan_this_subreddit_button():
     assert "api('/api/community/proposals'" in bg
     assert "async function fulfilRedditCaptures" in bg and "url: 'https://www.reddit.com/*'" in bg, "pending Reddit captures are fulfilled from any open Reddit tab, no tab per post"
     assert "type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays" in pop
+
+
+def test_a_review_card_scanned_into_the_wrong_project_can_be_moved(client):
+    """S96 — Kyle: "I think I just scanned them to the wrong project..." The card moves; the new project re-ranks."""
+    wrong = db.create_project("Business acquisition", "buy a business"); right = db.create_project("Personal wealth", "index funds")
+    out = client.post("/api/community/proposals", json={"project_id": wrong["id"], "platform": "reddit", "community": "r/Bogleheads", "url": SUB, "items": _items(4)}, headers=H).json()
+    r = client.post(f"/api/collections/{out['collection_id']}/move", json={"project_id": right["id"]}, headers=H)
+    assert r.status_code == 200, r.text
+    assert r.json()["moved"] == 4 and r.json()["from"] == wrong["id"]
+    assert [c["id"] for c in db.pending_reviews(right["id"])] == [out["collection_id"]]
+    assert db.pending_reviews(wrong["id"]) == []
+    assert db.review_meta(out["collection_id"])["project_id"] == right["id"]
+    ranks = [j for j in (db.claim_job(kinds=("rank_proposed",), worker_id="w"),) if j]
+    assert ranks and ranks[0]["payload"]["project_id"] in (wrong["id"], right["id"])
+    assert client.post(f"/api/collections/{out['collection_id']}/move", json={"project_id": "nope"}, headers=H).status_code == 404
