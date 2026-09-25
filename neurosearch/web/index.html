@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.64.1">
+<meta name="neurosearch-ui-version" content="0.64.2">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -217,51 +217,59 @@
         <div id="fbSweep"></div>
         <div id="fbQual"></div>
       </section>
-      <div class="row" style="gap:8px;flex-wrap:wrap;margin:14px 0 6px;align-items:center" id="fbBar">
-        <button class="small" onclick="fbFocus()" title="Go through the findings on this page one at a time — Keep files it as approved, Lose as dismissed. The list, the filters and the bulk buttons all still work; this is just a calmer way to read them.">◉ Review one at a time</button>
-        <button class="small" id="fbFilteredBtn" onclick="fbReviewFiltered()" title="Load whatever the filters below pick out — a strength, a status, never-used, one area — into Keep vs Lose, 100 at a time, weakest first. Anything you already ruled on is skipped, so pressing it again serves the next 100.">◉ Review filtered</button>
-        <button class="small" id="fbSuggestedBtn" onclick="fbReviewSuggested()" title="Go through the findings waiting in Suggested, 100 at a time, most important first. Keeping one makes it citable in chat and exports; dismissing is reversible.">Review suggested</button>
-        <button class="small ghost" id="fbSecondBtn" onclick="fbSecondLook()" title="Re-check the approvals nobody actually ruled on: lowest importance first, only ones the plan, chat and Claims are not using, 100 at a time. Nothing you dismiss here can leave a Claim without evidence.">↻ Second look</button>
-        <input id="fbQ" placeholder="Search findings…" oninput="debounce(loadWorkbench)" style="flex:1;min-width:160px">
-        <div class="row" id="fbStatusChips" style="gap:4px;flex-wrap:wrap"></div>
-        <!-- S99: strength (importance 1-5) as toggle chips with counts, out in the open like status. Tick more than one to
-             combine ("1 and 2"); an empty pick means any strength. The hidden input carries the chosen levels. -->
-        <div class="row" id="fbImpChips" style="gap:4px;flex-wrap:wrap" aria-label="filter by strength"></div>
-        <input id="fbImp" type="hidden" value="">
-        <select id="fbStatus" hidden><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
-        <span class="muted" id="fbCount"></span>
-      </div>
-      <div id="fbSrcChip"></div>
-      <!-- CL-5: importance/use/staleness/area/sort, the exports and Expand/Collapse used to sit in the open, next
-           to search — one search box and one status-chip row are now the only things on by default. -->
-      <details class="filtersPanel">
-        <summary></summary>
-        <div class="filtersBody">
-          <div class="row" style="gap:14px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px">
-            <label class="row" style="gap:4px;width:auto">Used:
-              <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">became a Claim</option><option value="never">never used</option></select>
-            </label>
-            <label class="row" style="gap:4px;width:auto">Source:
-              <select id="fbStale" onchange="loadWorkbench()" class="w-auto"><option value="">any state</option><option value="current">current</option><option value="stale">stale</option></select>
-            </label>
-            <label class="row" style="gap:4px;width:auto">Area:
-              <select id="fbArea" onchange="loadWorkbench()" class="w-auto"><option value="">any area</option></select>
-            </label>
-            <label class="row" style="gap:4px;width:auto">Sort:
-              <select id="fbSort" onchange="loadWorkbench()" class="w-auto"><option value="importance">importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
-            </label>
-          </div>
-          <div class="row hidden" id="fbGroupCtl" style="gap:8px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px">
+      <!-- S100 (Kyle, 2026-09-25: "the findings tab is a huge mess … WAY too much going on visually … the layout is
+           broken"). One toolbar, three rows with one job each, nothing hidden that was visible before:
+             find    — search, status, count
+             narrow  — strength chips, then the rest of the filters one reveal away
+             review  — the four Keep vs Lose doors as one labelled group
+           The old single .row let every child stretch (.row>*{flex:1}), so chip rows and labels wrapped into a
+           staircase; .wb-* rows never stretch their children. -->
+      <div class="wb-tools">
+        <div class="wb-row">
+          <input id="fbQ" class="wb-search" placeholder="Search findings…" oninput="debounce(loadWorkbench)">
+          <div class="wb-chips" id="fbStatusChips"></div>
+          <select id="fbStatus" hidden><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
+          <span class="muted wb-count" id="fbCount"></span>
+        </div>
+        <div class="wb-row">
+          <div class="wb-chips" id="fbImpChips" aria-label="filter by strength"></div>
+          <input id="fbImp" type="hidden" value="">
+          <details class="filtersPanel wb-filters">
+            <summary></summary>
+            <div class="filtersBody wb-row">
+              <label class="wb-field">Used
+                <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">became a Claim</option><option value="never">never used</option></select>
+              </label>
+              <label class="wb-field">Source
+                <select id="fbStale" onchange="loadWorkbench()" class="w-auto"><option value="">any state</option><option value="current">current</option><option value="stale">stale</option></select>
+              </label>
+              <label class="wb-field">Area
+                <select id="fbArea" onchange="loadWorkbench()" class="w-auto"><option value="">any area</option></select>
+              </label>
+              <label class="wb-field">Sort
+                <select id="fbSort" onchange="loadWorkbench()" class="w-auto"><option value="importance">importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
+              </label>
+              <span class="wb-sep"></span>
+              <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
+              <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
+              <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a>
+            </div>
+          </details>
+        </div>
+        <div class="wb-row" id="fbBar">
+          <span class="wb-label">Keep vs Lose</span>
+          <button class="small" onclick="fbFocus()" title="Go through the findings on this page one at a time — Keep files it as approved, Lose as dismissed. The list, the filters and the bulk buttons all still work; this is just a calmer way to read them.">This page</button>
+          <button class="small" id="fbFilteredBtn" onclick="fbReviewFiltered()" title="Load whatever the filters above pick out — a strength, a status, never-used, one area — into Keep vs Lose, 100 at a time, weakest first. Anything you already ruled on is skipped, so pressing it again serves the next 100.">Filtered set</button>
+          <button class="small" id="fbSuggestedBtn" onclick="fbReviewSuggested()" title="Go through the findings waiting in Suggested, 100 at a time, most important first. Keeping one makes it citable in chat and exports; dismissing is reversible.">Suggested</button>
+          <button class="small ghost" id="fbSecondBtn" onclick="fbSecondLook()" title="Re-check the approvals nobody actually ruled on: lowest importance first, only ones the plan, chat and Claims are not using, 100 at a time. Nothing you dismiss here can leave a Claim without evidence.">↻ Second look</button>
+          <span class="wb-sep"></span>
+          <span class="wb-group" id="fbGroupCtl" hidden>
             <a href="#" onclick="FGRP.collapsed=new Set();loadWorkbench(false);return false">Expand all</a>
             <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
-          </div>
-          <div class="row" style="gap:8px;flex-wrap:wrap">
-            <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
-            <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
-            <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a>
-          </div>
+          </span>
         </div>
-      </details>
+      </div>
+      <div id="fbSrcChip"></div>
       <div id="fbBulk"></div>
       <div id="notes"></div>
       <div class="row mt-2" id="fbPager"></div>

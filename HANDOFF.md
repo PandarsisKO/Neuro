@@ -3890,3 +3890,24 @@ harness hangs in this VM; macOS is the gate for those. `release-check` PASS (it 
 `index.html`'s `neurosearch-ui-version` meta — now 0.64.1 with the other three). Also committed first, separately: the S98 subreddit-ranking work that was sitting uncommitted in the tree
 (`7567f8e`). Not yet seen in a browser — the VM cannot reach the live app; a look at the Findings tab on the Mac
 is the one remaining check.
+
+## S100 — the Findings toolbar, untangled (Cowork, 2026-09-25)
+
+Kyle, on S99's first screenshot: *"the findings tab is a huge mess. we need to improve the layout so its easier to
+understand. I don't want to hide filters and options unnecessarily, but it does feel like we have WAY too much going
+on visually. plus the layout is broken and formatting is weird."*
+
+Cause: one `.row` held four review buttons, the search box, the status chips and the strength chips, and
+`.row>*{flex:1}` stretched every child — chip rows wrapped into a staircase, the count was squeezed into a corner,
+and in the bulk bar the "select the N shown" checkbox was flexed away from its own label. **0.64.2**:
+
+- One toolbar (`.wb-tools`), three rows with one job each, nothing hidden that was visible before: **find**
+  (search · status chips · count), **narrow** (strength chips · ▸ Filters with used/source/area/sort and the
+  exports), **Keep vs Lose** (This page · Filtered set · Suggested · ↻ Second look as one labelled group;
+  Expand/Collapse all at the right). `.wb-row` never stretches children.
+- The selection bar is one quiet line until something is ticked ("Select the 100 shown · tick findings to
+  approve, dismiss or review them together"), then `N selected · Keep vs Lose N · Approve N · Dismiss N · clear`,
+  with Suggested's page-wide Approve/Dismiss shown at the right.
+- Inline styles on the surface retired into classes; `test_s50` ceiling lowered 287 → 77. Verified in Kyle's
+  Chrome on the live project (3,767 approved): chips, a strength pick (●●○○○ → 26), select-all and the bar all
+  render as intended.

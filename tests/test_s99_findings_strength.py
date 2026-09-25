@@ -31,6 +31,7 @@ WEB = Path(__file__).resolve().parents[1] / "neurosearch" / "web"
 JS = (WEB / "js" / "research.js").read_text()
 HTML = (WEB / "index.html").read_text()
 CSS = (WEB / "styles.css").read_text()
+TOOLS = HTML.split('class="wb-tools"')[1].split('id="fbSrcChip"')[0]     # S100: the whole toolbar
 BAR = HTML.split('id="fbBar"')[1].split('id="fbSrcChip"')[0]
 FILTERED = JS.split("globalThis.fbReviewFiltered =")[1].split("globalThis.fbFocus =")[0]
 BULK = JS.split("globalThis.renderFbBulk =")[1].split("globalThis.loadWorkbench =")[0]
@@ -99,7 +100,7 @@ def test_the_api_passes_importance_through(monkeypatch, client):
 # ---------------------------------------------------------------- the chips are out in the open
 
 def test_strength_chips_sit_in_the_findings_bar_beside_status():
-    assert 'id="fbImpChips"' in BAR and 'id="fbStatusChips"' in BAR
+    assert 'id="fbImpChips"' in TOOLS and 'id="fbStatusChips"' in TOOLS
     assert 'id="fbImp" type="hidden"' in HTML, "the chosen levels ride in a hidden input, not a select with fixed options"
     assert "3 and up" not in HTML, "the floor-only select is gone; strength is an exact pick now"
 
@@ -118,7 +119,7 @@ def test_every_row_has_a_checkbox_and_the_bar_acts_on_the_selection():
     assert 'class="fsel"' in JS and "onchange=\"fbSel(${n.id},this.checked)\"" in JS
     assert "_sel: FB.sel.has(n.id)" in JS, "the workbench opts rows in; other renderers of findingCard get no box"
     assert ".f .fsel" in CSS
-    assert "fbSelAll(this.checked)" in BULK and "select the ${rows.length} shown" in BULK
+    assert "fbSelAll(this.checked)" in BULK and "Select the ${rows.length} shown" in BULK
     assert "fbBulkSelected('dismissed')" in BULK and "fbBulkSelected('approved')" in BULK
     assert "fbReviewSelected()" in BULK, "a selection can go straight into Keep vs Lose"
 

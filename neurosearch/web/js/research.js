@@ -1190,9 +1190,9 @@ globalThis.renderFbImpChips = function renderFbImpChips(counts) {
   counts = counts || {};
   const on = fbImpLevels();
   const dots = v => v ? '●'.repeat(v) + '<span class="dim">' + '●'.repeat(5 - v) + '</span>' : 'unrated';
-  el.innerHTML = `<span class="muted" style="font-size:12px">strength</span>` + FB_IMP_LEVELS.filter(v => v || counts[v] || on.has(v)).map(v =>
-    `<span class="chipf fi ${on.has(v) ? 'on' : ''}" style="font-size:11px;letter-spacing:1px" title="${v ? `importance ${v}/5` : 'no importance recorded'} — click to ${on.has(v) ? 'drop' : 'add'} it" onclick="fbImpToggle(${v})">${dots(v)}${counts[v] != null ? ` <span class="muted" style="letter-spacing:0">${counts[v]}</span>` : ''}</span>`).join('')
-    + (on.size ? `<a href="#" class="muted" style="font-size:12px" onclick="$('#fbImp').value='';loadWorkbench();return false">any</a>` : '');
+  el.innerHTML = `<span class="wb-label">Strength</span>` + FB_IMP_LEVELS.filter(v => v || counts[v] || on.has(v)).map(v =>
+    `<span class="chipf str ${on.has(v) ? 'on' : ''}" title="${v ? `importance ${v}/5` : 'no importance recorded'} — click to ${on.has(v) ? 'drop' : 'add'} it" onclick="fbImpToggle(${v})">${dots(v)}${counts[v] != null ? `<span class="n">${counts[v]}</span>` : ''}</span>`).join('')
+    + (on.size ? `<a href="#" class="wb-label" onclick="$('#fbImp').value='';loadWorkbench();return false">any strength</a>` : '');
 }
 globalThis.fbImpToggle = function fbImpToggle(v) {
   const on = fbImpLevels(); on.has(v) ? on.delete(v) : on.add(v);
@@ -1235,16 +1235,18 @@ globalThis.renderFbBulk = function renderFbBulk() {
   if (!rows.length) { el.innerHTML = ''; return; }
   const n = FB.sel.size, allOn = rows.length && rows.every(r => FB.sel.has(r.id));
   const bulkIds = rows.map(r => r.id);
-  el.innerHTML = `<div class="row" style="gap:6px;margin:0 0 10px;flex-wrap:wrap;align-items:center">
-      <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="fbSelAll(this.checked)" title="Tick every finding on this page"> select the ${rows.length} shown</label>
-      ${n ? `<span class="muted" style="font-size:12.5px"><b>${n}</b> selected</span>
-      <button class="small" title="Load exactly the selected findings into Keep vs Lose" onclick="fbReviewSelected()">◉ Review ${n} in Keep vs Lose</button>
+  // S100: one bar, no stretching children. Left: the selection and what it can become. Right: the page-wide
+  // pair for Suggested. When nothing is ticked the bar is a single quiet line.
+  el.innerHTML = `<div class="wb-row wb-sel">
+      <label class="wb-check"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="fbSelAll(this.checked)" title="Tick every finding on this page">Select the ${rows.length} shown</label>
+      ${n ? `<span class="wb-label"><b>${n}</b> selected</span>
+      <button class="small" title="Load exactly the selected findings into Keep vs Lose" onclick="fbReviewSelected()">Keep vs Lose ${n}</button>
       ${st !== 'approved' ? `<button class="small" title="Approve the selected findings" onclick="fbBulkSelected('approved')">Approve ${n}</button>` : ''}
       ${st !== 'dismissed' ? `<button class="small danger" title="Dismiss the selected findings (nothing is deleted — they stay under Dismissed)" onclick="fbBulkSelected('dismissed')">Dismiss ${n}</button>` : ''}
       ${st === 'dismissed' ? `<button class="small" title="Put the selected findings back in the review queue" onclick="fbBulkSelected('suggested')">↩ Restore ${n}</button>` : ''}
-      <a href="#" class="muted" style="font-size:12px" onclick="fbSelClear();return false">clear</a>` : ''}
-      ${(st === 'suggested') ? `<span class="grow"></span>
-      <button class="small primary" title="${total > rows.length ? `Approve the ${rows.length} shown here (of ${total})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(bulkIds)},'approved')">Approve ${total > rows.length ? rows.length + ' shown' : 'all'}</button>
+      <a href="#" class="wb-label" onclick="fbSelClear();return false">clear</a>` : `<span class="wb-label">tick findings to approve, dismiss or review them together</span>`}
+      <span class="wb-sep"></span>
+      ${(st === 'suggested') ? `<button class="small primary" title="${total > rows.length ? `Approve the ${rows.length} shown here (of ${total})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(bulkIds)},'approved')">Approve ${total > rows.length ? rows.length + ' shown' : 'all'}</button>
       <button class="small" onclick="bulkNotes(${JSON.stringify(bulkIds)},'dismissed')">Dismiss ${total > rows.length ? rows.length + ' shown' : 'all'}</button>` : ''}
     </div>`;
 }
@@ -1496,7 +1498,7 @@ globalThis.FOCUS_BATCH = 100;
 globalThis.fbReviewSuggested = async function fbReviewSuggested() {
   const btn = $('#fbSuggestedBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = 'Review suggested'; } };
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = 'Suggested'; } };
   let r;
   try {
     const p = new URLSearchParams({ status: 'suggested', sort: 'importance', limit: FOCUS_BATCH });
@@ -1550,7 +1552,7 @@ globalThis.fbSecondLook = async function fbSecondLook() {
 globalThis.fbReviewFiltered = async function fbReviewFiltered() {
   const btn = $('#fbFilteredBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = '◉ Review filtered'; } };
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = 'Filtered set'; } };
   const st = $('#fbStatus').value;
   const p = new URLSearchParams({ status: st, sort: 'weakest', limit: FOCUS_BATCH });
   if (st === 'approved') p.set('reviewed', 'no');

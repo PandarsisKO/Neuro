@@ -245,6 +245,27 @@
   .d .dlinks{font-size:12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
   .f{display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);align-items:flex-start}
   .f:last-child{border-bottom:0}
+  /* S100: the Findings toolbar. Rows never stretch their children (unlike .row), so chips and labels sit where
+     they were put; wrapping happens between groups, not inside a label. */
+  .wb-tools{display:flex;flex-direction:column;gap:8px;margin:14px 0 8px}
+  .wb-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+  .wb-row>*{flex:0 0 auto}
+  .wb-search{flex:0 1 260px;min-width:160px;width:auto}
+  .wb-chips{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+  .wb-count{flex:1 1 200px;text-align:right;font-size:12.5px;min-width:120px}
+  .wb-label{font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .wb-sep{flex:1 1 0;min-width:0}
+  .wb-group{display:flex;gap:8px;font-size:12.5px}
+  .wb-field{display:flex;align-items:center;gap:4px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .wb-filters{margin:0;flex:0 1 auto}
+  .wb-filters>summary{white-space:nowrap}
+  .wb-filters[open]>summary{margin-bottom:6px}
+  .wb-filters>.filtersBody{margin-top:0}
+  .wb-check{display:flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap}
+  .wb-check input{margin:0}
+  .wb-sel{margin:0 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+  .chipf.str{font-size:11px;letter-spacing:1px}
+  .chipf.str .n{letter-spacing:0;margin-left:2px}
   .f .fsel{flex:0 0 auto;margin:5px 0 0}
   .f .fi{flex:0 0 44px;font-size:9px;letter-spacing:1px;color:var(--warn);padding-top:5px;white-space:nowrap} .f .fi .dim{color:var(--line)}
   .f .main{flex:1;min-width:0}
