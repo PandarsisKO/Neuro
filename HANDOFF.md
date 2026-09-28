@@ -3931,3 +3931,22 @@ cited` index at the end. `GET /api/conversations/{id}/transcript.md?sources=true
 is right-aligned (`.menu.right`) so it no longer runs off the window's edge (it did before this — pre-existing).
 Verified in Kyle's Chrome on "2 Player Credit Card Points": *"Copied the whole chat as is — 24 messages, 132
 source citations"*, and the served Markdown reads correctly. Gate `tests/test_s101_share_chat_as_is.py` (10).
+
+
+## CS8 — course scanner keeps article lessons and follows a hub's courses (Claude, 2026-09-28, 0.64.4 / ext 1.11.3)
+
+Kyle scanned marcuslemonis.com/business/learn and got one YouTube video and one PDF out of a site whose lessons
+are articles. Design in docs/COURSE-SCANNER-2026-09-15.md §CS8. Touched: `extension/scan-lib.js` (`lessonText`,
+`text_found`, `classifyModuleLinks`, `COUNT_LINK`, fetch-worker race), `extension/background.js` (summary),
+`extension/popup.js` (article rows, "N articles" in the result line, `text` sent), `extension/manifest.json`
+1.11.2 → 1.11.3, `neurosearch/courses.py` (`pages`: one `ingest_url` per article with `capture`),
+`neurosearch/jobs.py` (`payload.capture` → `ingest_url(capture=…)`), `neurosearch/api.py` (Jobs list omits
+`capture`), markers 0.64.3 → 0.64.4, fixtures `tests/fixtures/courses/hub/`, tests in `test_s32` and `test_s55`.
+Verified in the Cowork VM env (`~/nsenv`): `test_s32` 30/30, `test_s55` 9/9, `test_s44`/`s54`/`s63` green,
+`test_core -k "course or webpage or capture"` green. Full pytest + release-check pending on the Mac.
+
+Next for Kyle: reload the extension (1.11.3), let the app pick up the `.py` changes, open the hub page
+(marcuslemonis.com/business/learn) and press "Scan this course" — expect the featured lessons plus every course's
+lessons (the scan fetches 16 course pages first, then each lesson page), most rows "article ready"; then import.
+Two known limits: the hub's "LOAD MORE" featured list is not expanded (those lessons are reached through their
+courses anyway), and a course page's own "N lessons" count is not used to check completeness.

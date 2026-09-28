@@ -124,9 +124,9 @@ function withScan(tabId, fn) {
 }
 
 function summarize(rec) {
-  const c = { video_found: 0, multiple_videos: 0, document_found: 0, no_video: 0, needs_user_play: 0, blocked: 0, scan_failed: 0, not_scanned: 0 };
+  const c = { video_found: 0, multiple_videos: 0, document_found: 0, text_found: 0, no_video: 0, needs_user_play: 0, blocked: 0, scan_failed: 0, not_scanned: 0 };
   for (const l of rec.lessons || []) c[l.outcome] = (c[l.outcome] || 0) + 1;
-  const ready = c.video_found + c.multiple_videos + c.document_found;   // a lesson that IS a document is ready too (CS7)
+  const ready = c.video_found + c.multiple_videos + c.document_found + c.text_found;   // a lesson that IS a document (CS7) or an article (CS8) is ready too
   const attention = c.no_video + c.needs_user_play + c.blocked;
   const unread = c.scan_failed + c.not_scanned;
   return { ...c, ready, attention, unread, completed: (rec.lessons || []).length, expected: rec.expected || 0 };

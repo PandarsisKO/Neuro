@@ -150,6 +150,35 @@ def test_linked_course_fetches_each_lesson_page_and_classifies_every_one():
     assert s["lessons"][3]["detail"] == "http 403"
 
 
+def test_a_hub_of_courses_is_followed_one_level_and_article_lessons_are_kept_as_text():
+    """CS8, live marcuslemonis.com/business/learn: a hub lists 16 courses ("View Course") and a few featured lessons;
+    each course page lists its lessons ("START LESSON"); most lessons are ~20-paragraph articles with no player and
+    no file. Before: only the featured lessons were seen, and every article was `no_video` and dropped. Now: the
+    hub's course links are followed ONCE (bounded), lessons carry their course as module, and a lesson whose
+    content is the page is `text_found` with a compact copy of the article — headings, paragraphs, list items and
+    quotes only; never the sidebar, the share bar, the footer or a script. A "9 lessons Managing Your Team" card
+    on a course page is a course, not a lesson. Fixture is that shape without the site's classes."""
+    r = scan("hub/index.html", "--url", "https://course.test/index.html", "--fetch-dir", str(FIX / "hub"))
+    s = r["summary"]
+    assert s["strategy"] == "linked" and s["status"] == "done" and s["diagnosis"]["module_pages"] == 2, s["diagnosis"]
+    assert [(l["module"], l["title"], l["outcome"]) for l in s["lessons"]] == [
+        ("Featured lessons", "Quick Guide to Financial Statements", "text_found"),
+        ("Show Me The Money", "Best funding sources", "video_found"),
+        ("Show Me The Money", "Good vs bad debt", "text_found"),
+        ("Managing Your Team", "Hiring", "document_found"),
+        ("Managing Your Team", "Toxic workplaces", "no_video")]        # "Coming soon." is not an article
+    guide = s["lessons"][0]["text"]
+    assert guide["chars"] > 1000 and guide["html"].startswith("<h1>Quick Guide to Financial Statements</h1>\n<h2>The three statements</h2>\n<p>Paragraph 1")
+    for never in ("sidebar", "tracking", "Facebook", "Sign up", "<script", "<a "):
+        assert never not in guide["html"], never
+    assert "<p>Balance sheet: what you own and owe</p>" in guide["html"] and "<p>Know your numbers.</p>" in guide["html"]
+    assert s["lessons"][1]["text"] is None, "a video lesson's page copy is not carried as its text"
+    assert not any(l["title"] == "Managing Your Team" for l in s["lessons"]), "a course card that reads '9 lessons …' is not a lesson"
+    # the single-article "course" page was fetched once, found to list nothing, and is not a lesson either
+    assert r["fetched"].count("https://course.test/courses/article-only.html") == 1
+    assert not any("article-only" in l["page_url"] for l in s["lessons"])
+
+
 # ------------------------------------------------------------------ Strategy B: interactive SPA courses
 
 def test_spa_course_at_one_url_is_traversed_module_by_module():

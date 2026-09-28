@@ -299,6 +299,10 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         usage.guard()   # cheap check first; transcription/findings re-check with a size-based estimate
     if kind == "ingest_url":
         ext = payload.get("_external_result") or {}
+        # CS8: a page the extension already read arrives as `payload.capture` (a course's article lessons) — the same
+        # shape a browser-assisted job receives in `_external_result.capture`, minus the parked/external lifecycle
+        if not (isinstance(ext, dict) and ext.get("capture")) and isinstance(payload.get("capture"), dict):
+            ext = {"capture": payload["capture"]}
         return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
                                  progress=progress, force=bool(payload.get("force")),
                                  cookies_file=payload.get("cookies_file"), referer=payload.get("referer"),

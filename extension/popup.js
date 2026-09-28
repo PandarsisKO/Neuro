@@ -308,7 +308,7 @@ async function refreshScan() {
 
 const ACTIVE = new Set(['finding', 'scanning']);
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-const OUTCOME_WORDS = { video_found: 'video ready', multiple_videos: 'several videos', document_found: 'document ready', no_video: 'no video or document on this lesson', needs_user_play: 'video appears only after you press play',
+const OUTCOME_WORDS = { video_found: 'video ready', multiple_videos: 'several videos', document_found: 'document ready', text_found: 'article ready', no_video: 'no video, document or article on this lesson', needs_user_play: 'video appears only after you press play',
                         blocked: 'not readable with your access', scan_failed: 'could not be read', not_scanned: 'not reached' };
 const DOC_WORDS = { gdrive: 'Google Drive file', gdocs: 'Google Doc', gsheets: 'Google Sheet', gslides: 'Google Slides', dropbox: 'Dropbox file', pdf: 'PDF', docx: 'Word document', doc: 'Word document', xlsx: 'spreadsheet', xls: 'spreadsheet', csv: 'spreadsheet', pptx: 'slides', epub: 'e-book', txt: 'text file', md: 'text file', rtf: 'document' };
 const docWords = atts => { const n = {}; (atts || []).forEach(a => { const w = DOC_WORDS[a.kind] || 'document'; n[w] = (n[w] || 0) + 1; }); return Object.entries(n).map(([w, k]) => k > 1 ? `${k} ${w}s` : w).join(', '); };
@@ -327,7 +327,7 @@ function renderScan() {
     const last = s.lessons[s.lessons.length - 1];
     const line1 = s.expected ? `${lessonWord(s.expected)} found` : 'Lessons found';
     const line2 = last ? `Reading ${Math.min(s.lessons.length + 1, s.expected || s.lessons.length + 1)} of ${s.expected || '?'}${last.title ? `: ${last.title}` : ''}` : 'Reading the first lesson…';
-    $('#scanMsg').innerHTML = `${esc(line1)}<br>${esc(line2)}<br>${esc(plural(sum.video_found + sum.multiple_videos, 'video'))}${sum.document_found ? esc(` and ${plural(sum.document_found, 'document')}`) : ''} found so far`;
+    $('#scanMsg').innerHTML = `${esc(line1)}<br>${esc(line2)}<br>${esc(plural(sum.video_found + sum.multiple_videos, 'video'))}${sum.document_found ? esc(` and ${plural(sum.document_found, 'document')}`) : ''}${sum.text_found ? esc(` and ${plural(sum.text_found, 'article')}`) : ''} found so far`;
     $('#result').style.display = 'none'; return;
   }
   // finished, in one of: done · partial · cancelled · interrupted · failed
@@ -353,10 +353,11 @@ function renderScan() {
   $('#courseTitle').value = (s.course && s.course.title) || s.title || '';
   const dupOf = {}; Object.entries(s.duplicates || {}).forEach(([k, idxs]) => idxs.forEach(i => { dupOf[i] = idxs.length; }));
   $('#lessons').innerHTML = s.lessons.map((l, i) => {
-    const ok = l.outcome === 'video_found' || l.outcome === 'multiple_videos' || l.outcome === 'document_found';
+    const ok = l.outcome === 'video_found' || l.outcome === 'multiple_videos' || l.outcome === 'document_found' || l.outcome === 'text_found';
     const docs = docWords(l.attachments);
     let what = ok ? (l.media || []).map(m => m.provider === 'direct' ? 'video file' : m.provider).join(', ') : OUTCOME_WORDS[l.outcome] || l.outcome;
     if (docs) what = what && l.outcome !== 'document_found' ? `${what} + ${docs}` : docs;
+    if (l.outcome === 'text_found' && l.text) what = `article · about ${Math.max(1, Math.round(l.text.chars / 6 / 50) * 50)} words`;
     return `<div class="les ${ok ? '' : 'nov'}"><input type="checkbox" data-i="${i}" ${ok ? 'checked' : 'disabled'}><div class="t">${esc(l.title)}${l.module && l.module !== l.title ? ` <span class="m">· ${esc(l.module)}</span>` : ''}<div class="m">${esc(what)}${dupOf[i] ? ` · same video as ${dupOf[i] - 1} other lesson${dupOf[i] > 2 ? 's' : ''}` : ''}${l.detail && !ok ? ` — ${esc(l.detail)}` : ''}</div></div></div>`;
   }).join('');
   const dupCount = Object.keys(s.duplicates || {}).length;
@@ -404,10 +405,10 @@ $('#send').onclick = async () => {
   try {
     const r = await api(`/api/projects/${$('#project').value}/course-import`, { method: 'POST', body: JSON.stringify({
       course: { title: $('#courseTitle').value, url: SCAN.url },
-      lessons: picked.map(l => ({ title: l.title, module: l.module, page_url: l.page_url, video_urls: l.video_urls, outcome: l.outcome, ordinal: l.ordinal, attachments: l.attachments || [] })),
+      lessons: picked.map(l => ({ title: l.title, module: l.module, page_url: l.page_url, video_urls: l.video_urls, outcome: l.outcome, ordinal: l.ordinal, attachments: l.attachments || [], text: l.text || null })),
       cookies: cookies.map(c => ({ domain: c.domain, name: c.name, value: c.value, path: c.path, secure: c.secure, expirationDate: c.expirationDate })) }) });
     await chrome.storage.local.set({ lastProject: $('#project').value });
-    const bits = [`<span class="ok">Queued ${plural(r.queued, 'video')}${r.documents ? ` and ${plural(r.documents, 'document')}` : ''}.</span>`];
+    const bits = [`<span class="ok">Queued ${plural(r.queued, 'video')}${r.documents ? `, ${plural(r.documents, 'document')}` : ''}${r.pages ? ` and ${plural(r.pages, 'article')}` : ''}.</span>`];
     if (r.already_present && r.already_present.length) bits.push(`${plural(r.already_present.length, 'item')} already in your library — not downloaded again.`);
     if (r.shared && r.shared.length) bits.push(`${plural(r.shared.length, 'video')} shared by more than one lesson — downloaded once.`);
     bits.push('Watch progress in the app\'s Sources tab.');

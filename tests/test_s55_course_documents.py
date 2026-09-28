@@ -209,3 +209,32 @@ def test_document_identity_is_stable_and_a_page_is_not_a_document():
     assert pages == [None, None, None]
     assert "document_found" in (EXT / "scan-lib.js").read_text() and "document_found" in (EXT / "background.js").read_text()
     assert "document_found" in (EXT / "popup.js").read_text()
+
+
+def test_course_import_turns_an_article_lesson_into_a_web_source_from_the_browsers_copy(client, run_queued_job):
+    """CS8: a lesson whose content is the page arrives with its compact article (`text.html`, read in the browser);
+    the importer queues ONE ingest_url job per page carrying it as `capture`, and the job reads it through
+    `ingest_webpage(html=…)` — the "Send this page" path — without fetching anything. A second import of the same
+    lesson is answered from the library."""
+    from neurosearch import db
+    p = client.post("/api/projects", headers=H, json={"name": "Article course", "brief": "b"}).json()
+    html = "<h1>Good vs bad debt</h1>\n<h2>Two kinds</h2>\n" + "\n".join(f"<p>Paragraph {i}: good debt buys an asset that pays for itself; bad debt pays for last month.</p>" for i in range(8))
+    lesson = {"title": "Good vs bad debt", "module": "Show Me The Money", "page_url": "https://learn.example.com/business/good-vs-bad-debt?course=2857",
+              "video_urls": [], "outcome": "text_found", "attachments": [], "text": {"chars": 700, "html": html}}
+    r = client.post(f"/api/projects/{p['id']}/course-import", headers=H, json={
+        "course": {"title": "Marcus for Business", "url": "https://learn.example.com/business/learn"},
+        "lessons": [lesson, {"title": "Coming soon", "page_url": "https://learn.example.com/business/soon", "video_urls": [], "outcome": "no_video", "attachments": [], "text": None}],
+        "cookies": None}).json()
+    assert r["pages"] == 1 and r["queued"] == 0 and r["nothing"] == ["Coming soon"], r
+    jobs_ = [j for j in client.get(f"/api/projects/{p['id']}/jobs", headers=H).json() if j["kind"] == "ingest_url"]
+    assert len(jobs_) == 1 and jobs_[0]["payload_omitted"] == ["capture"], "the list view never carries the article body"
+    full = db.get_job(jobs_[0]["id"])
+    assert full["payload"]["title"] == "Show Me The Money › Good vs bad debt" and full["payload"]["capture"]["html"] == html
+    done = run_queued_job(jobs_[0]["id"])
+    res = done["result"] if isinstance(done["result"], dict) else json.loads(done["result"])
+    assert res["kind"] == "web" and res["segments"] >= 1 and not res.get("already_ingested")
+    src = client.get(f"/api/sources/{res['source_id']}", headers=H).json()
+    assert src["platform"] == "web" and src["status"] == "ready" and src["title"] == "Show Me The Money › Good vs bad debt"
+    again = client.post(f"/api/projects/{p['id']}/course-import", headers=H, json={
+        "course": {"title": "Marcus for Business", "url": "https://learn.example.com/business/learn"}, "lessons": [lesson], "cookies": None}).json()
+    assert again["pages"] == 0 and again["already_present"] == [res["source_id"]]

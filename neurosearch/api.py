@@ -2241,11 +2241,12 @@ def _compact_job_for_list(j: dict[str, Any]) -> dict[str, Any]:
     those page bodies every few seconds made a tiny status poll grow by hundreds of kilobytes.
     """
     payload = j.get("payload")
-    if not isinstance(payload, dict) or "_external_result" not in payload:
+    heavy = [k for k in ("_external_result", "capture") if isinstance(payload, dict) and k in payload]   # CS8: a course article rides in `capture`
+    if not heavy:
         return j
     compact = dict(j)
-    compact["payload"] = {k: v for k, v in payload.items() if k != "_external_result"}
-    compact["payload_omitted"] = ["_external_result"]
+    compact["payload"] = {k: v for k, v in payload.items() if k not in heavy}
+    compact["payload_omitted"] = heavy
     return compact
 
 

@@ -127,19 +127,28 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
     # are acquired too — through `ingest_document_url`, never through a video job — keyed on the link as the page
     # shows it, so a document two lessons both link is fetched once and named for both, exactly like a video.
     docs: dict[str, dict[str, Any]] = {}     # attachment url -> {referer, titles, name}
+    # CS8: a lesson that IS its text (the scanner's `text`: a compact copy of the article, read in the browser) becomes
+    # a web-page source through `ingest_webpage(html=…)` — the "Send this page" path, one job per lesson page, no
+    # second reader. Keyed on the lesson's own address; a page already in the library is reported, not re-read.
+    pages: dict[str, dict[str, Any]] = {}    # page url -> {title, html}
     no_video = []
     nothing = []
     for i, les in enumerate(lessons, 1):
         vids = [normalise_embed(v) for v in (les.get("video_urls") or []) if isinstance(v, str) and v.startswith("http")]
         atts = [a for a in (les.get("attachments") or []) if isinstance(a, dict) and isinstance(a.get("url"), str) and a["url"].startswith("http")]
+        text = les.get("text") if isinstance(les.get("text"), dict) else None
+        page_url = les.get("page_url") if isinstance(les.get("page_url"), str) and les.get("page_url", "").startswith("http") else None
+        has_text = bool(text and isinstance(text.get("html"), str) and len(text["html"]) >= 200 and page_url)
         module = (les.get("module") or "").strip()
         lesson_title = (les.get("title") or f"Lesson {i}").strip()
         full_title = f"{module} › {lesson_title}" if module else lesson_title
         if not vids:
             no_video.append(les.get("title") or les.get("page_url"))
-        if not vids and not atts:
+        if not vids and not atts and not has_text:
             nothing.append(les.get("title") or les.get("page_url"))
             continue
+        if has_text and not vids and not atts:
+            pages.setdefault(page_url, {"title": full_title, "html": text["html"][:400_000]})
         for v in vids:
             entry = by_url.setdefault(v, {"referer": les.get("page_url"), "titles": []})
             entry["titles"].append(full_title)
@@ -147,7 +156,7 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
             entry = docs.setdefault(a["url"], {"referer": les.get("page_url"), "titles": [], "name": (a.get("title") or "").strip()})
             entry["titles"].append(full_title)
 
-    have = db.sources_for_urls(list(by_url) + list(docs))
+    have = db.sources_for_urls(list(by_url) + list(docs) + list(pages))
     shared = [u for u, e in by_url.items() if len(e["titles"]) > 1]
 
     queued = 0
@@ -177,6 +186,18 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
         })
         documents += 1
 
-    return {"collection_id": coll["id"], "title": title, "lessons": len(lessons), "queued": queued, "documents": documents,
-            "already_present": [have[u] for u in list(by_url) + list(docs) if u in have], "shared": shared, "no_video": no_video,
+    articles = 0
+    for u, e in pages.items():
+        if u in have:
+            continue
+        # the article arrives WITH the job (`capture`), so the app never has to fetch a page the browser already read;
+        # `ingest_webpage(html=…)` sections it by its headings, exactly as "Send this page" does
+        jobs.enqueue("ingest_url", {
+            "url": u, "tags": [], "project_id": project_id, "force": False, "referer": course.get("url"),
+            "title": e["title"], "collection_id": coll["id"], "capture": {"html": e["html"], "title": e["title"]},
+        })
+        articles += 1
+
+    return {"collection_id": coll["id"], "title": title, "lessons": len(lessons), "queued": queued, "documents": documents, "pages": articles,
+            "already_present": [have[u] for u in list(by_url) + list(docs) + list(pages) if u in have], "shared": shared, "no_video": no_video,
             "nothing": nothing, "cookies": bool(cookies_file)}

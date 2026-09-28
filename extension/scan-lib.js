@@ -142,6 +142,7 @@
   // a WORD; navigation landmarks are excluded structurally; a link under the course path is not a lesson by location.
   const BAD_LINK = /\/(login|logout|sign|account|settings|cart|checkout|privacy|terms|search|tag|category|author|calendar|partners|community|pricing|support|help|profile|billing)\b|#|mailto:|javascript:/i;
   const GOOD_LINK = /(?:^|[^a-z])(lessons?|lectures?|modules?|units?|posts?|watch|videos?|episodes?|chapters?|parts?|days?|weeks?|steps?)(?:[^a-z]|$)|courses\/[^/]+\//i;
+  const COUNT_LINK = /^\s*\d{1,3}\s+(lessons?|lectures?|modules?|videos?|episodes?)\b|\b\d{1,3}\s+(lessons?|lectures?|modules?|videos?|episodes?)\s*$/i;
   // landmark tags/roles are trustworthy at any distance; a class-name heuristic ("sidebar"/"navbar"/"breadcrumb")
   // is not -- a component library's own layout wrapper (e.g. shadcn/ui's `group/sidebar-wrapper`, found live on
   // SMB Market) can carry that substring on a div wrapping the WHOLE app, nav AND main content both, many levels
@@ -177,10 +178,63 @@
       const key = u.origin + u.pathname; if (seen.has(key)) return;
       const t = textOf(a); if (!t || t.length > 140) return;
       if (!GOOD_LINK.test(u.pathname) && !GOOD_LINK.test(t)) return;
+      if (COUNT_LINK.test(t)) return;                      // "9 lessons Managing Your Team": a course card, not a lesson (CS8)
       seen.add(key);
       cands.push({ title: t.slice(0, 120), page_url: u.href, module: nearestModule(a, doc) });
     });
     return cands;
+  }
+
+  // CS8 (live marcuslemonis.com/business/learn): a HUB page lists 16 courses ("View Course") and a few featured
+  // lessons; each course page lists its own lessons ("START LESSON"). A one-level descent, bounded: same-host links
+  // whose text or path says course/module/section/track/path, that are not themselves lesson candidates. The
+  // lessons found on a module page carry that page's title as their module. Never deeper than one level.
+  const MODULE_LINK = /(?:^|[^a-z])(courses?|modules?|sections?|tracks?|paths?|programs?)(?:[^a-z]|$)/i;
+  const MODULE_PAGES_MAX = 40;
+  function classifyModuleLinks(doc, here, lessonCands) {
+    const ME = here.split('#')[0]; let host; try { host = new URL(here).host; } catch (e) { host = ''; }
+    const taken = new Set((lessonCands || []).map(c => c.page_url.split('#')[0]));
+    const seen = new Set(); const out = [];
+    doc.querySelectorAll('a[href]').forEach(a => {
+      let u; try { u = new URL(a.getAttribute('href'), here); } catch (e) { return; }
+      if (u.host !== host || BAD_LINK.test(u.href) || u.href.split('#')[0] === ME || taken.has(u.href.split('#')[0])) return;
+      if (inChrome(a)) return;
+      const key = u.origin + u.pathname; if (seen.has(key)) return;
+      const t = textOf(a); if (t.length > 140) return;
+      if (!MODULE_LINK.test(t) && !MODULE_LINK.test(u.pathname)) return;
+      seen.add(key);
+      out.push({ title: (t || u.pathname.split('/').filter(Boolean).pop() || '').slice(0, 120), page_url: u.href });
+    });
+    return out.slice(0, MODULE_PAGES_MAX);
+  }
+
+  // ------------------------------------------------------------------ the lesson's own TEXT (CS8)
+  // A lesson whose content IS the page — an article, a written module — has no player and no file, and until CS8
+  // the scanner called it `no_video` and the importer dropped it (marcuslemonis.com: ~20 paragraphs per lesson).
+  // What is kept is a COMPACT copy of the content: headings, paragraphs, list items, quotes, table cells, in
+  // document order, as minimal HTML the app's page reader already understands (`ingest_webpage(html=…)` sections
+  // it by headings) — never scripts, styles, navigation, forms or the raw markup. Read in the user's browser, so a
+  // logged-in course's text arrives the same way its videos do. Bounded per lesson.
+  const TEXT_MIN_CHARS = 300;
+  const TEXT_MAX_HTML = 160 * 1024;
+  const TEXT_SKIP = 'nav,aside,header,footer,form,script,style,noscript,template,iframe,[role=navigation],[role=banner],[role=contentinfo],[aria-hidden=true]';
+  const TEXT_BLOCKS = 'h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,td,th,dt,dd,figcaption';
+  const escHtml = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function contentRoot(doc) { return doc.querySelector('article') || doc.querySelector('main') || doc.querySelector('[role=main]') || doc.body; }
+  function lessonText(doc) {
+    const root = contentRoot(doc); if (!root) return { chars: 0, html: '' };
+    const parts = []; let chars = 0, size = 0;
+    root.querySelectorAll(TEXT_BLOCKS).forEach(el => {
+      if (el.closest(TEXT_SKIP)) return;
+      if (el.querySelector(TEXT_BLOCKS) && !/^(LI|BLOCKQUOTE|TD|TH|DD)$/.test(el.tagName)) return;   // a wrapper: its children speak
+      const t = wordsOf(el, 6000); if (!t || t.length < 2) return;
+      if (t.length <= 14 && el.querySelector('a[href]') && !/^H[1-6]$/.test(el.tagName)) return;   // a share bar's "Facebook" / "twitter" stubs (live)
+      const tag = /^H[1-6]$/.test(el.tagName) ? el.tagName.toLowerCase() : el.tagName === 'PRE' ? 'pre' : 'p';
+      const piece = `<${tag}>${escHtml(t)}</${tag}>`;
+      if (size + piece.length > TEXT_MAX_HTML) return;
+      parts.push(piece); chars += t.length; size += piece.length;
+    });
+    return { chars, html: parts.join('\n') };
   }
 
   // ------------------------------------------------------------------ Strategy B: lesson CONTROLS (positive identification)
@@ -451,18 +505,23 @@
   // ------------------------------------------------------------------ outcome contract
   // document_found (CS7): no player, but the lesson links at least one document — a lesson whose content IS a
   // file. A lesson with a player AND documents stays video_found; its documents ride on the record.
-  const OUTCOMES = ['video_found', 'multiple_videos', 'document_found', 'no_video', 'needs_user_play', 'blocked', 'scan_failed', 'not_scanned'];
+  // text_found (CS8): no player, no file, but the page carries a real article — the lesson IS its text.
+  const OUTCOMES = ['video_found', 'multiple_videos', 'document_found', 'text_found', 'no_video', 'needs_user_play', 'blocked', 'scan_failed', 'not_scanned'];
   const BLOCKED_TEXT = /\b(sign in to (view|watch|continue)|log in to (view|watch|continue)|upgrade to (access|unlock|watch)|subscribe to (unlock|watch)|this content is locked|members only|purchase to unlock|not enrolled)\b/i;
   const PLAYER_SHELL = '[class*=player],[data-player],.plyr,.video-js,[class*=video-container],[data-testid*=player]';
-  function outcomeFor(doc, players, attachments) {
+  function outcomeFor(doc, players, attachments, text) {
     const main = doc.querySelector('main') || doc.body;
     if (players.length === 1) return 'video_found';
     if (players.length > 1) return 'multiple_videos';
     if (BLOCKED_TEXT.test(wordsOf(main, 4000))) return 'blocked';
     if (attachments && attachments.length) return 'document_found';
     if (main.querySelector(PLAYER_SHELL)) return 'needs_user_play';
+    if (text && text.chars >= TEXT_MIN_CHARS) return 'text_found';
     return 'no_video';
   }
+  // the text rides on the record only when it IS the lesson (text_found): a video lesson's page copy is sales
+  // text and comments more often than notes, and "Send this page" exists for the exception
+  function textFor(outcome, text) { return outcome === 'text_found' ? { chars: text.chars, html: text.html } : null; }
 
   // Duplicate media across lessons: acquired once, remembered per lesson. Returns {key: [lesson indexes]} for
   // every media identity referenced by more than one lesson. Ephemeral (signed) URLs are never grouped.
@@ -506,7 +565,7 @@
   function lessonRecord(lesson, moduleTitle, page_url, players, outcome, extra) {
     const x = extra || {};
     return { title: lesson.title, module: lesson.module || moduleTitle || '', page_url, ordinal: lesson.ordinal, duration_min: lesson.duration_min || null,
-             outcome, media: players, video_urls: players.map(p => p.url), attachments: x.attachments || [], ...x };
+             outcome, media: players, video_urls: players.map(p => p.url), attachments: x.attachments || [], text: x.text || null, ...x };
   }
 
   async function run(win, bridge, opts) {
@@ -533,22 +592,51 @@
     const st = structure && structure.lessons ? { lessons: structure.lessons(doc), modules: [], expected_from_modules: 0 } : findLessonStructure(doc);
     diagnosis.controls = st.lessons.length; diagnosis.modules = st.modules.length; diagnosis.cards = st.cards || 0;
 
+    // CS8: a hub that lists COURSES — follow each course page once and take its lesson links (bounded)
+    const modLinks = classifyModuleLinks(doc, startUrl, cands); diagnosis.module_pages = 0;
+    if (modLinks.length && st.lessons.length < 2) {
+      const known = new Set(cands.map(c => c.page_url.split('#')[0]));
+      for (const m of modLinks) {
+        if (await cancelled()) break;
+        if (cands.length >= o.limit) break;
+        try {
+          const r = await bridge.fetch(m.page_url);
+          if (r.status !== 200) continue;
+          const d = new win.DOMParser().parseFromString(await r.text(), 'text/html');
+          const modUrls = new Set(modLinks.map(x => x.page_url.split('#')[0]));
+          const inner = classifyLinks(d, m.page_url).filter(c => !modUrls.has(c.page_url.split('#')[0]));   // a sibling course is not a lesson
+          if (inner.length < 2) continue;                        // a page that is not a lesson list (a single article)
+          diagnosis.module_pages++;
+          const h1 = d.querySelector('h1'); const modTitle = (h1 ? textOf(h1) : '') || m.title;
+          for (const c of inner) {
+            const k = c.page_url.split('#')[0]; if (known.has(k) || cands.length >= o.limit) continue;
+            known.add(k); cands.push({ ...c, module: modTitle.slice(0, 80) });
+          }
+        } catch (e) { /* one unreadable course page costs nothing but its lessons */ }
+      }
+      diagnosis.links = cands.length;
+    }
+
     if (cands.length >= 2 && st.lessons.length < 2) {
       diagnosis.strategy = 'linked'; expected = Math.min(cands.length, o.limit);
       await bridge.emit('lessons-found', { expected, strategy: 'linked' });
       const queue = cands.slice(0, o.limit); const results = new Array(queue.length);
       await Promise.all(Array.from({ length: o.fetch_workers }, async () => {
         while (queue.length) {
+          // take the item BEFORE the await: two workers that both saw one item left would otherwise both pass the
+          // check and the second would shift `undefined` (latent since 1.7.0, hit by CS8's larger fixtures)
+          const c = queue.shift(); if (!c) return;
           if (await cancelled()) return;
-          const c = queue.shift(); const idx = cands.indexOf(c);
+          const idx = cands.indexOf(c);
           try {
             const r = await bridge.fetch(c.page_url);
             if (r.status === 401 || r.status === 403) { results[idx] = lessonRecord({ title: c.title, ordinal: idx + 1 }, c.module, c.page_url, [], 'blocked', { detail: 'http ' + r.status }); continue; }
             const html = await r.text();
             const d = new win.DOMParser().parseFromString(html, 'text/html');
-            const players = findPlayers(d, c.page_url); const atts = findAttachments(d, c.page_url);
+            const players = findPlayers(d, c.page_url); const atts = findAttachments(d, c.page_url); const text = lessonText(d);
             const h1 = d.querySelector('h1'); const t = h1 ? textOf(h1) : '';
-            results[idx] = lessonRecord({ title: (t && t.length < 140 ? t : c.title), ordinal: idx + 1 }, c.module, c.page_url, players, outcomeFor(d, players, atts), { attachments: atts });
+            const outcome = outcomeFor(d, players, atts, text);
+            results[idx] = lessonRecord({ title: (t && t.length < 140 ? t : c.title), ordinal: idx + 1 }, c.module, c.page_url, players, outcome, { attachments: atts, text: textFor(outcome, text) });
           } catch (e) { results[idx] = lessonRecord({ title: c.title, ordinal: idx + 1 }, c.module, c.page_url, [], 'scan_failed', { detail: String(e).slice(0, 200) }); }
         }
       }));
@@ -628,11 +716,11 @@
             const grace = o.settle.grace_ms != null ? o.settle.grace_ms : SETTLE.grace_ms;
             const t0 = Date.now(); while (Date.now() - t0 < grace && !players.length) { await new Promise(r => win.setTimeout(r, o.settle.sample_ms || SETTLE.sample_ms)); players = renderedPlayers(doc, startUrl); }
           }
-          const atts = findAttachments(doc, startUrl);
-          const outcome = outcomeFor(doc, players, atts); if (outcome === 'blocked') diagnosis.blocked_signals++;
+          const atts = findAttachments(doc, startUrl); const text = lessonText(doc);
+          const outcome = outcomeFor(doc, players, atts, text); if (outcome === 'blocked') diagnosis.blocked_signals++;
           if (atts.length) diagnosis.attachments = (diagnosis.attachments || 0) + atts.length;
           const shownAt = (doc.location && doc.location.href) || startUrl;
-          await emitLesson(lessonRecord(lesson, moduleTitle, shownAt, players, outcome, { heading: headingOf(doc).slice(0, 140), attachments: atts }));
+          await emitLesson(lessonRecord(lesson, moduleTitle, shownAt, players, outcome, { heading: headingOf(doc).slice(0, 140), attachments: atts, text: textFor(outcome, text) }));
         }
       }
       // restore: back to where the user started (the module list, or the lesson that was showing)
@@ -650,7 +738,7 @@
     return finish('done');
   }
 
-  globalThis.NSScan = { PLAYER, mediaIdentity, mediaKey, findPlayers, documentIdentity, findAttachments, classifyLinks, findLessonStructure, cardRows, findBackControl, isDangerous,
+  globalThis.NSScan = { PLAYER, mediaIdentity, mediaKey, findPlayers, documentIdentity, findAttachments, classifyLinks, classifyModuleLinks, lessonText, findLessonStructure, cardRows, findBackControl, isDangerous,
                         settle, signature, changed, lessonContentChanged, waitForLessonContent, outcomeFor, duplicates, adapters, run, OUTCOMES, SETTLE,
                         _re: { LESSON_TEXT, MODULE_TEXT, DANGER, BAD_LINK, GOOD_LINK, CHROME, CARD_DURATION, CHAPTER_HEAD } };
 })();

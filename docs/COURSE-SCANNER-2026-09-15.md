@@ -249,6 +249,42 @@ NOT yet exercised live: the actual fetch of these nine files by the app (whether
 shared publicly decides between nine ready documents and nine honest "sign-in" failures) — that is the first
 import on the Mac.
 
+## CS8 — article lessons and course hubs (extension 1.11.3 / 0.64.4, 2026-09-28)
+
+Kyle, on marcuslemonis.com/business/learn: "many/most of the course content is just text on a landing page …
+it only grabbed the youtube video it found and the PDF. I still need all the other lessons and text content."
+Measured in his Chrome: a public WordPress site. The hub lists 16 courses ("View Course") plus ~17 featured
+lessons ("VIEW LESSON", "LOAD MORE"); each course page lists its lessons ("START LESSON", `?course=<id>`) and
+"N lessons <title>" cards for related courses; a lesson page is a ~20-paragraph article (no `<main>`/`<article>`
+element, body-rooted), some with a YouTube embed, one with a PDF. Two gaps, both general:
+
+1. **A lesson that IS its text had no outcome.** `outcomeFor` knew video, document, blocked, player-shell, nothing.
+   New: `lessonText(doc)` builds a COMPACT copy of the content — headings, paragraphs, list items, quotes, table
+   cells, `<pre>` — in document order, as minimal HTML; never scripts, styles, nav/aside/header/footer, forms,
+   `aria-hidden`, or link-only stubs (a share bar's "Facebook"). Root: `article` → `main` → `[role=main]` → body.
+   ≥ 300 chars with no player and no file → `text_found`, a READY outcome; the copy rides on the record only then
+   (a video lesson's page copy is sales text and comments more often than notes). Bounded at 160 KB per lesson.
+   `courses.import_course` queues one `ingest_url` per article page with the copy as `payload.capture`;
+   `jobs.execute` hands it to `ingest.ingest_url(capture=…)` → `ingest_webpage(html=…)`, the "Send this page"
+   path — no fetch, no second reader. The Jobs list omits `capture` the way it omits `_external_result`.
+2. **A hub of courses was one level too high.** `classifyLinks` follows lesson links only. New:
+   `classifyModuleLinks` (same-host links whose text or path says course/module/section/track/path/program, not
+   already lesson candidates, ≤ 40), each fetched ONCE; a page listing ≥ 2 lessons contributes them with its `h1`
+   as their module; a "course" page that is one article contributes nothing. Never deeper than one level.
+   `COUNT_LINK`: a link reading "9 lessons Managing Your Team" is a course card, excluded from lessons.
+
+Also fixed on the way: the Strategy A fetch workers checked `queue.length`, then awaited `cancelled()`, then
+shifted — with several lessons two workers could both pass the check and the second shift `undefined` (latent
+since 1.7.0; CS8's six-lesson fixture hit it). The item is taken before the await now.
+
+Gates: `tests/fixtures/courses/hub/` (hub → 3 course pages, one of them a bare article; article, video, PDF and
+"Coming soon" lessons; a related-course card; sidebar/share/footer/script that must never enter the copy) and
+`test_a_hub_of_courses_is_followed_one_level_and_article_lessons_are_kept_as_text`;
+`test_course_import_turns_an_article_lesson_into_a_web_source_from_the_browsers_copy` (queue → capture → web
+source → re-import answered from the library). Live: `lessonText` on the real "Quick Guide to Financial
+Statements" page: 3.5k chars, 32 blocks, body-rooted. Not yet exercised live: the full scan of the hub through
+the extension (Kyle's next press).
+
 ## Known limitations
 
 - Strategy B's control classification is proven against the shapes CS0 measured and the safety fixture's decoy
