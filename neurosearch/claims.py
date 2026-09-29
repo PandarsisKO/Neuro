@@ -1360,9 +1360,12 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     res = extract(pid, cands=cands, transport="job", progress=progress,
                   max_groups=None if ids else GROUPS_PER_RUN)
     from . import knowledge
+    written = res.get("normalized", 0)
     if progress:
-        progress(0.99, f"updating the research map ({res.get('normalized', 0)} claims written)")
-    knowledge.refresh(pid)
+        progress(0.99, f"updating the research map ({written} claims written)")
+    # The refresh is the long tail of this job on a big project; every phase it reports is a heartbeat, so the panel
+    # keeps saying what it is doing instead of "quiet for 26m" (Kyle's screenshot, 2026-09-29).
+    knowledge.refresh(pid, progress=(lambda m: progress(0.99, f"updating the research map ({written} claims written) · {m}")) if progress else None)
     if res.get("more"):
         # 0.55.1: use the SHARED yield rather than leaning on maybe_extract happening to re-trigger. Everything
         # this run normalized is already stamped with its extraction_hash, so the requeued job resumes at the

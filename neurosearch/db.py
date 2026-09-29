@@ -3243,6 +3243,8 @@ def derived_status(j: dict[str, Any]) -> str:
                 return "blocked"
         if j.get("wait_reason") == "paused":
             return "paused"                                    # S86: held by the person until they press Resume
+        if j.get("wait_reason") == "yield":
+            return "resuming"                                  # gave its worker back at a safe point; progress kept; next in line
         if j.get("not_before") and j["not_before"] > now():
             return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait",
                     "scheduled": "scheduled"}.get(j.get("wait_reason") or "", "retry_wait")   # L-40: a caller's schedule is not a retry
@@ -4427,7 +4429,8 @@ def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_
         conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
                      "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?",
                      (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id))
-        job_event(job_id, f"{wait_reason}_wait" if wait_reason else "requeued", run_id=r["run_id"] if r else None, conn=conn, delay=delay, message=(message or "")[:200])
+        ev = "yielded" if wait_reason == "yield" else (f"{wait_reason}_wait" if wait_reason else "requeued")
+        job_event(job_id, ev, run_id=r["run_id"] if r else None, conn=conn, delay=delay, message=(message or "")[:200])
 
 
 def requeue_stale_running_jobs() -> int:

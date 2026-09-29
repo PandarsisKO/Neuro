@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 
 from . import claims, db
 
@@ -480,18 +480,32 @@ def dedupe_targets(project_id: str) -> int:
     return len(to_drop)
 
 
-def refresh(project_id: str) -> dict[str, Any]:
-    """Recompute nodes from Claims + targets + tensions. `why` is the explanation; counts are context, never the verdict."""
+def refresh(project_id: str, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """Recompute nodes from Claims + targets + tensions. `why` is the explanation; counts are context, never the verdict.
+
+    `progress(message)` is called at every phase boundary and every 25 targets. On a large project this function is the
+    long tail of an extract_claims job (25+ min measured 2026-09-29) and used to emit nothing, so the panel showed the
+    job as "quiet for 26m" while it was working normally (claims.py already notes the same thing). A caller that has a
+    heartbeat passes it; every other caller is unaffected."""
+    say = progress or (lambda m: None)
+    n_claims = db.connect().execute("SELECT COUNT(*) FROM project_claims WHERE project_id=? AND status!='rejected'", (project_id,)).fetchone()[0]
+    say(f"re-checking {n_claims} claims against the evidence")
     claims.assess_project(project_id)
+    say("looking for tensions between claims")
     detect(project_id)
     dedupe_targets(project_id)
     try:
         from . import community
+        say("folding in community threads")
         community.synthesize(project_id)                                  # G7: derived cross-thread states, never primary evidence
     except Exception as e:  # noqa: BLE001
         log.warning("community synthesis skipped: %s", e)
-    for tg in list_targets(project_id):
+    tgs = list_targets(project_id)
+    for i, tg in enumerate(tgs, 1):
+        if i == 1 or i % 25 == 0:
+            say(f"assessing evidence targets ({i}/{len(tgs)})")
         assess_target(tg["id"])
+    say("rebuilding the research map")
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]
     targets = list_targets(project_id)
     tensions = list_tensions(project_id, status="open")

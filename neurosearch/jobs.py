@@ -494,8 +494,11 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         from .usage import BudgetPaused
         sid = (job.get("payload") or {}).get("source_id")
         if isinstance(e, Yield):
-            db.requeue_job(jid, delay=0, message=e.message)
-            db.job_event(jid, "yielded", run_id=job.get("run_id"), message=e.message)
+            # wait_reason="yield" is what lets the panel say "waiting to resume" instead of "queued" for a job
+            # that kept its progress (Kyle, 2026-09-29: a queued job with a 60% bar "is pretty ambiguous").
+            # claim_job clears wait_reason when the job is picked up again, so the marker lives exactly as long
+            # as the wait does. requeue_job records the "yielded" event itself.
+            db.requeue_job(jid, delay=0, message=e.message, wait_reason="yield")
             return "queued"
         if isinstance(e, BudgetPaused):
             db.requeue_job(jid, delay=min(e.wait, 3600), message=f"paused: {e}", wait_reason="budget")
