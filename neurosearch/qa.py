@@ -989,7 +989,11 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         c = _claims.add_claim(project["id"], text, claim_type=ctype, topic=inp.get("topic"), origin="chat", status="proposed", normalized=True)
         suff = "governing" if ctype in _claims.GOVERNING_TYPES else "corroborative"
         tg = knowledge.add_target(project["id"], f"Establish: {text[:160]}", topic=c["topic"], claim_id=c["id"], sufficiency=suff, origin="chat")
-        knowledge.refresh(project["id"])
+        # S104 (Kyle, 2026-09-30: a chat stuck on "recording that claim for evidence…" for 1,700 s). This used to run
+        # knowledge.refresh() — the full research-map rebuild, 25+ min on his project — inside the chat turn, holding
+        # the answer and the worker. The Claim and its target are already written; the map is derived state, so it
+        # is queued the same way ensure_cheap does it (0.62.2's rule: never recompute research state in a request).
+        _claims.maybe_refresh(project["id"])
         actions.append({"type": "claim_proposed", "claim_id": c["id"], "text": text, "claim_type": ctype, "target_id": (tg or {}).get("id")})
         return f"recorded as a PROPOSED {ctype} Claim (unsupported until evidence is linked) with an evidence target ({suff} sufficiency: {(tg or {}).get('closure')}). It is not accepted project truth."
     if name == "resolve_work":

@@ -96,10 +96,12 @@ def test_bulk_status_is_project_scoped_and_refreshes_once(monkeypatch):
     foreign = claims.add_claim(other_pid, "A claim in a different project", origin="user")
 
     calls = []
-    monkeypatch.setattr(knowledge, "refresh", lambda p: (calls.append(p), {})[1])
+    # S104: the refresh is QUEUED (claims.maybe_refresh, deduped per project), never run inside the request
+    monkeypatch.setattr(knowledge, "refresh", lambda *a, **k: (calls.append("sync"), {})[1])
+    monkeypatch.setattr(claims, "maybe_refresh", lambda p: (calls.append(p), "job")[1])
     r = claims_view.bulk_status(pid, [gov["id"], out["id"], foreign["id"], "not-a-real-id"], "accepted")
     assert r["changed"] == 2 and r["skipped"] == 2
-    assert calls == [pid]                                                   # exactly one refresh, for THIS project only
+    assert calls == [pid]                                                   # exactly one refresh queued, for THIS project only, none run inline
     assert claims.get(foreign["id"])["status"] == "proposed"                # the other project's Claim was never touched
     assert claims.get(gov["id"])["status"] == "accepted" and claims.get(out["id"])["status"] == "accepted"
 

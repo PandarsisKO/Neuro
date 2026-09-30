@@ -150,5 +150,5 @@ def bulk_status(project_id: str, claim_ids: list[str], status: str, *, applicati
     for cid in mine:
         claims_mod.set_status(cid, status, application=application)
     if mine:
-        knowledge.refresh(project_id)
+        claims_mod.maybe_refresh(project_id)   # S104: queued, never inside the request (25 min measured on Kyle's project)
     return {"changed": len(mine), "skipped": len(set(claim_ids)) - len(mine), "status": status}

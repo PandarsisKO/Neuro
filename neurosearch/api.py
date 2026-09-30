@@ -3150,7 +3150,7 @@ def api_claim_add(project_id: str, body: ClaimIn) -> dict[str, Any]:
     if body.needs_evidence:
         suff = "governing" if body.claim_type in claims.GOVERNING_TYPES else "corroborative"
         tgt = knowledge.add_target(project_id, f"Establish: {body.text[:160]}", topic=c["topic"], claim_id=c["id"], sufficiency=suff, origin="user")
-    knowledge.refresh(project_id)
+    claims.maybe_refresh(project_id)   # S104: queued (low lane, deduped), never inside the request
     return {"claim": claims.get(c["id"]), "target": tgt}
 
 
@@ -3169,7 +3169,7 @@ def api_claim_status(claim_id: str, body: ClaimStatusIn) -> dict[str, Any]:
         out = claims.set_status(claim_id, body.status, application=body.application)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    knowledge.refresh(c["project_id"])
+    claims.maybe_refresh(c["project_id"])   # S104: queued (low lane, deduped), never inside the request
     return out or {}
 
 
@@ -3262,7 +3262,7 @@ def api_claim_relate(claim_id: str, body: ClaimRelateIn) -> dict[str, Any]:
         res = claims.relate(claim_id, body.related_claim_id, body.relation)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    knowledge.refresh(c["project_id"])
+    claims.maybe_refresh(c["project_id"])   # S104: queued (low lane, deduped), never inside the request
     return res
 
 
@@ -3276,13 +3276,13 @@ class TargetIn(BaseModel):
 
 @app.post("/api/projects/{project_id}/targets", dependencies=[Depends(require_auth)])
 def api_target_add(project_id: str, body: TargetIn) -> dict[str, Any]:
-    from . import knowledge
+    from . import claims, knowledge
     if not db.get_project(project_id):
         raise HTTPException(404)
     tg = knowledge.add_target(project_id, body.question, topic=body.topic, sufficiency=body.sufficiency, preferred_classes=body.preferred_classes, closure=body.closure, origin="user")
     if not tg:
         raise HTTPException(400, "question too short")
-    knowledge.refresh(project_id)
+    claims.maybe_refresh(project_id)   # S104: queued (low lane, deduped), never inside the request
     return tg
 
 
@@ -3317,7 +3317,7 @@ class TargetStatusIn(BaseModel):
 
 @app.post("/api/targets/{target_id}/status", dependencies=[Depends(require_auth)])
 def api_target_status(target_id: str, body: TargetStatusIn) -> dict[str, Any]:
-    from . import knowledge
+    from . import claims, knowledge
     tg = knowledge.get_target(target_id)
     if not tg:
         raise HTTPException(404)
@@ -3325,7 +3325,7 @@ def api_target_status(target_id: str, body: TargetStatusIn) -> dict[str, Any]:
         out = knowledge.set_target_status(target_id, body.status)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    knowledge.refresh(tg["project_id"])
+    claims.maybe_refresh(tg["project_id"])   # S104: queued (low lane, deduped), never inside the request
     return out or {}
 
 
@@ -3335,7 +3335,7 @@ class TensionStatusIn(BaseModel):
 
 @app.post("/api/tensions/{tension_id}/status", dependencies=[Depends(require_auth)])
 def api_tension_status(tension_id: str, body: TensionStatusIn) -> dict[str, Any]:
-    from . import knowledge
+    from . import claims, knowledge
     row = db.connect().execute("SELECT project_id FROM research_tensions WHERE id=?", (tension_id,)).fetchone()
     if not row:
         raise HTTPException(404)
@@ -3343,7 +3343,7 @@ def api_tension_status(tension_id: str, body: TensionStatusIn) -> dict[str, Any]
         knowledge.set_tension_status(tension_id, body.status)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    knowledge.refresh(row["project_id"])
+    claims.maybe_refresh(row["project_id"])   # S104: queued (low lane, deduped), never inside the request
     return {"ok": True}
 
 
@@ -3357,7 +3357,7 @@ def api_tensions_bulk(project_id: str, body: TensionsBulkIn) -> dict[str, Any]:
     """R5's remaining half: one verdict on a whole watch-out ISSUE — "Not important to my project" / "Resolved" applies to
     every tension behind it, then ONE refresh. A dismissed tension is never reopened by a later refresh (`_upsert_tension`
     never resets status), so the verdict is durable."""
-    from . import knowledge
+    from . import claims, knowledge
     if not db.get_project(project_id):
         raise HTTPException(404)
     if body.status not in ("open", "resolved", "dismissed"):
@@ -3368,7 +3368,7 @@ def api_tensions_bulk(project_id: str, body: TensionsBulkIn) -> dict[str, Any]:
     for tid in mine:
         knowledge.set_tension_status(tid, body.status)
     if mine:
-        knowledge.refresh(project_id)
+        claims.maybe_refresh(project_id)   # S104: queued (low lane, deduped), never inside the request
     return {"changed": len(mine), "skipped": len(set(body.tension_ids)) - len(mine), "status": body.status}
 
 
