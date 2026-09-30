@@ -403,9 +403,22 @@ globalThis.renderSourcesView = function renderSourcesView() {
   SRCG.rows = rows;
   renderSourceList();
 }
+// S103 (Kyle, 2026-09-30: "Neuro seems to not do anything when I click on the priority button"). It did — the
+// write took 0.4 s — but the star only changed after loadSources() refetched the whole 2,000-row list (10–15 s
+// measured, longer under load, and coalesced behind any poll already in flight), with no toast in between. The
+// flag is a one-row fact this page already holds, so it flips on screen the instant it is clicked (same pure
+// client-side re-render the 0.63.92 filters use), the server is told, and only a failure rolls it back.
 globalThis.setPriority = async function setPriority(id, flag) {
-  await put(`/api/projects/${state.project.id}/priority`, { source_ids: [id], priority: flag });
-  loadSources();
+  const row = (SRCG.all || []).find(s => s.id === id);
+  const before = row ? row.priority : undefined;
+  if (row) { row.priority = flag; renderSourcesView(); }
+  try {
+    await put(`/api/projects/${state.project.id}/priority`, { source_ids: [id], priority: flag });
+    toast(flag ? '★ Priority — answers will favour this source' : '☆ No longer a priority source');
+  } catch (e) {
+    if (row) { row.priority = before; renderSourcesView(); }
+    toast(e.message || e, 'err');
+  }
 }
 globalThis.viewTranscript = async function viewTranscript(id, ordinal) {
   const s = await api('/api/sources/' + id);
