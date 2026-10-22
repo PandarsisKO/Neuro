@@ -843,9 +843,12 @@ def _warm_quality() -> None:
         log.warning("warm-up skipped: %s", e)
 
 
-def _backup_loop(every: float = 3600.0) -> None:
-    """Snapshot the database on startup and every hour, so nothing (chats, findings, plans) is more than an
-    hour from recoverable. Snapshots: <data>/backups/."""
+def _backup_loop(every: float | None = None) -> None:
+    """Snapshot the database on startup and every `every` seconds (default settings.backup_interval_s — hourly),
+    so nothing (chats, findings, plans) is more than that far from recoverable. Snapshots: <data>/backups/."""
+    if every is None:
+        from .config import settings
+        every = settings.backup_interval_s
     while not _stop.is_set():
         try:
             chk = db.integrity_check()

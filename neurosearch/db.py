@@ -3945,11 +3945,14 @@ def verify_database(path: Path) -> dict[str, Any]:
         conn.close()
 
 
-def backup(keep: int = 48) -> Path:
+def backup(keep: int | None = None) -> Path:
     """Consistent online snapshot of the database (SQLite backup API — safe while the app is running), then
     VERIFIED: the copy is reopened and checked (see verify_database) before it counts. A copy that fails is deleted
     and the failure raised, so "last verified backup" in the health view is never a lie.
-    Files land in <data>/backups/neurosearch-YYYYmmdd-HHMM.db; the newest `keep` are retained."""
+    Files land in <data>/backups/neurosearch-YYYYmmdd-HHMM.db; the newest `keep` are retained (default
+    settings.backup_keep — NEUROSEARCH_BACKUP_KEEP — so a large DB can hold fewer full copies)."""
+    if keep is None:
+        keep = settings.backup_keep
     import datetime as _dt
     d = settings.data_dir / "backups"
     d.mkdir(parents=True, exist_ok=True)

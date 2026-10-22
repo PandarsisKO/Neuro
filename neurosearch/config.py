@@ -98,6 +98,11 @@ class Settings:
     # already handled by `yt_delay` (4 s, randomised) rather than by how many workers exist, so 2 was throttling
     # his own machine rather than protecting anything. Revert with NEUROSEARCH_WORKERS=2.
     workers: int = field(default_factory=lambda: int_env("NEUROSEARCH_WORKERS", 3))
+    # S105 (Kyle, 2026-10-22: data/backups was large). An hourly FULL copy of the DB, newest `backup_keep` retained.
+    # Defaults unchanged (48 ≈ 2 days hourly); lower NEUROSEARCH_BACKUP_KEEP on a big DB and the next snapshot prunes
+    # down to it. backup_interval_s is the snapshot cadence. Floors keep a usable recovery window either way.
+    backup_keep: int = field(default_factory=lambda: max(2, int_env("NEUROSEARCH_BACKUP_KEEP", 48)))
+    backup_interval_s: float = field(default_factory=lambda: max(300.0, float(_env("NEUROSEARCH_BACKUP_INTERVAL_S", "3600") or 3600)))
     # L1 Local-First AI: ai_profile=local routes eligible tasks through Claude Code. Local failure waits locally
     # unless local_api_fallback is explicitly enabled; cloud keeps every call on the API.
     ai_profile: str = field(default_factory=lambda: (_env("NEUROSEARCH_AI_PROFILE", "cloud") or "cloud").lower())
