@@ -45,11 +45,51 @@ def _site(url: str) -> str | None:
     return None
 
 
-# per-site politeness state: lock, last request time, paused-until
+# per-site politeness state: lock, last request time, paused-until, consecutive bot-check strikes
 _sites: dict[str, dict[str, Any]] = {
-    "youtube": {"lock": _yt_lock, "last": 0.0, "until": 0.0, "delay": lambda: settings.yt_delay},
-    "instagram": {"lock": threading.Lock(), "last": 0.0, "until": 0.0, "delay": lambda: max(settings.yt_delay * 3, 12.0)},
+    "youtube": {"lock": _yt_lock, "last": 0.0, "until": 0.0, "strikes": 0, "loaded": False, "delay": lambda: settings.yt_delay},
+    "instagram": {"lock": threading.Lock(), "last": 0.0, "until": 0.0, "strikes": 0, "loaded": False, "delay": lambda: max(settings.yt_delay * 3, 12.0)},
 }
+
+# S106 (Kyle, 2026-10-23: "youtube is rate limiting Neuro search and I cant do anything with it"). Measured live: 20
+# ingest jobs each claimed and paused 60 times — a flat 20-minute pause, retried every 20 minutes for 20 hours. A
+# "confirm you're not a bot" check is not a 20-minute rate limit; knocking every 20 minutes keeps the connection
+# looking automated and the block never clears. So the pause now DOUBLES on each consecutive bot-check (20, 40, 80,
+# 160 min … capped at BACKOFF_CAP_MIN) and resets on the first request that succeeds. The pause and strike count are
+# persisted, so restarting Neuro does not reset it to an immediate retry (which is exactly what a restart used to do).
+BACKOFF_CAP_MIN = 12 * 60
+
+
+def _backoff_minutes(strikes: int) -> int:
+    """Escalating pause for the Nth consecutive bot-check: base * 2^(N-1), capped."""
+    base = max(1, int(settings.yt_backoff_minutes))
+    return int(min(base * (2 ** max(0, strikes - 1)), BACKOFF_CAP_MIN))
+
+
+def _load(site: str) -> None:
+    """Read the persisted pause/strikes once per process (fail open: a missing DB never blocks fetching)."""
+    st = _sites[site]
+    if st["loaded"]:
+        return
+    st["loaded"] = True
+    try:
+        from . import db
+        raw = db.kv_get(f"ratelimit:{site}")
+        if raw:
+            d = json.loads(raw)
+            st["until"] = max(st["until"], float(d.get("until") or 0))
+            st["strikes"] = int(d.get("strikes") or 0)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _save(site: str) -> None:
+    st = _sites[site]
+    try:
+        from . import db
+        db.kv_set(f"ratelimit:{site}", json.dumps({"until": st["until"], "strikes": st["strikes"]}))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def polite(url: str):
@@ -63,10 +103,11 @@ def polite(url: str):
                 return self
             st = _sites[site]
             st["lock"].acquire()
+            _load(site)
             wait = max(0.0, st["until"] - _time.time())
             if wait > 0:
                 st["lock"].release()
-                raise RateLimited(f"{site.title()} rate limit — paused for another {int(wait // 60) + 1} min")
+                raise RateLimited(f"{site.title()} rate limit — paused for another {_fmt_wait(wait)}")
             gap = st["delay"]() * random.uniform(0.6, 1.6) - (_time.time() - st["last"])
             if gap > 0:
                 _time.sleep(gap)
@@ -79,17 +120,30 @@ def polite(url: str):
             st["last"] = _time.time()
             st["lock"].release()
             if ev is not None and BOT_CHECK.search(str(ev)):
-                st["until"] = _time.time() + settings.yt_backoff_minutes * 60
-                log.warning("%s bot-check/rate limit hit; pausing for %d min", site, settings.yt_backoff_minutes)
-                raise RateLimited(f"{site.title()} asked us to slow down; pausing {settings.yt_backoff_minutes} min then retrying") from ev
+                st["strikes"] += 1
+                mins = _backoff_minutes(st["strikes"])
+                st["until"] = _time.time() + mins * 60
+                _save(site)
+                log.warning("%s bot-check/rate limit hit (%d in a row); pausing for %d min", site, st["strikes"], mins)
+                raise RateLimited(f"{site.title()} asked us to slow down ({st['strikes']} in a row); pausing {_fmt_wait(mins * 60)} then retrying") from ev
+            if ev is None and st["strikes"]:
+                st["strikes"] = 0                       # a request got through: the block has cleared, back to the base pause
+                _save(site)
             return False
     return _Ctx()
 
 
+def _fmt_wait(seconds: float) -> str:
+    m = int(seconds // 60) + 1
+    return f"{m} min" if m < 60 else f"{m // 60}h {m % 60:02d}m"
+
+
 def rate_limit_status() -> dict[str, Any]:
+    _load("youtube"); _load("instagram")
     left = max(0.0, _sites["youtube"]["until"] - _time.time())
     ig = max(0.0, _sites["instagram"]["until"] - _time.time())
-    return {"paused": left > 0, "seconds_left": int(left), "instagram_paused": ig > 0, "instagram_seconds_left": int(ig)}
+    return {"paused": left > 0, "seconds_left": int(left), "strikes": _sites["youtube"]["strikes"],
+            "instagram_paused": ig > 0, "instagram_seconds_left": int(ig)}
 
 
 IG_MAX = 40   # hard cap per profile pull — one logged-in account, keep it looking human

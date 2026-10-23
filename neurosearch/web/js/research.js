@@ -793,7 +793,12 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   const st = await api('/api/stats', q); const u = await loadSpend(quiet);
   $('#jobsCard').hidden = !(show.length || st.youtube?.paused || u?.blocked);
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
-  if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
+  // S106: the wait now doubles on each consecutive bot-check, so say how long in hours when it is long, and — once it
+  // has repeated — that this is YouTube's bot check (not a quick limit) and what usually clears it.
+  const ytLeft = s => { const m = Math.ceil(s / 60); return m < 60 ? `~${m} min` : `~${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
+  if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: (st.youtube.strikes || 0) >= 2
+    ? `YouTube is blocking downloads (bot check, ${st.youtube.strikes} times in a row) — Neuro is backing off and retries in ${ytLeft(st.youtube.seconds_left)}. Everything else keeps working. Updating yt-dlp usually clears this.`
+    : `YouTube asked us to slow down — downloads resume automatically in ${ytLeft(st.youtube.seconds_left)}` }, progress: 0, message: '' });
   loadBacklog(quiet);
   // 0.51.0: the RATE is the number a human notices. A daily total says nothing about $5 in ten minutes.
   const rt = u && u.rate ? u.rate : null;
