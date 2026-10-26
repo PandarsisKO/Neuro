@@ -133,6 +133,76 @@ def polite(url: str):
     return _Ctx()
 
 
+# S107: where each Chromium browser keeps "Local State", which maps profile directories ("Profile 3") to the names a
+# person actually sees ("Neuro YouTube"). macOS, Windows and Linux, because Neuro is moving to a PC.
+_CHROMIUM_HOME = {
+    "chrome":   {"darwin": "~/Library/Application Support/Google/Chrome", "win32": "%LOCALAPPDATA%/Google/Chrome/User Data", "linux": "~/.config/google-chrome"},
+    "brave":    {"darwin": "~/Library/Application Support/BraveSoftware/Brave-Browser", "win32": "%LOCALAPPDATA%/BraveSoftware/Brave-Browser/User Data", "linux": "~/.config/BraveSoftware/Brave-Browser"},
+    "edge":     {"darwin": "~/Library/Application Support/Microsoft Edge", "win32": "%LOCALAPPDATA%/Microsoft/Edge/User Data", "linux": "~/.config/microsoft-edge"},
+    "chromium": {"darwin": "~/Library/Application Support/Chromium", "win32": "%LOCALAPPDATA%/Chromium/User Data", "linux": "~/.config/chromium"},
+}
+_spec_cache: dict[str, Any] = {}
+
+
+def _chromium_home(browser: str) -> Path | None:
+    import os
+    import sys
+    plat = "darwin" if sys.platform == "darwin" else "win32" if sys.platform.startswith("win") else "linux"
+    raw = _CHROMIUM_HOME.get(browser, {}).get(plat)
+    return Path(os.path.expandvars(os.path.expanduser(raw))) if raw else None
+
+
+def _resolve_profile(browser: str, name: str, home: Path | None = None) -> str | None:
+    """A profile DIRECTORY for `name`, which may be the directory itself ("Profile 3") or the display name a person
+    sees in the browser ("Neuro YouTube", matched case-insensitively). None when nothing matches."""
+    home = home or _chromium_home(browser)
+    if not home:
+        return name                                     # firefox/safari/unknown: yt-dlp takes the name as given
+    if (home / name).is_dir():
+        return name
+    try:
+        cache = json.loads((home / "Local State").read_text(encoding="utf-8")).get("profile", {}).get("info_cache", {})
+    except Exception:  # noqa: BLE001
+        return None
+    want = name.strip().casefold()
+    for d, meta in cache.items():
+        if str((meta or {}).get("name", "")).strip().casefold() == want:
+            return d
+    return None
+
+
+def yt_browser_spec() -> tuple[str, str | None, None, None] | None:
+    """yt-dlp's `cookiesfrombrowser` value for YouTube, or None (not configured, or the profile is not found — inert,
+    never an error: Neuro simply stays signed out)."""
+    raw = (settings.yt_cookies_from_browser or "").strip()
+    if not raw:
+        return None
+    if raw in _spec_cache:
+        return _spec_cache[raw]
+    browser, _, profile = raw.partition(":")
+    browser, profile = browser.strip().lower(), (profile.strip() or None)
+    spec: tuple | None = None
+    if profile is None:
+        spec = (browser, None, None, None)
+    else:
+        d = _resolve_profile(browser, profile)
+        if d is None:
+            log.warning("YouTube sign-in: no %s profile named %r — staying signed out", browser, profile)
+        else:
+            spec = (browser, d, None, None)
+    if spec:
+        _spec_cache[raw] = spec                          # only cache a hit: a profile made later is picked up next time
+    return spec
+
+
+def reset_rate_limit(site: str = "youtube") -> None:
+    """A person's "try again now": clear the pause and the strikes (conditions changed — e.g. they just signed in)."""
+    st = _sites[site]
+    _load(site)
+    st["until"], st["strikes"] = 0.0, 0
+    _save(site)
+
+
 def _fmt_wait(seconds: float) -> str:
     m = int(seconds // 60) + 1
     return f"{m} min" if m < 60 else f"{m // 60}h {m % 60:02d}m"
@@ -143,6 +213,7 @@ def rate_limit_status() -> dict[str, Any]:
     left = max(0.0, _sites["youtube"]["until"] - _time.time())
     ig = max(0.0, _sites["instagram"]["until"] - _time.time())
     return {"paused": left > 0, "seconds_left": int(left), "strikes": _sites["youtube"]["strikes"],
+            "signed_in": bool(yt_browser_spec() or (settings.cookies_file and Path(settings.cookies_file).exists())),
             "instagram_paused": ig > 0, "instagram_seconds_left": int(ig)}
 
 
@@ -274,7 +345,8 @@ def classify_url(url: str) -> str:
     return "media"
 
 
-def _base_opts(cookies_file: str | None = None, referer: str | None = None, **extra: Any) -> dict[str, Any]:
+def _base_opts(cookies_file: str | None = None, referer: str | None = None, *, site_url: str | None = None,
+               **extra: Any) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -286,6 +358,10 @@ def _base_opts(cookies_file: str | None = None, referer: str | None = None, **ex
     cf = cookies_file or settings.cookies_file
     if cf and Path(cf).exists():
         opts["cookiefile"] = cf
+    elif site_url and _is_youtube(site_url):
+        spec = yt_browser_spec()                         # S107: opt-in, YouTube only; an explicit cookie file wins
+        if spec:
+            opts["cookiesfrombrowser"] = spec
     if referer:
         opts["http_headers"] = {"Referer": referer, "Origin": referer.split("/", 3)[0] + "//" + referer.split("/", 3)[2]}
     opts.update(extra)
@@ -305,7 +381,7 @@ def enumerate_search(query: str, limit: int = 30) -> tuple[dict[str, Any], list[
     limit = max(1, min(int(limit or 30), 50))
     lg = _Collect()
     entries: list[dict[str, Any]] = []
-    with polite("https://www.youtube.com/results"), yt_dlp.YoutubeDL(_base_opts(extract_flat=True, skip_download=True, logger=lg)) as ydl:
+    with polite("https://www.youtube.com/results"), yt_dlp.YoutubeDL(_base_opts(extract_flat=True, skip_download=True, logger=lg, site_url="https://www.youtube.com/results")) as ydl:
         res = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
     seen: set[str] = set()
     for e in _flatten(res or {}):
@@ -354,7 +430,7 @@ def enumerate_entries(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     info: dict[str, Any] = {}
     entries: list[dict[str, Any]] = []
     seen: set[str] = set()
-    with yt_dlp.YoutubeDL(_base_opts(extract_flat="in_playlist", skip_download=True)) as ydl:
+    with yt_dlp.YoutubeDL(_base_opts(extract_flat="in_playlist", skip_download=True, site_url=url)) as ydl:
         for u in urls:
             try:
                 res = ydl.extract_info(u, download=False)
@@ -530,7 +606,7 @@ def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = 
     lg = _Collect()
     # noplaylist: a watch?v=…&list=… link means THAT video, not the whole playlist (which made single-video
     # fetches crawl every entry and sit in "fetching metadata" for many minutes)
-    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, noplaylist=True, logger=lg)) as ydl:
+    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, noplaylist=True, logger=lg, site_url=url)) as ydl:
         try:
             info = _with_timeout(lambda: ydl.extract_info(url, download=False), FETCH_TIMEOUT, "metadata fetch")
         except Exception as e:  # noqa: BLE001
@@ -599,7 +675,7 @@ def _lang_candidates(pool: dict[str, Any], preferred: list[str]) -> list[str]:
 
 
 def _download_text(url: str, cookies_file: str | None = None) -> str:
-    with yt_dlp.YoutubeDL(_base_opts(cookies_file)) as ydl:
+    with yt_dlp.YoutubeDL(_base_opts(cookies_file, site_url=url)) as ydl:
         with ydl.urlopen(url) as resp:  # honours cookies/proxy settings
             return resp.read().decode("utf-8", errors="replace")
 
@@ -676,6 +752,7 @@ def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | N
         return path
     opts = _base_opts(
         cookies_file, referer,
+        site_url=url,
         noplaylist=True,
         format="bestaudio/best",
         outtmpl=str(dest_dir / "%(id)s.%(ext)s"),

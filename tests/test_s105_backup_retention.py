@@ -12,9 +12,7 @@ patched env rather than reloading the config module (a reload would swap the sha
 from __future__ import annotations
 
 import os
-import tempfile
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_s105_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 
 import pytest  # noqa: E402

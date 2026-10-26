@@ -92,6 +92,11 @@ class Settings:
         default_factory=lambda: [s.strip() for s in (_env("NEUROSEARCH_CAPTION_LANGS", "en,en-US,en-GB") or "").split(",") if s.strip()]
     )
     cookies_file: str | None = field(default_factory=lambda: _env("NEUROSEARCH_COOKIES_FILE"))
+    # S107 (Kyle, 2026-10-26): YouTube flagged the home connection ("Sign in to confirm you're not a bot") and four days of
+    # back-off did not lift it. Opt-in, YouTube-only: "chrome:<profile name>" reads that browser profile's YouTube login
+    # live (no exported file to go stale). Use a SEPARATE Google account in its own profile, never your main one.
+    # Unset (the default) = never signed in, exactly as before.
+    yt_cookies_from_browser: str | None = field(default_factory=lambda: _env("NEUROSEARCH_YT_COOKIES_FROM_BROWSER"))
     allow_transcription: bool = field(default_factory=lambda: (_env("NEUROSEARCH_ALLOW_TRANSCRIPTION", "true") or "").lower() == "true")
     max_transcribe_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_TRANSCRIBE_MINUTES", "240") or 240))
     # 0.63.14: 3, was 2. These workers do ingestion — download, transcribe, chunk — and YouTube politeness is

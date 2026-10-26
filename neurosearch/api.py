@@ -1550,6 +1550,14 @@ class BackgroundPauseIn(BaseModel):
     project_id: str | None = None
 
 
+@app.post("/api/youtube/retry-now", dependencies=[Depends(require_auth)])
+def api_youtube_retry_now() -> dict[str, Any]:
+    """S107: clear the YouTube back-off and release the parked downloads — for after signing in, or a router restart."""
+    from . import media
+    media.reset_rate_limit("youtube")
+    return {"released": db.release_rate_limited(), **media.rate_limit_status()}
+
+
 @app.post("/api/jobs/background-pause", dependencies=[Depends(require_auth)])
 def api_background_pause(body: BackgroundPauseIn) -> dict[str, Any]:
     """Kyle: "I need it to get out of the way of 'real' work when I start adding new sources or do something on my

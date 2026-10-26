@@ -8,9 +8,7 @@ persisted so a restart no longer means an immediate retry."""
 from __future__ import annotations
 
 import os
-import tempfile
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_s106_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 
 import pytest  # noqa: E402

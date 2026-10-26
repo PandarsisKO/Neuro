@@ -3486,6 +3486,15 @@ def promote_first_findings(project_id: str, limit: int = 6) -> dict[str, Any]:
     return {"promoted": len(rows), "waiting": int(waiting)}
 
 
+def release_rate_limited() -> int:
+    """S107: a person's "try YouTube again now" — every job parked on the rate limit becomes runnable at once. Safe to
+    release them all: media.polite serialises YouTube, so if it still refuses, the FIRST attempt sets the pause and the
+    rest are turned away locally without another request reaching YouTube."""
+    with tx() as conn:
+        return conn.execute("UPDATE jobs SET not_before=NULL, wait_reason=NULL, updated_at=? "
+                            "WHERE status='queued' AND wait_reason='rate_limit'", (now(),)).rowcount
+
+
 def check_now(job_id: str) -> str:
     """Kyle: a parked job's stored message (e.g. a SPEND_CAP "access returns <date>") is exactly what the provider
     said the moment it was hit — never invented — but it's frozen text: nothing re-attempts the call before that
