@@ -4062,3 +4062,12 @@ This is fixture/agent verification, not a live Chrome handshake or user sign-off
 activation requires Kyle's one-time **Reload** of Neuro Search in Chrome's Extensions page after delivery; no
 browser-command or alternate-surface workaround was attempted. Live extension handoff remains unverified until
 that reload. The task/worker/popup integration is covered deterministically by S110.
+
+Delivery: code commit `b5f6fc1ac28b696667ee1ec90658d51566e468f3` fast-forwarded onto the clean shared main.
+Publisher request `1793745467-9be7f7cd` returned **PASS**, proving that exact GitHub main SHA;
+`tools/git_sync_check.py --delivery` **PASS** (main exact, zero unique local commits/tags or mismatches).
+A separate Chrome tab against the running app verified that pasting r/quickbooks exposes **Prepare r/quickbooks
+in Chrome** and the preset/settings explanation before Add. No server restart, Add, Start or ingest was invoked.
+Live app screenshot: `/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-handoff-live.jpg`.
+The user has been asked to reload the extension once; actual Chrome task preparation/popup activation is pending
+that reload, as distinguished from the passing deterministic handoff/scan workflow above.
