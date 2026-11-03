@@ -4145,3 +4145,10 @@ The failures are the same independently reproduced baseline defects recorded in 
 after the current calendar month. The full suite is not all green; no new failures. Full output:
 `evals/release/reddit-listing-recovery-pytest-20261103.txt`. Candidate source hash was rechecked unchanged after
 all gates and visual verification. Publication and installed-extension activation are recorded separately below.
+
+Delivery: fast-forwarded shared main to `432dfd8cac919a34757983c575c95a971091af93`. Publisher request
+`1793747451-bd40d4a1` returned **PASS**, proving that exact GitHub main SHA. `tools/git_sync_check.py --delivery`
+**PASS** (main exact, zero local-only commits/tags or mismatches). No server restart or live ranking/ingestion was
+performed. Kyle has been asked to reload extension **1.11.5** once more; the existing failed task will then expose
+the recovery action. Live installed-worker recovery remains pending that reload, separately from the passing
+full-worker/popup regression and read-only live DOM extraction above.
