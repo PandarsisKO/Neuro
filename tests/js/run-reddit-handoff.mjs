@@ -9,6 +9,7 @@ const read = p => readFileSync(new URL(p, root), 'utf8');
 const event = () => ({listeners:[], addListener(fn){this.listeners.push(fn);}});
 const data = {appUrl:'http://localhost:8000', token:'test-token', lastProject:'other'};
 const tabs = new Map([[1,{id:1,url:'http://localhost:8000/',windowId:7,active:true}]]);
+let feedStatus = 200, loadedPage = null;
 let created = 0, scriptReads = 0, proposals = [], external, internal, readGate = null;
 const changed = event();
 const chrome = {
@@ -29,7 +30,10 @@ const chrome = {
   },
   action:{async setBadgeText(){},async setTitle(){},async setBadgeBackgroundColor(){}},
   alarms:{onAlarm:event(),create(){},clear(){}},
-  scripting:{async executeScript(){scriptReads++;if(readGate)await readGate;return [{result:{status:200,json:{data:{children:[{kind:'t3',data:{id:'abc123',title:'Owner experience',selftext:'My experience',permalink:'/r/quickbooks/comments/abc123/owner/',created_utc:Date.now()/1000}}],after:null}}}}];}}
+  scripting:{async executeScript(opts){scriptReads++;if(readGate)await readGate;
+    if (opts.func.name === 'readLoadedFeed') return [{result:loadedPage.window.eval('(' + opts.func.toString() + ')(' + JSON.stringify(opts.args[0]) + ')')}];
+    if (feedStatus !== 200) return [{result:{status:feedStatus,json:null}}];
+    return [{result:{status:200,json:{data:{children:[{kind:'t3',data:{id:'abc123',title:'Owner experience',selftext:'My experience',permalink:'/r/quickbooks/comments/abc123/owner/',created_utc:Date.now()/1000}},{kind:'t3',data:{id:'old456',title:'Old post',permalink:'/r/quickbooks/comments/old456/old/',created_utc:1}}],after:null}}}}];}}
 };
 const fetch = async (url, opts={}) => {
   if(url.endsWith('/api/projects'))return {ok:true,json:async()=>[{id:'project-one',name:'Business <research>'},{id:'other',name:'Other'}]};
@@ -112,10 +116,50 @@ await until(()=>data[key].status==='proposed');
 await until(()=>$('#subredditMsg a')?.textContent==='Review posts in Neuro');
 assert.equal($('#subredditMsg a').href,'http://localhost:8000/#p/project-one/sources');
 assert.equal(scriptReads,1);assert.equal(proposals.length,1);
-assert.equal(proposals[0].project_id,'project-one');assert.equal(proposals[0].max_videos,8);
+assert.equal(proposals[0].items.length,1,'JSON timestamps are seconds; older posts respect the cutoff');assert.equal(proposals[0].project_id,'project-one');assert.equal(proposals[0].max_videos,8);
 assert.equal((await call({type:'cscan-dismiss-prepared',tabId})).ok,false,'cannot delete a finished scan as a prepared step');
 await send({...task,projectId:'other'});
 assert.equal(created,2,'another project gets a separate task; finished results are preserved');
 assert.equal((await call({type:'cscan-dismiss-prepared',tabId:102})).ok,true);
 assert.equal(data['cscan:102'],undefined);
-dom.window.close();console.log('Reddit extension handoff workflow PASS');
+// Live regression: a signed-in Reddit page renders posts while /new.json answers HTTP 403.
+feedStatus=403; tabs.get(tabId).active=true;tabs.get(102).active=false;
+const options={type:'cscan-start',tabId,projectId:'project-one',maxAgeDays:365,want:8};
+assert.ok((await call({...options,listingMode:'loaded'})).error,'loaded recovery requires a failed task');
+await call(options);await until(()=>data[key].status==='failed');
+assert.equal(data[key].reason,'feed_unreadable');assert.match(data[key].errors[0],/HTTP 403/);
+await w.eval('renderCommunity()');
+assert.equal($('#subredditLoaded').hidden,false);assert.equal($('#pageProject').value,'project-one');
+assert.equal($('#pageProject').disabled,true);assert.equal($('#subredditAge').value,'365');assert.equal($('#subredditWant').value,'8');
+assert.match($('#subredditMsg').textContent,/even while signed in/);assert.doesNotMatch($('#subredditMsg').textContent,/are you signed in/);
+assert.match($('#subredditMsg').textContent,/does not cover the full time window/);
+if(process.argv[3])writeFileSync(process.argv[3],dom.serialize());
+const at=new Date().toISOString().replace('Z','000+0000');
+const card=(id,attrs='',body='')=>`<shreddit-post id="t3_${id}" permalink="/r/QuickBooks/comments/${id}/title/" post-title="Owner &amp; business" created-timestamp="${at}" author="owner" score="0" comment-count="12" ${attrs}><div slot="text-body">${body}</div></shreddit-post>`;
+loadedPage=new JSDOM(card('abc123','','Rendered excerpt')+card('abc123')+card('ad123','promoted')+card('other','permalink="https://evil.test/r/quickbooks/comments/other/title/"')+card('old123').replace(at,'2020-01-01T00:00:00Z')+card('unknown').replace(`created-timestamp="${at}"`,''),{url:task.url,runScripts:'outside-only'});
+// Test the real injected function directly, including same-subreddit provenance, ads and own permalink.
+const reader=vm.runInContext("NSC.all.find(a=>a.key==='reddit').readLoadedFeed.toString()",worker);
+const snapshot=()=>loadedPage.window.eval('('+reader+')('+JSON.stringify(task.url)+')');
+loadedPage.window.document.querySelector('#t3_other').setAttribute('permalink','https://evil.test/r/quickbooks/comments/other/title/');
+assert.equal(snapshot().items.length,3,'dedupe and exclude promoted/foreign posts');
+assert.equal(snapshot().items[0].body,'Rendered excerpt');assert.equal(snapshot().items[0].score,0);
+assert.equal(snapshot().items[0].url,'https://www.reddit.com/r/QuickBooks/comments/abc123/title/');
+assert.ok(loadedPage.window.eval('('+reader+')("https://www.reddit.com/r/other/")').error);
+assert.ok((await call({...options,projectId:'other',listingMode:'loaded'})).error);
+assert.ok((await call({...options,want:201,listingMode:'loaded'})).error);
+const before=proposals.length;
+$('#subredditLoaded').click();await until(()=>data[key].status==='proposed');
+await w.eval('renderCommunity()');
+assert.equal(proposals.length,before+1);assert.equal(proposals.at(-1).items.length,1,'exclude old and undated posts within a dated window');
+assert.equal(proposals.at(-1).project_id,'project-one');assert.equal(proposals.at(-1).max_videos,8);
+assert.equal(data[key].listing_method,'rendered');assert.equal(data[key].skipped_old,1);assert.equal(data[key].skipped_undated,1);
+assert.match($('#subredditMsg').textContent,/Loaded posts only/);assert.match($('#subredditMsg').textContent,/partial listing/);
+assert.equal($('#subredditLoaded').hidden,true);
+// No posts / changed page never enqueue a misleading empty review; recovery remains available.
+await call(options);await until(()=>data[key].status==='failed');
+loadedPage.window.document.body.innerHTML='';
+await call({...options,listingMode:'loaded'});await until(()=>data[key].status==='failed');
+assert.equal(data[key].reason,'no_loaded_posts');assert.equal(proposals.length,before+1);
+await w.eval('renderCommunity()');assert.equal($('#subredditLoaded').hidden,false);
+assert.match($('#subredditMsg').textContent,/no loaded posts match/);
+loadedPage.window.close();dom.window.close();console.log('Reddit extension handoff workflow PASS');

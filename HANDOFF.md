@@ -4082,3 +4082,66 @@ Actual live popup proof:
 `/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-prepared-live.png`.
 This closes the pending live handshake/popup verification above. Documentation-only follow-up; the validated
 production source and test results are unchanged.
+
+## S111 — recover when Reddit blocks the browser listing — 2026-11-03
+
+Kyle reported the actual scan failure after S110's live preparation check. Read-only live inspection found
+`feed page 1: HTTP 403` while the normal subreddit page visibly showed a signed-in account and posts. A direct
+Chrome navigation to the exact `/r/quickbooks/new.json?raw_json=1&limit=100` URL also displayed Reddit's network
+security block; its normal `/new/` page rendered successfully. The defect is the assumption that a browser session
+always grants JSON access, plus the misleading sign-in hint. S110's preparation/popup verification was valid but
+was not proof of a successful live scan.
+
+Base `31d2c88ed1b8c9e523d8ecb8c47ea096b6f82b4e`; isolated checkout
+`/tmp/neuro-reddit-listing-recovery-20261103`, branch `codex/reddit-listing-recovery`. Shared main was clean.
+Touched the existing community adapter/worker, popup, Sources recovery/review copy, their JavaScript workflow
+harnesses, and the canonical extension version pointer. Extension **1.11.5**; app markers remain **0.64.4**.
+No production Python change, worker restart, endpoint, credential flow, permission, queue, or storage subsystem.
+
+A failed Reddit listing now offers **Review loaded posts instead** and explains that Reddit can refuse a listing
+even while signed in. This explicit action reads only already-loaded `shreddit-post` cards, applies the chosen
+window, and reuses `runCommunityScan` and `/api/community/proposals` for ordinary ranking/review. The failed task's
+project and settings are restored on popup reopen; project selection stays fixed during recovery. The worker
+refuses recovery for another subreddit/project/app origin or a task without the eligible failure. The reader
+checks the current subreddit and each post's own permalink/id, excludes promoted/foreign/duplicate posts, and
+bounds extraction to 2,000 posts with bounded titles/excerpts. Within a dated window it skips missing/old dates.
+The normal JSON walker now correctly interprets Reddit's numeric timestamps as seconds when applying the cutoff.
+
+This is deliberately a loaded-page recovery, not an automatic history walk: no endpoint retry, navigation,
+scrolling, access-control workaround, or claim to a complete year. The popup labels the result **Loaded posts
+only** and warns about shortened text. App review cards retain a scope warning even after the popup closes.
+Both surfaces explain that chosen threads may need the existing **Open & capture** action when their JSON is
+also refused; that path already falls back to the rendered thread through `redditCapture`. Nothing is ranked,
+captured or ingested merely by displaying the failure or recovery option.
+
+Baseline affected gates: **31 passed**. Final affected/invariant gates: **63 passed, 1 warning** (macOS / Python
+3.14): `python -m pytest tests/test_s109_reddit_recovery.py tests/test_s110_reddit_handoff.py
+ tests/test_s95_scan_subreddit.py tests/test_s74_extension_auth.py tests/test_s74_subreddit_catalog_identity.py
+ tests/test_s93_community_walker.py tests/test_s92_open_and_capture.py tests/test_s44_frontend_integrity.py
+ tests/test_s50_design_drift.py -q`. The shipped worker + popup regression harness reproduces JSON HTTP 403,
+clicks the real recovery button, executes the actual injected reader on rendered fixtures, and verifies the same
+project/settings/review POST, timestamp cutoff, duplicates/ads/foreign posts, empty results and retry guidance.
+`NEUROSEARCH_FAKE_AI=1 python -m neurosearch.cli eval` **Tier 1 PASS**. Correct invocation
+`python -c 'from neurosearch.cli import app; app()' release-check --no-pytest` **PASS**. An initial invocation
+mistakenly set `NEUROSEARCH_FAKE_AI=1` for release-check itself; its default-flags gate correctly failed. That
+invocation report is retained separately, and the corrected invocation passed every gate. All commands used
+private temporary data directories without live data, `.env`, or cookies.
+
+Candidate source SHA-256 `0c15de3689bb24b7a2f98ace147e49cac6ae11410845f17feadd9400a6b61ccb` (ordered path + NUL +
+bytes + NUL) is recorded in `evals/release/reddit-listing-recovery-candidate-20261103.json` and bound to the final
+release reports `evals/release/release-check-0.64.4-31d2c88-listing-0c15de3689bb-final-20261103-150513.{json,txt}`.
+Agent visual QA inspected the shipped failure markup/CSS with the recovery action, scope/cost explanation and
+locked project. Preview proof (fixture, not installed-extension activation):
+`/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-listing-recovery-preview.jpg`.
+Read-only DOM verification of the exact shipped reader against the live Reddit `/new/` page returned **27** loaded
+posts with canonical permalinks, titles, timestamps and scores, without a JSON request or review submission.
+Temporary browser tabs/server were closed. Full-suite result and publication follow below; installed worker/popup
+activation still requires the user's reload to **1.11.5**, as Chrome's management-page restriction remains binding.
+
+Full validation: `python -m pytest tests -q` → **2,602 passed, 2 failed, 1 warning** in **414.49 s**.
+The failures are the same independently reproduced baseline defects recorded in S109/S110:
+`test_l1_browser_capture::test_account_usage_limit_pauses_the_job_until_the_named_date` uses the expired
+2026-10-01 gate, and `test_s9_cost_value::test_windows_are_ordered_and_bounded` assumes a rolling week starts
+after the current calendar month. The full suite is not all green; no new failures. Full output:
+`evals/release/reddit-listing-recovery-pytest-20261103.txt`. Candidate source hash was rechecked unchanged after
+all gates and visual verification. Publication and installed-extension activation are recorded separately below.

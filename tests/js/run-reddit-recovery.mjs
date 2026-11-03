@@ -96,6 +96,13 @@ for (const url of ['javascript:alert(1)', 'https://reddit.com.evil.test/r/test/'
 }
 assert.match(w.subredditRecovery(['https://old.reddit.com/r/QuickBooks/?sort=new']), /href="https:\/\/www.reddit.com\/r\/quickbooks\/"/);
 
+// Scope and the next capture action stay visible when the user returns to the app's review card.
+w.api=async()=>[{id:'loaded-review',kind:'subreddit',title:'r/quickbooks',meta:{ranked:false},proposed:[]}];
+await w.loadReviews();
+assert.match($('#reviewWrap').textContent,/Listed posts only/);
+assert.match($('#reviewWrap').textContent,/Open & capture/);
+assert.match($('#inDetect').textContent,/Review loaded posts instead/);
+
 // Optional static, isolated browser preview: the actual rendered failure markup and shipped CSS.
 if (process.argv[2]) writeFileSync(process.argv[2], `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reddit recovery preview</title><style>${read('neurosearch/web/styles.css')}</style><main class="card"><h2>In progress</h2>${failureMarkup}</main>`);
 dom.window.close();

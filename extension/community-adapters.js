@@ -61,6 +61,31 @@
       })),
       next: json && json.data && json.data.after || null,
     }),
+    // Recovery reads the page the person can already see; it does not retry a blocked endpoint,
+    // navigate, scroll, or claim to cover the requested window. Closure-free for executeScript.
+    readLoadedFeed: function(expectedUrl) {
+      const hostOK = u => ['reddit.com', 'www.reddit.com', 'old.reddit.com', 'new.reddit.com'].includes(u.hostname);
+      const sub = u => hostOK(u) && /^https?:$/.test(u.protocol) && /^\/r\/([a-z0-9_]{1,21})(?:\/(?:new|hot|top|rising))?\/?$/i.exec(u.pathname)?.[1].toLowerCase();
+      const expected = sub(new URL(expectedUrl));
+      if (!expected || sub(new URL(location.href)) !== expected) return { error: 'The subreddit tab changed. Prepare the scan again from Neuro.', items: [] };
+      const items = [], seen = new Set();
+      for (const el of document.querySelectorAll('shreddit-post')) {
+        if (items.length >= 2000) break;
+        if (el.hasAttribute('promoted') || el.hasAttribute('is-promoted')) continue;
+        let u; try { u = new URL(el.getAttribute('permalink'), location.href); } catch (_) { continue; }
+        const m = /^\/r\/([a-z0-9_]+)\/comments\/([a-z0-9]+)\//i.exec(u.pathname);
+        if (!hostOK(u) || !/^https?:$/.test(u.protocol) || !m || m[1].toLowerCase() !== expected || el.id !== 't3_' + m[2] || seen.has(m[2])) continue;
+        const title = (el.getAttribute('post-title') || el.querySelector('[slot="title"]')?.textContent || '').trim().slice(0, 1000);
+        if (!title) continue;
+        seen.add(m[2]);
+        const number = key => { const v = el.getAttribute(key); return v !== null && Number.isFinite(+v) ? +v : null; };
+        items.push({ id: m[2], title, body: (el.querySelector(':scope > [slot="text-body"]')?.textContent || '').trim().slice(0, 4000),
+          author: el.getAttribute('author') || null, created_at: el.getAttribute('created-timestamp') || null,
+          score: number('score'), expected_comments: number('comment-count'), space: expected, kind: el.getAttribute('post-type') || 'link',
+          url: 'https://www.reddit.com' + u.pathname });
+      }
+      return { items };
+    },
     community: post => 'r/' + (post.space || ''),
   };
   const ADAPTERS = [SMB, REDDIT];

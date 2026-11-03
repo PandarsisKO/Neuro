@@ -1004,19 +1004,26 @@ const CSCAN_PACE_MS = 250;        // between API reads: a member scrolling, not 
 const CSCAN_BATCH = 10;           // threads per POST to the app
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function startCommunityScan(tabId, projectId, maxAgeDays, want) {
+async function startCommunityScan(tabId, projectId, maxAgeDays, want, listingMode) {
   const cur = await getCScan(tabId);
   if (cur && CSCAN_ACTIVE.has(cur.status)) return { error: 'A community scan is already running in this tab.', scan: cur };
   let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
   const adapter = NSC.forUrl(tab.url);
   if (!adapter) return { error: 'This page is not a community Neuro Search knows how to walk.' };
   if (!projectId) return { error: 'Pick a project first.' };
+  if (listingMode && listingMode !== 'loaded') return { error: 'Unknown listing mode.' };
+  if (listingMode === 'loaded' && (adapter.key !== 'reddit' || cur?.status !== 'failed' || !['feed_unreadable', 'no_loaded_posts', 'rendered_unreadable'].includes(cur.reason)
+      || cur.project_id !== projectId || (cur.app_origin && new URL((await cfg()).appUrl).origin !== cur.app_origin) || NSC.subredditUrl(cur.url) !== NSC.subredditUrl(tab.url))) {
+    return { error: 'Return to the failed subreddit and its project before reviewing loaded posts.' };
+  }
+
   if (cur?.status === 'prepared' && (cur.expires_at <= now() || NSC.subredditUrl(tab.url) !== cur.url
       || new URL((await cfg()).appUrl).origin !== cur.app_origin || projectId !== cur.project_id)) {
     return { error: 'This prepared scan expired or the tab changed. Prepare it again from Neuro.' };
   }
+  if (listingMode === 'loaded' && (![null, 30, 90, 365].includes(maxAgeDays) || !Number.isInteger(want) || want < 1 || want > 200)) return { error: 'Invalid loaded-post review settings.' };
   const rec = { scan_id: (crypto.randomUUID ? crypto.randomUUID() : String(now()) + Math.random()), tab_id: tabId, url: tab.url, adapter: adapter.key, label: adapter.label,
-                project_id: projectId, app_origin: cur?.app_origin || null, max_age_days: maxAgeDays || null, started_at: now(), updated_at: now(), finished_at: null, status: 'listing', reason: null,
+                project_id: projectId, project_name: cur?.project_name || null, listing_method: listingMode === 'loaded' ? 'rendered' : 'json', app_origin: cur?.app_origin || null, max_age_days: maxAgeDays || null, started_at: now(), updated_at: now(), finished_at: null, status: 'listing', reason: null,
                 listed: 0, read: 0, stored: 0, failed: 0, skipped_old: 0, current: null, errors: [], cancel: false, want: want || null, mode: adapter.mode || 'store' };
   await putCScan(rec);
   runCommunityScan(rec).catch(async e => { const r = await getCScan(tabId); if (r) { r.status = 'failed'; r.reason = 'runner_error'; r.errors.push(String(e.message || e).slice(0, 200)); r.finished_at = now(); await putCScan(r); } });
@@ -1035,14 +1042,26 @@ async function runCommunityScan(rec) {
   // 1. list: every post in the window, newest first
   const posts = [];
   let cursor = null, pages = 0;
-  while (pages < 400) {
+  if (rec.listing_method === 'rendered') {
+    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func: adapter.readLoadedFeed, args: [rec.url] });
+    if (result?.error) { rec.errors.push(result.error); return bail('failed', 'rendered_unreadable'); }
+    for (const p of result?.items || []) {
+      const t = Date.parse(p.created_at);
+      if (cutoff && !Number.isFinite(t)) { rec.skipped_undated = (rec.skipped_undated || 0) + 1; continue; }
+      if (cutoff && t < cutoff) { rec.skipped_old++; continue; }
+      posts.push(p);
+    }
+    rec.listed = posts.length;
+    const fresh = await getCScan(tabId); if (!fresh || fresh.cancel) return bail('cancelled', 'cancelled');
+    if (!posts.length) return bail('failed', 'no_loaded_posts');
+  } else while (pages < 400) {
     const fresh = await getCScan(tabId); if (!fresh || fresh.cancel) return bail('cancelled', 'cancelled');
     const r = await pageJson(tabId, adapter.feedUrl(cursor, { url: rec.url }));
     if (!r.json) { rec.errors.push(`feed page ${pages + 1}: HTTP ${r.status}${r.error ? ' ' + r.error : ''}`); if (!posts.length) return bail('failed', 'feed_unreadable'); break; }
     const page = adapter.parseFeed(r.json); pages++;
     let stop = false;
     for (const p of page.items) {
-      const t = p.created_at ? Date.parse(p.created_at) : NaN;
+      const t = typeof p.created_at === 'number' ? p.created_at * 1000 : Date.parse(p.created_at);
       if (cutoff && !isNaN(t) && t < cutoff) { rec.skipped_old++; stop = true; continue; }
       posts.push(p);
     }
@@ -1125,7 +1144,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-retry') { withCapture(msg.tabId, () => retryCapture(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
-  if (msg.type === 'cscan-start') { withScan('subreddit-prepare', () => startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want)).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-start') { withScan('subreddit-prepare', () => startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want, msg.listingMode)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-cancel') { cancelCommunityScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-dismiss-prepared') { dismissPreparedScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-get') { getCScan(msg.tabId).then(scan => reply({ scan }), e => reply({ error: String(e) })); return true; }
