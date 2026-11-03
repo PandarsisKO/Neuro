@@ -37,7 +37,14 @@
   // LISTS and hands the posts to the app as a review card (ranked against the brief, best N pre-selected); the
   // app ingests the chosen ones, and the pending captures are fulfilled from any open Reddit tab (background.js).
   // No OCR: this is the same structured listing the page itself is built from — titles, bodies, dates, scores, links.
-  const subOf = url => { const m = /reddit\.com\/r\/([A-Za-z0-9_]+)/.exec(url || ''); return m ? m[1] : null; };
+  const subOf = url => {
+    try {
+      const u = new URL(url);
+      if (!['http:', 'https:'].includes(u.protocol) || !['reddit.com', 'www.reddit.com', 'old.reddit.com', 'new.reddit.com'].includes(u.hostname)) return null;
+      const m = /^\/r\/([A-Za-z0-9_]{1,21})(?:\/(?:new|hot|top|rising))?\/?$/.exec(u.pathname);
+      return m ? m[1].toLowerCase() : null;
+    } catch (_) { return null; }
+  };
   const REDDIT = {
     key: 'reddit',
     platform: 'reddit',
@@ -59,6 +66,7 @@
   const ADAPTERS = [SMB, REDDIT];
   self.NSCommunityAdapters = {
     all: ADAPTERS,
+    subredditUrl: url => { const sub = subOf(url); return sub ? `https://www.reddit.com/r/${sub}/` : null; },
     forUrl: url => ADAPTERS.find(a => a.match(url)) || null,
     // one thread in the app's contract
     contract: (adapter, post, comments, partial) => ({

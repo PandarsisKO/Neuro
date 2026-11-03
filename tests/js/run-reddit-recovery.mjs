@@ -41,6 +41,28 @@ assert.match($('#jobs').textContent, /Reddit API credentials are required/, 'kee
 assert.equal($('#jobs .subreddit-recovery a').rel, 'noopener noreferrer');
 const failureMarkup = $('#jobs').innerHTML;
 
+// The recovery button sends a typed task over the existing extension connection; it does not queue an ingest.
+w.api = async url => {
+  assert.equal(url, '/api/capture/pending'); return {extension:{id:'connected-extension'}};
+};
+let handoff;
+w.chrome = {runtime:{sendMessage(id,msg,reply){
+  assert.equal(id,'connected-extension');handoff=msg;reply({ok:true,status:'prepared',project_name:'Business <research>'});
+}}};
+await w.prepareSubredditInChrome(sub,$('#jobs .subreddit-step button'));
+assert.equal(handoff.type,'prepare-subreddit-scan');assert.equal(handoff.projectId,'project-fixture');
+assert.equal(handoff.url,sub);assert.equal(handoff.maxAgeDays,365);assert.equal(handoff.want,20);
+assert.match($('#jobs [role=status]').textContent,/press Start prepared scan/);
+w.chrome = null;
+await w.prepareSubredditInChrome(sub,$('#jobs .subreddit-step button'));
+assert.match($('#jobs [role=status]').textContent,/Open Neuro in Chrome/);
+w.api = async url => {
+  if (url.includes('/jobs?')) return jobs;
+  if (url === '/api/stats') return {};
+  if (url.endsWith('/subreddit-catalogs')) return {items:catalogs};
+  throw Error(`Unexpected API read: ${url}`);
+};
+
 // Ordinary failures and successful Reddit work keep their existing behavior.
 jobs = [{...failed, kind:'ingest_url', payload:{url:'https://example.test/'}}];
 await w.loadJobs();

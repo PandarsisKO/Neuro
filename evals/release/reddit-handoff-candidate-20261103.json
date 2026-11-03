@@ -1,0 +1,19 @@
+{
+  "base": "c746fae8016f577d8ea4730db25d78db579d169f",
+  "source_sha256": "22eec8211e4cb851a616c7be5b9deb92a02163dd9a160d006780c87c78b444e0",
+  "files": [
+    "extension/background.js",
+    "extension/community-adapters.js",
+    "extension/manifest.json",
+    "extension/popup.html",
+    "extension/popup.js",
+    "neurosearch/web/js/sources.js",
+    "neurosearch/web/styles.css",
+    "tests/js/run-reddit-recovery.mjs",
+    "tests/js/run-reddit-handoff.mjs",
+    "tests/test_s93_community_walker.py",
+    "tests/test_s110_reddit_handoff.py",
+    "tests/js/run-extension-auth.mjs",
+    "CLAUDE.md"
+  ]
+}

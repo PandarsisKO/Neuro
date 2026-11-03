@@ -79,6 +79,12 @@ async function paintAll(items) {
 
 async function paint(tab, items) {
   if (!tab || !tab.id || !tab.url) return;
+  const prepared = await getCScan(tab.id);
+  if (prepared?.status === 'prepared' && prepared.expires_at > now() && NSC.subredditUrl(tab.url) === prepared.url) {
+    await chrome.action.setBadgeText({ tabId: tab.id, text: '1' });
+    await chrome.action.setTitle({ tabId: tab.id, title: `Scan ready for ${prepared.project_name} — open Neuro Search` });
+    return;
+  }
   const list = items || (await chrome.storage.local.get('pending')).pending || [];
   const want = canon(tab.url);
   const hit = list.find(i => canon(i.canonical_url || i.url || '') === want);
@@ -934,6 +940,59 @@ const CSCAN_ACTIVE = new Set(['listing', 'reading', 'sending']);
 const cscanKey = tabId => `cscan:${tabId}`;
 async function getCScan(tabId) { return (await chrome.storage.local.get(cscanKey(tabId)))[cscanKey(tabId)] || null; }
 async function putCScan(rec) { rec.updated_at = now(); await chrome.storage.local.set({ [cscanKey(rec.tab_id)]: rec }); }
+// S110: a prepared step belongs to the existing per-tab community scan record. No scan runs until
+// the popup's ordinary button is pressed. Only the configured Neuro origin can prepare one.
+const PREPARED_SCAN_TTL_MS = 30 * 60e3;
+async function prepareSubredditScan(msg, sender) {
+  const c = await cfg();
+  let origin;
+  try { origin = new URL(sender.url || '').origin; } catch (_) {}
+  if (!c.appUrl || !c.token || !origin || origin !== new URL(c.appUrl).origin || !Number.isInteger(sender.tab?.id)) {
+    throw new Error('Open the configured Neuro app in Chrome to prepare a scan.');
+  }
+  const url = NSC.subredditUrl(msg.url);
+  if (!url || typeof msg.projectId !== 'string' || !msg.projectId || ![null, 30, 90, 365].includes(msg.maxAgeDays)
+      || !Number.isInteger(msg.want) || msg.want < 1 || msg.want > 200) throw new Error('Invalid subreddit scan settings.');
+  const projects = await api('/api/projects');
+  const project = Array.isArray(projects) && projects.find(p => p.id === msg.projectId);
+  if (!project) throw new Error('That project is unavailable. Choose a project in Neuro and try again.');
+  // Repeated clicks reuse the same prepared step (or an already running scan) without replacing another
+  // project's work. withScan serializes preparation while tabs/storage calls yield.
+  return withScan('subreddit-prepare', async () => {
+    let tab, rec;
+    for (const t of await chrome.tabs.query({})) {
+      if (NSC.subredditUrl(t.url) !== url) continue;
+      const s = await getCScan(t.id);
+      if (s && s.app_origin === origin && s.project_id === project.id && NSC.subredditUrl(s.url) === url &&
+          ((s.status === 'prepared' && s.expires_at > now()) || CSCAN_ACTIVE.has(s.status))) { tab = t; rec = s; break; }
+    }
+    if (!tab) {
+      tab = await chrome.tabs.create({ url, active: true, windowId: sender.tab.windowId });
+      rec = { scan_id: crypto.randomUUID(), tab_id: tab.id, url, adapter: 'reddit', mode: 'propose',
+              project_id: project.id, project_name: project.name, app_origin: origin, max_age_days: msg.maxAgeDays, want: msg.want,
+              status: 'prepared', expires_at: now() + PREPARED_SCAN_TTL_MS, errors: [] };
+      await putCScan(rec);
+    } else {
+      if (rec.status === 'prepared') {
+        if (rec.max_age_days !== msg.maxAgeDays || rec.want !== msg.want) rec.scan_id = crypto.randomUUID();
+        rec.max_age_days = msg.maxAgeDays; rec.want = msg.want; rec.project_name = project.name;
+        rec.expires_at = now() + PREPARED_SCAN_TTL_MS; await putCScan(rec);
+      }
+      await chrome.tabs.update(tab.id, { active: true });
+    }
+    try { await paint(tab); } catch (_) {}
+    return { ok: true, status: rec.status, url, project_name: project.name, tab_id: tab.id, version: VERSION };
+  });
+}
+async function dismissPreparedScan(tabId) {
+  return withScan('subreddit-prepare', async () => {
+    const rec = await getCScan(tabId);
+    if (!rec || rec.status !== 'prepared') return { ok: false };
+    await chrome.storage.local.remove(cscanKey(tabId));
+    try { await paint(await chrome.tabs.get(tabId)); } catch (_) {}
+    return { ok: true };
+  });
+}
 async function pageJson(tabId, url) {
   const [{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func: async (u) => {
     try { const r = await fetch(u, { credentials: 'include', headers: { Accept: 'application/json' } }); return { status: r.status, json: r.ok ? await r.json() : null }; }
@@ -952,8 +1011,12 @@ async function startCommunityScan(tabId, projectId, maxAgeDays, want) {
   const adapter = NSC.forUrl(tab.url);
   if (!adapter) return { error: 'This page is not a community Neuro Search knows how to walk.' };
   if (!projectId) return { error: 'Pick a project first.' };
+  if (cur?.status === 'prepared' && (cur.expires_at <= now() || NSC.subredditUrl(tab.url) !== cur.url
+      || new URL((await cfg()).appUrl).origin !== cur.app_origin || projectId !== cur.project_id)) {
+    return { error: 'This prepared scan expired or the tab changed. Prepare it again from Neuro.' };
+  }
   const rec = { scan_id: (crypto.randomUUID ? crypto.randomUUID() : String(now()) + Math.random()), tab_id: tabId, url: tab.url, adapter: adapter.key, label: adapter.label,
-                project_id: projectId, max_age_days: maxAgeDays || null, started_at: now(), updated_at: now(), finished_at: null, status: 'listing', reason: null,
+                project_id: projectId, app_origin: cur?.app_origin || null, max_age_days: maxAgeDays || null, started_at: now(), updated_at: now(), finished_at: null, status: 'listing', reason: null,
                 listed: 0, read: 0, stored: 0, failed: 0, skipped_old: 0, current: null, errors: [], cancel: false, want: want || null, mode: adapter.mode || 'store' };
   await putCScan(rec);
   runCommunityScan(rec).catch(async e => { const r = await getCScan(tabId); if (r) { r.status = 'failed'; r.reason = 'runner_error'; r.errors.push(String(e.message || e).slice(0, 200)); r.finished_at = now(); await putCScan(r); } });
@@ -1042,11 +1105,14 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   // a document load may or may not have killed the runner: ask it, after it has had a moment to (re)appear
   if (info.status === 'loading') setTimeout(() => checkAlive(tabId, 'navigated'), 1500);
 });
-chrome.tabs.onRemoved.addListener(tabId => { checkAlive(tabId, 'tab_closed'); });
+chrome.tabs.onRemoved.addListener(tabId => { checkAlive(tabId, 'tab_closed'); dismissPreparedScan(tabId).catch(() => {}); });
 chrome.tabs.onActivated.addListener(async ({ tabId }) => { try { paint(await chrome.tabs.get(tabId)); } catch (e) {} });
 // S97: the Neuro page messages this extension directly (externally_connectable) the moment it sees captures
 // waiting — Start on a review card, a parked job — so the pick-up is immediate instead of "next poll".
 chrome.runtime.onMessageExternal.addListener((msg, sender, reply) => {
+  if (msg && msg.type === 'prepare-subreddit-scan') {
+    prepareSubredditScan(msg, sender).then(reply, e => reply({ error: String(e.message || e) })); return true;
+  }
   if (msg && msg.type === 'nudge') { refreshPending().then(() => reply({ ok: true })); return true; }
 });
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
@@ -1059,8 +1125,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-retry') { withCapture(msg.tabId, () => retryCapture(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
-  if (msg.type === 'cscan-start') { startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-start') { withScan('subreddit-prepare', () => startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-cancel') { cancelCommunityScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-dismiss-prepared') { dismissPreparedScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-get') { getCScan(msg.tabId).then(scan => reply({ scan }), e => reply({ error: String(e) })); return true; }
 });
 

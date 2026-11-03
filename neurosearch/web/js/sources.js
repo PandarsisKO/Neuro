@@ -794,6 +794,34 @@ globalThis.exportCsv = function exportCsv(seg) { location.href = `/api/export/${
 // ---- G2: understand what was pasted before deciding what to run
 // The server catalog and the extension scan are existing, distinct Reddit entry points.
 // Show the browser route even for historical failed jobs, without requeueing paid work.
+globalThis.SUBREDDIT_PREP = new Map();
+globalThis.prepareSubredditInChrome = async function prepareSubredditInChrome(url, btn) {
+  const project = state.project; if (!project) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
+  const note = btn.closest('.subreddit-step').querySelector('[role="status"]'); note.textContent = '';
+  try {
+    if (!globalThis.chrome?.runtime?.sendMessage) throw new Error('Open Neuro in Chrome to send this step to the extension. The manual steps below also work.');
+    const q = await api('/api/capture/pending'); globalThis.EXT = q.extension || EXT;
+    if (!EXT.id) throw new Error('Open the Neuro Search extension once to connect it, then try again.');
+    const want = Math.max(1, Math.min(200, Math.floor(Number($('#inMax')?.value) || 20)));
+    const r = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('The extension did not respond. Reload Neuro Search in chrome://extensions, then try again.')), 10000);
+      try {
+        chrome.runtime.sendMessage(EXT.id, { type: 'prepare-subreddit-scan', url, projectId: project.id, maxAgeDays: 365, want }, reply => {
+          clearTimeout(timeout);
+          const error = chrome.runtime.lastError;
+          if (error || !reply) reject(new Error('Reload the Neuro Search extension to version 1.11.4 or later in chrome://extensions, then try again.'));
+          else if (!reply.ok) reject(new Error(reply.error || 'The extension could not prepare this scan.'));
+          else resolve(reply);
+        });
+      } catch (e) { clearTimeout(timeout); reject(e); }
+    });
+    const message = r.status === 'prepared' ? `Ready for ${r.project_name}. Open the Neuro Search extension on the Reddit tab and press Start prepared scan.`
+      : `A scan for ${r.project_name} is already running in that Reddit tab.`;
+    SUBREDDIT_PREP.set(project.id + ':' + url, message); note.textContent = message;
+  } catch (e) { note.textContent = e.message || String(e); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
 globalThis.subredditRecovery = function subredditRecovery(urls) {
   const links = new Map();
   for (const raw of urls) {
@@ -809,11 +837,13 @@ globalThis.subredditRecovery = function subredditRecovery(urls) {
   return `<div class="subreddit-recovery banner">
     <b>Scan Reddit with the Chrome extension</b>
     <div>Server catalogs need Reddit API access. If access is missing or denied, Retry alone will not fix it.</div>
-    <ol>
+    <div class="subreddit-prepared-actions">${[...links].map(([name, url]) => `<div class="subreddit-step"><button class="small primary" onclick="prepareSubredditInChrome('${url}',this)">Prepare r/${esc(name)} in Chrome</button><span role="status">${esc(SUBREDDIT_PREP.get(state.project?.id + ':' + url) || '')}</span></div>`).join('')}</div>
+    <div>Prepare opens Reddit and sends this project, a 1-year window, and the pre-selection count to the extension. Open the extension there; it will be ready for you to start. Nothing is scanned until you press Start prepared scan.</div>
+    <details><summary>Manual steps if the extension cannot connect</summary><ol>
       <li>Open a subreddit in Chrome and sign in to Reddit if asked: ${[...links].map(([name, url]) => `<a href="${url}" target="_blank" rel="noopener noreferrer">r/${esc(name)}</a>`).join(' · ')}.</li>
       <li>Open the Neuro Search extension, select <b>${esc(state.project?.name || 'this project')}</b>, then choose <b>Scan this subreddit</b>.</li>
       <li>Choose how far back to scan and how many posts to pre-select. Return here, review the ranked posts, then choose <b>Start ingesting selected</b>.</li>
-    </ol>
+    </ol></details>
     <div class="muted">The browser scan uses your Reddit session; no Reddit API keys are needed. It brings back posts Reddit makes available, not a guaranteed full history. For one discussion, open that thread and use <b>Send this page</b> instead.</div>
     <details><summary>Prefer the server catalog?</summary><div>Configure approved Reddit API access with <code>REDDIT_CLIENT_ID</code> and <code>REDDIT_CLIENT_SECRET</code> in Neuro’s server configuration, then retry the server scan. If access is already configured, check the error details below.</div></details>
   </div>`;

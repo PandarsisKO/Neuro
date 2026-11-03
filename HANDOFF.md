@@ -4009,3 +4009,56 @@ workflow/preview rather than claimed as a live replay. Screenshot retained at
 `/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-recovery.jpg`.
 Verification tabs were closed. The next user action is a browser scan through the existing extension; the remaining
 repository issues are the three independently reproduced baseline test defects listed above.
+
+## S110 — prepare a Reddit scan in the extension from Neuro — 2026-11-03
+
+Kyle asked to automate sending the recovery steps to Chrome so the extension already expects the guided work.
+Base `c746fae8016f577d8ea4730db25d78db579d169f`; implementation prepared in isolated worktree
+`/tmp/neuro-reddit-handoff-20261103` without live data, `.env` or cookies. Shared main was clean.
+
+The S109 recovery panel now has **Prepare r/<name> in Chrome**. It sends a typed request over S97's existing
+`chrome.runtime.onMessageExternal` connection, using the extension id already advertised by the heartbeat.
+The request carries the subreddit, current project id, one-year window and bounded pre-selection count.
+The worker validates the configured Neuro origin, Reddit container URL, options and project (against the existing
+authenticated projects API), opens the Reddit tab, and writes a **prepared** state in the existing `cscan:<tabId>`
+record. It does not scan, rank or ingest at preparation time. Repeated requests reuse a prepared/running scan;
+another project's work is preserved. Changed explicit preparation options update the prepared step. Prepared
+steps expire after 30 minutes and can be dismissed; tab close clears only a prepared record.
+
+The popup moves the prepared subreddit card to the top, selects and locks the requested project, fills the scan
+settings and offers **Start prepared scan**. Edits to the scan settings survive re-rendering. Starting goes through
+the existing community walker and `/api/community/proposals`; completion offers **Review posts in Neuro**.
+Wrong-tab, expired or changed-app preparations are refused at the actual start boundary and remain dismissible.
+This extends the existing scan lifecycle, not the parked Reddit API catalog mission: no new endpoint, server job,
+queue, fetch/provider path, database schema, credential flow or extension permission. Production server code is
+unchanged, so landing does not restart workers. Extension **1.11.4**; app version markers remain **0.64.4**.
+
+Tests exercise the shipped app renderer, complete worker and popup code with mocked Chrome/app/Reddit I/O:
+prepare → popup preset → real scan button → existing listing/review POST, worker restart, repeated requests,
+option updates, no work before Start, wrong project/origin/tab, expiry, spoofed URL, separate projects and dismissal.
+S74's narrow auth harness now stubs the popup's new render collaborator; its recovered-auth behavior is preserved.
+S93's stale explicit extension-version list was replaced with its minimum shipped version; S92 still checks exact
+manifest/CLAUDE agreement. This fixes one of S109's three independently reproduced baseline test defects.
+
+Candidate source SHA-256 `22eec8211e4cb851a616c7be5b9deb92a02163dd9a160d006780c87c78b444e0` (ordered path + NUL +
+file bytes + NUL, manifest beside the release reports) identifies the exact source, tests and canonical version
+pointer under verification. Focused gates, Tier 1 and release-check run on private temporary data directories.
+Final validation (macOS / Python 3.14): **41 focused tests passed** using `python -m pytest` on S109, S110,
+S74 extension auth, S92, S93, S95, S44 frontend integrity and S50 design drift. `NEUROSEARCH_FAKE_AI=1
+python -m neurosearch.cli eval` **Tier 1 PASS**; `python -c 'from neurosearch.cli import app; app()'
+release-check --no-pytest` **PASS**. `python -m pytest tests -q` completed with **2,602 passed, 2 failed,
+1 warning** in 388.79 seconds. The two failures are the unchanged, independently reproduced S109 baseline defects:
+L1's past 2026-10-01 billing fixture and S9's rolling-week/calendar-month ordering assertion. No new failures;
+the full suite is not all green. Full output: `evals/release/reddit-handoff-pytest-20261103.txt`.
+Release reports: `evals/release/release-check-0.64.4-c746fae-handoff-22eec8211e4c-20261103-143043.{json,txt}`.
+The source manifest is `evals/release/reddit-handoff-candidate-20261103.json`.
+
+Agent visual QA: rendered prepared popup and app recovery previews from the shipped markup/CSS, including the
+project preset, editable date/count options, native fallback disclosure and 390px app layout without overflow
+(panel 345px, content 343px). Popup preview screenshot:
+`/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-prepared-scan.jpg`.
+This is fixture/agent verification, not a live Chrome handshake or user sign-off. Browser control rejected opening
+`chrome://extensions/` because its URL policy allows only HTTP/HTTPS and explicitly forbids workarounds. Therefore
+activation requires Kyle's one-time **Reload** of Neuro Search in Chrome's Extensions page after delivery; no
+browser-command or alternate-surface workaround was attempted. Live extension handoff remains unverified until
+that reload. The task/worker/popup integration is covered deterministically by S110.

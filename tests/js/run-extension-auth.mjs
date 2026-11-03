@@ -62,7 +62,7 @@ async function popupRecovery() {
     cfg: {}, WANTED: null, chrome, Promise, JSON, URL,
     $: selector => elements[selector.slice(1)], esc: value => String(value),
     api: async path => path === '/api/projects' ? [{ id: 'p1', name: 'Project one' }] : path === '/api/capture/pending' ? { items: [] } : {},
-    refreshScan: async () => {}, refreshCapture: async () => {},
+    refreshScan: async () => {}, refreshCapture: async () => {}, renderCommunity: async () => {},
   };
   vm.createContext(sandbox);
   vm.runInContext(`${loadSrc}\nglobalThis.__load = load;`, sandbox);

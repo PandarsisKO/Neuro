@@ -25,6 +25,7 @@ async function load() {
       // The saved refusal was just recovered from.  Leaving its old copy visible implies the password is still
       // rejected even though the authenticated projects request succeeded.
       if (savedAuthError) $('#pageMsg').textContent = '';
+      await renderCommunity();
     } catch (e) { $('#pageMsg').textContent = 'Could not load projects: ' + e.message; }
     try {
       // B1: does the app want THIS page? (one click, the project and reason already known)
@@ -421,7 +422,7 @@ load();
 
 // ---- S93: "Scan this community" — a VIEW of the background walker (cscan:<tabId>), exactly like the course scan.
 const CSCAN_ACTIVE = new Set(['listing', 'reading', 'sending']);
-let CSCAN = null;
+let CSCAN = null, preparedApplied = null;
 // Two cards, one walker: 'store' adapters (SMB Market) capture every conversation; 'propose' adapters (a subreddit,
 // S95) list the posts for a review card and let the app rank + capture the chosen ones. Each card is its own
 // dedicated button (Kyle: "make a dedicated button so i know about it").
@@ -429,13 +430,35 @@ const CARDS = { store: { card: '#communityCard', label: '#communityLabel', btn: 
                 propose: { card: '#subredditCard', label: '#subredditLabel', btn: '#subredditScan', cancel: '#subredditCancel', msg: '#subredditMsg', age: '#subredditAge', want: '#subredditWant' } };
 async function renderCommunity() {
   if (!TAB) TAB = await currentTab();
-  const adapter = TAB && self.NSCommunityAdapters.forUrl(TAB.url);
+  const r = await bg({ type: 'cscan-get', tabId: TAB.id }); CSCAN = r.scan || null;
+  const adapter = TAB && self.NSCommunityAdapters.forUrl(CSCAN?.status === 'prepared' ? CSCAN.url : TAB.url);
   for (const c of Object.values(CARDS)) $(c.card).style.display = 'none';
+  $('#pageProject').disabled = false;
   if (!adapter) return;
   const C = CARDS[adapter.mode === 'propose' ? 'propose' : 'store'];
-  $(C.card).style.display = ''; $(C.label).textContent = '· ' + (adapter.title ? adapter.title(TAB.url) : adapter.label);
-  const r = await bg({ type: 'cscan-get', tabId: TAB.id }); CSCAN = r.scan || null;
+  $(C.card).style.display = ''; $(C.label).textContent = '· ' + (adapter.title ? adapter.title(CSCAN?.status === 'prepared' ? CSCAN.url : TAB.url) : adapter.label);
   const s = CSCAN, active = !!(s && CSCAN_ACTIVE.has(s.status));
+  $('#preparedScan').hidden = true; $('#dismissPrepared').hidden = true;
+  $('#subredditScan').textContent = 'Scan this subreddit';
+  if (s?.status === 'prepared') {
+    const valid = s.expires_at > Date.now() && self.NSCommunityAdapters.subredditUrl(TAB.url) === s.url
+      && cfg.appUrl && new URL(cfg.appUrl).origin === s.app_origin;
+    const projectAvailable = [...$('#pageProject').options].some(p => p.value === s.project_id);
+    $('#preparedScan').hidden = false; $('#dismissPrepared').hidden = false; $('#dismissPrepared').disabled = false;
+    $('#pageProject').disabled = true;
+    $('#subredditCard').parentElement.insertBefore($('#subredditCard'), $('#wanted'));
+    $('#preparedScan').innerHTML = `<b>Ready from Neuro: ${esc(adapter.title(s.url))}</b><br>Project: <b>${esc(s.project_name)}</b><br>Next: review the settings below, then start the scan. The ranked posts return to Neuro for your review; starting may use your model budget for ranking.`;
+    if (valid && projectAvailable && preparedApplied !== s.scan_id) {
+      $('#pageProject').value = s.project_id; $(C.age).value = s.max_age_days == null ? '' : String(s.max_age_days);
+      $(C.want).value = s.want; preparedApplied = s.scan_id;
+    }
+    $(C.btn).textContent = 'Start prepared scan';
+    $(C.btn).disabled = !valid || !projectAvailable;
+    $(C.cancel).style.display = 'none';
+    $(C.msg).textContent = !valid ? 'This prepared scan expired or the tab changed. Prepare it again from Neuro.'
+      : !projectAvailable ? 'Waiting for the requested project. If it is unavailable, choose the project again in Neuro.' : 'Ready — nothing has been scanned yet.';
+    return;
+  }
   $(C.btn).disabled = active; $(C.cancel).style.display = active ? '' : 'none';
   if (!s) { $(C.msg).textContent = ''; return; }
   const errs = s.errors && s.errors.length ? ` <span class="warn">${s.errors.length} problem${s.errors.length === 1 ? '' : 's'}</span>` : '';
@@ -443,14 +466,14 @@ async function renderCommunity() {
   const why = { nothing_in_window: 'no posts in that time window', feed_unreadable: 'the listing could not be read — are you signed in on this tab?', cancelled: 'you stopped it', runner_error: 'the walker hit an error', send_failed: 'Neuro Search did not accept the listing' }[s.reason] || '';
   const head = s.status === 'proposed' ? `<span class="ok">Sent ${s.listed} post${s.listed === 1 ? '' : 's'} to Neuro Search for review${s.already ? ` (${s.already} already in your library)` : ''}.</span><br>Open Neuro Search → Sources: the review card ranks them against your brief with the best ${s.want || 20} pre-selected. Press Start there; keep any reddit.com tab open and the extension captures the chosen posts on its own.`
     : s.status === 'done' ? `<span class="ok">Done — ${s.stored} conversation${s.stored === 1 ? '' : 's'} stored in Neuro Search</span>` : `<span class="bad">${s.status === 'cancelled' ? 'Stopped' : 'Failed'}${why ? ' — ' + esc(why) : ''}</span>`;
-  $(C.msg).innerHTML = `${head}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
+  $(C.msg).innerHTML = `${head}${s.status === 'proposed' ? `<br><a href="${esc(cfg.appUrl.replace(/\/$/, '') + '/#p/' + encodeURIComponent(s.project_id) + '/sources')}" target="_blank" rel="noopener">Review posts in Neuro</a>` : ''}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
 }
 for (const C of Object.values(CARDS)) {
   $(C.btn).onclick = async () => {
     if (!TAB) TAB = await currentTab();
     const pid = $('#pageProject').value; if (!pid) { $(C.msg).innerHTML = '<span class="bad">Pick a project above first.</span>'; return; }
     chrome.storage.local.set({ lastProject: pid });
-    $(C.btn).disabled = true; $(C.msg).textContent = 'Listing…';
+    $(C.btn).disabled = true; $('#dismissPrepared').disabled = true; $(C.msg).textContent = 'Listing…';
     const age = $(C.age).value; const want = C.want ? +$(C.want).value || 20 : null;
     const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null, want });
     if (r.error) { $(C.msg).innerHTML = `<span class="bad">${esc(r.error)}</span>`; $(C.btn).disabled = false; }
@@ -461,3 +484,5 @@ for (const C of Object.values(CARDS)) {
 chrome.storage.onChanged.addListener((changes) => { if (TAB && changes[`cscan:${TAB.id}`]) renderCommunity(); });
 renderCommunity();
 
+
+$('#dismissPrepared').onclick = async () => { if (!TAB) return; await bg({ type: 'cscan-dismiss-prepared', tabId: TAB.id }); preparedApplied = null; renderCommunity(); };
