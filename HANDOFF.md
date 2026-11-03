@@ -4152,3 +4152,12 @@ Delivery: fast-forwarded shared main to `432dfd8cac919a34757983c575c95a971091af9
 performed. Kyle has been asked to reload extension **1.11.5** once more; the existing failed task will then expose
 the recovery action. Live installed-worker recovery remains pending that reload, separately from the passing
 full-worker/popup regression and read-only live DOM extraction above.
+
+Live activation follow-up — Kyle confirmed **Reloaded Neuro Search 1.11.5**. The installed popup on the original
+r/quickbooks tab now displays enabled **Review loaded posts instead**, the corrected refusal explanation and
+loaded-page scope/cost guidance. It restored **AI powered Aviation Detailing Company** (selected and locked),
+**1 year** and **20** from the existing failed task. Left this recovery choice ready for Kyle; the recovery button,
+ranking and ingest were not invoked during activation verification. Actual installed-popup screenshot:
+`/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-listing-recovery-live.png`.
+Installed UI activation is verified; an actual review submission remains a user action, rather than a claimed
+live end-to-end ingest. Documentation-only follow-up; the tested candidate source remains unchanged.
