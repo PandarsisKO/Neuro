@@ -1,0 +1,191 @@
+Candidate: base 6cb38a5 + source f677630719e7
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+.........................F.............................................. [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 35%]
+........................................................................ [ 38%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+........................................................................ [ 74%]
+........................................................................ [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+........................................................................ [ 91%]
+..........F.............................................F............... [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+...........                                                              [100%]
+=================================== FAILURES ===================================
+_________ test_account_usage_limit_pauses_the_job_until_the_named_date _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x11278f8c0>
+
+    def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
+        from neurosearch import providers
+        import anthropic
+        body = {"type": "error", "error": {"type": "invalid_request_error", "message": "You have reached your specified API usage limits. You will regain access on 2026-10-01 at 00:00 UTC."}}
+        exc = anthropic.BadRequestError(message=body["error"]["message"], response=__import__("httpx").Response(400, request=__import__("httpx").Request("POST", "https://x")), body=body)
+        assert providers.classify_error(exc) == providers.SPEND_CAP
+        until = providers.spend_cap_until(exc)
+        assert until and time.strftime("%Y-%m-%d", time.gmtime(until)) == "2026-10-01"
+        pid = db.create_project("cap", "x")["id"]
+        src = db.upsert_source(platform="web", external_id="cap-src", url="https://example.com/cap", title="cap", status="ready")
+        db.add_project_sources(pid, [src["id"]])
+        j = db.create_job("suggest_findings", {"project_id": pid, "source_ids": [src["id"]], "source_id": src["id"]})
+        monkeypatch.setattr(jobs, "run_job", lambda job: (_ for _ in ()).throw(providers.ProviderError(providers.SPEND_CAP, exc, 1, "anthropic:messages")))
+        job = db.claim_job(("suggest_findings",), worker_id="sim")
+        assert jobs.execute(job, "sim") == "queued"
+        row = db.get_job(j["id"])
+        assert row["status"] == "queued" and row["wait_reason"] == "budget" and "usage limit" in row["message"] and "2026-10-01" in row["message"] and int(row.get("attempts") or 0) == 0
+        from neurosearch import api
+        u = api.api_usage()
+>       assert u["account_limit_until"] == until and "usage limit" in (u["blocked"] or "")
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'account_limit_until'
+
+tests/test_l1_browser_capture.py:272: KeyError
+_____________ test_the_extension_ships_the_walker_and_the_adapter ______________
+
+    def test_the_extension_ships_the_walker_and_the_adapter():
+        ext = ROOT / "extension"
+        bg = (ext / "background.js").read_text(); pop = (ext / "popup.js").read_text(); html = (ext / "popup.html").read_text()
+        ad = (ext / "community-adapters.js").read_text()
+        assert "importScripts('community-adapters.js');" in bg and "async function runCommunityScan(rec)" in bg
+        assert "msg.type === 'cscan-start'" in bg and "msg.type === 'cscan-cancel'" in bg and "msg.type === 'cscan-get'" in bg
+        assert "api('/api/community/threads'" in bg, "batches go through the app's endpoint"
+        assert "credentials: 'include'" in bg.split("async function pageJson")[1].split("}, args: [url]")[0], "reads happen in the tab with the person's session"
+        assert "self.NSCommunityAdapters = {" in ad and "contract: 'community_thread_capture/1'" in ad
+        assert "smbmarket.com/dashboard/community" in ad
+        assert ad.rstrip().endswith("})();"), "scoped, like thread-capture.js (S92's global-collision lesson)"
+        assert 'id="communityScan"' in html and '<option value="365" selected>1 year</option>' in html, "1 year is the default walk-back (Kyle)"
+        assert '<script src="community-adapters.js"></script>' in html and html.index("community-adapters.js") < html.index('src="popup.js"')
+        assert "type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null" in pop
+>       assert json.loads((ext / "manifest.json").read_text())["version"] in ("1.10.0", "1.11.0", "1.11.1", "1.11.2")
+E       AssertionError: assert '1.11.3' in ('1.10.0', '1.11.0', '1.11.1', '1.11.2')
+
+tests/test_s93_community_walker.py:109: AssertionError
+_____________________ test_windows_are_ordered_and_bounded _____________________
+
+project = '22280253c08f43cfbae78ec5fac08a1f'
+
+    def test_windows_are_ordered_and_bounded(project):
+        assert cost_value.window_start("today") >= cost_value.window_start("week")
+>       assert cost_value.window_start("week") >= cost_value.window_start("month") - 1
+E       AssertionError: assert 1793135686.446608 >= (1793516400.0 - 1)
+E        +  where 1793135686.446608 = <function window_start at 0x110b00d50>('week')
+E        +    where <function window_start at 0x110b00d50> = cost_value.window_start
+E        +  and   1793516400.0 = <function window_start at 0x110b00d50>('month')
+E        +    where <function window_start at 0x110b00d50> = cost_value.window_start
+
+tests/test_s9_cost_value.py:292: AssertionError
+=============================== warnings summary ===============================
+../../../Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53
+  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_l1_browser_capture.py::test_account_usage_limit_pauses_the_job_until_the_named_date
+FAILED tests/test_s93_community_walker.py::test_the_extension_ships_the_walker_and_the_adapter
+FAILED tests/test_s9_cost_value.py::test_windows_are_ordered_and_bounded - As...
+3 failed, 2600 passed, 1 warning in 385.92s (0:06:25)
+
+
+Unchanged base: billing fixture reproduction
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_account_usage_limit_pauses_the_job_until_the_named_date _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a7762c0>
+
+    def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
+        from neurosearch import providers
+        import anthropic
+        body = {"type": "error", "error": {"type": "invalid_request_error", "message": "You have reached your specified API usage limits. You will regain access on 2026-10-01 at 00:00 UTC."}}
+        exc = anthropic.BadRequestError(message=body["error"]["message"], response=__import__("httpx").Response(400, request=__import__("httpx").Request("POST", "https://x")), body=body)
+        assert providers.classify_error(exc) == providers.SPEND_CAP
+        until = providers.spend_cap_until(exc)
+        assert until and time.strftime("%Y-%m-%d", time.gmtime(until)) == "2026-10-01"
+        pid = db.create_project("cap", "x")["id"]
+        src = db.upsert_source(platform="web", external_id="cap-src", url="https://example.com/cap", title="cap", status="ready")
+        db.add_project_sources(pid, [src["id"]])
+        j = db.create_job("suggest_findings", {"project_id": pid, "source_ids": [src["id"]], "source_id": src["id"]})
+        monkeypatch.setattr(jobs, "run_job", lambda job: (_ for _ in ()).throw(providers.ProviderError(providers.SPEND_CAP, exc, 1, "anthropic:messages")))
+        job = db.claim_job(("suggest_findings",), worker_id="sim")
+        assert jobs.execute(job, "sim") == "queued"
+        row = db.get_job(j["id"])
+        assert row["status"] == "queued" and row["wait_reason"] == "budget" and "usage limit" in row["message"] and "2026-10-01" in row["message"] and int(row.get("attempts") or 0) == 0
+        from neurosearch import api
+        u = api.api_usage()
+>       assert u["account_limit_until"] == until and "usage limit" in (u["blocked"] or "")
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'account_limit_until'
+
+tests/test_l1_browser_capture.py:272: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_l1_browser_capture.py::test_account_usage_limit_pauses_the_job_until_the_named_date
+1 failed in 2.83s
+
+
+Unchanged base: walker/version and calendar-window reproductions
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_____________ test_the_extension_ships_the_walker_and_the_adapter ______________
+
+    def test_the_extension_ships_the_walker_and_the_adapter():
+        ext = ROOT / "extension"
+        bg = (ext / "background.js").read_text(); pop = (ext / "popup.js").read_text(); html = (ext / "popup.html").read_text()
+        ad = (ext / "community-adapters.js").read_text()
+        assert "importScripts('community-adapters.js');" in bg and "async function runCommunityScan(rec)" in bg
+        assert "msg.type === 'cscan-start'" in bg and "msg.type === 'cscan-cancel'" in bg and "msg.type === 'cscan-get'" in bg
+        assert "api('/api/community/threads'" in bg, "batches go through the app's endpoint"
+        assert "credentials: 'include'" in bg.split("async function pageJson")[1].split("}, args: [url]")[0], "reads happen in the tab with the person's session"
+        assert "self.NSCommunityAdapters = {" in ad and "contract: 'community_thread_capture/1'" in ad
+        assert "smbmarket.com/dashboard/community" in ad
+        assert ad.rstrip().endswith("})();"), "scoped, like thread-capture.js (S92's global-collision lesson)"
+        assert 'id="communityScan"' in html and '<option value="365" selected>1 year</option>' in html, "1 year is the default walk-back (Kyle)"
+        assert '<script src="community-adapters.js"></script>' in html and html.index("community-adapters.js") < html.index('src="popup.js"')
+        assert "type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null" in pop
+>       assert json.loads((ext / "manifest.json").read_text())["version"] in ("1.10.0", "1.11.0", "1.11.1", "1.11.2")
+E       AssertionError: assert '1.11.3' in ('1.10.0', '1.11.0', '1.11.1', '1.11.2')
+
+tests/test_s93_community_walker.py:109: AssertionError
+_____________________ test_windows_are_ordered_and_bounded _____________________
+
+project = 'b0ebf4632d154672a569e01974f602cd'
+
+    def test_windows_are_ordered_and_bounded(project):
+        assert cost_value.window_start("today") >= cost_value.window_start("week")
+>       assert cost_value.window_start("week") >= cost_value.window_start("month") - 1
+E       AssertionError: assert 1793135712.338462 >= (1793516400.0 - 1)
+E        +  where 1793135712.338462 = <function window_start at 0x107f8be20>('week')
+E        +    where <function window_start at 0x107f8be20> = cost_value.window_start
+E        +  and   1793516400.0 = <function window_start at 0x107f8be20>('month')
+E        +    where <function window_start at 0x107f8be20> = cost_value.window_start
+
+tests/test_s9_cost_value.py:292: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_s93_community_walker.py::test_the_extension_ships_the_walker_and_the_adapter
+FAILED tests/test_s9_cost_value.py::test_windows_are_ordered_and_bounded - As...
+2 failed in 2.93s

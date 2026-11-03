@@ -3950,3 +3950,49 @@ Next for Kyle: reload the extension (1.11.3), let the app pick up the `.py` chan
 lessons (the scan fetches 16 course pages first, then each lesson page), most rows "article ready"; then import.
 Two known limits: the hub's "LOAD MORE" featured list is not expanded (those lessons are reached through their
 courses anyway), and a course page's own "N lessons" count is not used to check completeness.
+
+## S109 — Reddit failures explain the browser scan recovery — 2026-11-03
+
+Kyle reported failed subreddit ingests with only a raw `REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET` error and Retry.
+This bounded fix exposes S95's existing extension scan; it does not reopen the parked server-catalog/API mission.
+Base `6cb38a5d514f47ed5d953ee070435d3a431b1e18`; prepared in isolated worktree
+`/tmp/neuro-reddit-recovery-20261103`, without `.env`, live data or cookies. The shared Mac checkout was clean.
+
+- `sources.js` owns one recovery renderer: subreddit links, the current project's name to select in the extension,
+  **Scan this subreddit**, then review the ranked posts and **Start ingesting selected**. It also explains
+  **Send this page** for a single discussion and keeps API configuration as secondary detail. Links are rebuilt
+  from validated Reddit container URLs; project names are escaped. Browser listing coverage is explicitly limited
+  to what Reddit makes available.
+- `research.js` shows one panel for repeated failed subreddit scans, including historical errors, and names their
+  retry button **Retry server scan**. The same guidance appears before queuing a pasted subreddit and on blocked
+  catalog cards; the Communities access note now points to the extension scan. Original diagnostics remain visible.
+  No new fetch, ingestion, storage, job, endpoint, credential or extension path. Existing jobs are not modified.
+  Only JS/CSS production files changed, so delivery does not require a server restart or extension reload.
+- Regression surface: ordinary job failures and retry controls, successful jobs, catalog empty states, source
+  classification, and the existing browser listing → ranked review → selected-thread ingestion flow. The new
+  `tests/test_s109_reddit_recovery.py` invokes the shipped renderers against the real Sources markup through
+  `tests/js/run-reddit-recovery.mjs`; S74/S95 continue to own server/capture integration.
+
+Validation (macOS / Python 3.14, private temporary data directories, deterministic providers): affected baseline
+**33 passed**; affected + frontend integrity + design drift + new workflow **43 passed**. Commands used the shared
+venv interpreter with the isolated checkout as cwd: `python -m pytest tests/test_s109_reddit_recovery.py
+tests/test_s74_subreddit_catalog_identity.py tests/test_s95_scan_subreddit.py tests/test_s44_frontend_integrity.py
+tests/test_s50_design_drift.py -q`; `NEUROSEARCH_FAKE_AI=1 python -m neurosearch.cli eval` **Tier 1 PASS**;
+`python -c 'from neurosearch.cli import app; app()' release-check --no-pytest` **PASS**. (`-m neurosearch.cli`
+registers only early commands, so use the imported app for release-check.) Version markers remain **0.64.4**.
+Candidate source SHA-256 `f677630719e7c136c17f3d7f6e6bc9c8cb1bbd1546dd0661054eb8b446f40a5b` covers the three
+production files and two new test files (manifest beside the reports). Artifact:
+`evals/release/release-check-0.64.4-6cb38a5-reddit-f677630719e7-20261103-141026.{json,txt}`.
+Agent visual verification: isolated preview using shipped markup/CSS, light/dark themes, native details control,
+and 390px viewport (recovery panel scroll width 358px inside a 360px box, no overflow). This is agent verification,
+not a claim of user visual sign-off.
+
+Full suite: `python -m pytest tests -q` → **2,600 passed, 3 failed, 1 warning** in 385.92 s.
+All three failures reproduce on an untouched detached checkout of base `6cb38a5`:
+`test_l1_browser_capture::test_account_usage_limit_pauses_the_job_until_the_named_date` expects an active gate
+until 2026-10-01 (now past); `test_s93_community_walker::test_the_extension_ships_the_walker_and_the_adapter`
+rejects existing extension 1.11.3 with an old explicit version list; `test_s9_cost_value::test_windows_are_ordered_and_bounded`
+assumes a rolling seven-day window cannot start before the current calendar month (false early in a month).
+These unrelated test defects are left bounded to their existing owners; the full suite is **not all green**.
+Full and base-reproduction outputs are preserved in `evals/release/reddit-recovery-pytest-20261103.txt`.
+Prepared change is ready to land; actual live verification and publication are recorded in the follow-up entry.

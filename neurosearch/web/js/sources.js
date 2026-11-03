@@ -792,6 +792,35 @@ globalThis.removeFromProject = async function removeFromProject(id) { await del(
 globalThis.delSource = async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
 globalThis.exportCsv = function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?project_id=${state.project.id}`; }
 // ---- G2: understand what was pasted before deciding what to run
+// The server catalog and the extension scan are existing, distinct Reddit entry points.
+// Show the browser route even for historical failed jobs, without requeueing paid work.
+globalThis.subredditRecovery = function subredditRecovery(urls) {
+  const links = new Map();
+  for (const raw of urls) {
+    try {
+      const u = new URL(raw);
+      const m = u.pathname.match(/^\/r\/([A-Za-z0-9_]{2,21})\/?$/);
+      if (!['http:', 'https:'].includes(u.protocol) || !['reddit.com', 'www.reddit.com', 'old.reddit.com'].includes(u.hostname) || !m) continue;
+      const name = m[1].toLowerCase();
+      links.set(name, `https://www.reddit.com/r/${name}/`);
+    } catch (_) {}
+  }
+  if (!links.size) return '';
+  return `<div class="subreddit-recovery banner">
+    <b>Scan Reddit with the Chrome extension</b>
+    <div>Server catalogs need Reddit API access. If access is missing or denied, Retry alone will not fix it.</div>
+    <ol>
+      <li>Open a subreddit in Chrome and sign in to Reddit if asked: ${[...links].map(([name, url]) => `<a href="${url}" target="_blank" rel="noopener noreferrer">r/${esc(name)}</a>`).join(' · ')}.</li>
+      <li>Open the Neuro Search extension, select <b>${esc(state.project?.name || 'this project')}</b>, then choose <b>Scan this subreddit</b>.</li>
+      <li>Choose how far back to scan and how many posts to pre-select. Return here, review the ranked posts, then choose <b>Start ingesting selected</b>.</li>
+    </ol>
+    <div class="muted">The browser scan uses your Reddit session; no Reddit API keys are needed. It brings back posts Reddit makes available, not a guaranteed full history. For one discussion, open that thread and use <b>Send this page</b> instead.</div>
+    <details><summary>Prefer the server catalog?</summary><div>Configure approved Reddit API access with <code>REDDIT_CLIENT_ID</code> and <code>REDDIT_CLIENT_SECRET</code> in Neuro’s server configuration, then retry the server scan. If access is already configured, check the error details below.</div></details>
+  </div>`;
+}
+globalThis.subredditJobNeedsHelp = function subredditJobNeedsHelp(j) {
+  return j.status === 'failed' && j.kind === 'explore' && j.payload?.kind === 'subreddit';
+}
 globalThis.classifyTimer = null;
 globalThis.lastClassified = null;
 globalThis.classifyInput = async function classifyInput() {
@@ -799,7 +828,7 @@ globalThis.classifyInput = async function classifyInput() {
   if (!text) { box.innerHTML = ''; globalThis.lastClassified = null; return; }
   try {
     const r = await post('/api/classify', { input: text }); globalThis.lastClassified = r.items;
-    box.innerHTML = r.items.map((c, i) => {
+    box.innerHTML = subredditRecovery(r.items.filter(c => c.kind === 'subreddit').map(c => c.url)) + r.items.map((c, i) => {
       const acts = c.actions.map(a => `<label style="margin-right:10px;cursor:pointer" title="${esc(a.note || '')}"><input type="radio" name="act${i}" value="${a.action}" ${a.available ? '' : 'disabled'} ${a.action === c.default_action ? 'checked' : ''}> ${esc(a.label)}${a.available ? '' : ' <span class="muted">(coming)</span>'}</label>`).join('');
       return `<div class="mt-1"><b>${esc(c.label)}</b>${c.host ? ` <span class="muted">${esc(c.host)}</span>` : ''} — ${esc(c.detail)}<div style="margin-top:2px">${acts || '<span class="muted">nothing to do yet</span>'}</div></div>`;
     }).join('');
@@ -846,7 +875,7 @@ globalThis.loadCommunity = async function loadCommunity() {
     $('#commMission').innerHTML = '<option value="">— pick a mission from the research state —</option>' + COMM_MISSIONS.map((x, i) => `<option value="${i}">${esc(x.kind.replace('_', ' '))}: ${esc(x.query.slice(0, 90))}</option>`).join('');
     const s = await api(`/api/projects/${state.project.id}/community/synthesis`); const st = s.stats || {};
     $('#commCounts').textContent = st.threads ? `· ${st.threads} thread${st.threads === 1 ? '' : 's'} · ${st.substantive} substantive posts · ${st.corrections} correction${st.corrections === 1 ? '' : 's'}` : '';
-    $('#commAccess').innerHTML = st.reddit_api ? '' : `<div class="muted" style="font-size:12px;margin:4px 0">Reddit refuses every non-browser reader (since June 2026): to add a thread, open it in Chrome and use the extension's <b>Send this page</b>; to search a subreddit from here, add <code>REDDIT_CLIENT_ID</code> / <code>REDDIT_CLIENT_SECRET</code> (a Reddit “script” app) to <code>.env</code>.</div>`;
+    $('#commAccess').innerHTML = st.reddit_api ? '' : `<div class="muted text-xs">To scan a subreddit without API access, open it in Chrome, select this project in the Neuro Search extension, and choose <b>Scan this subreddit</b>. For one thread, use <b>Send this page</b>.</div>`;
     const syn = s.syntheses || [];
     $('#commSynth').innerHTML = syn.length ? `<div class="muted" style="margin-top:6px"><b>Cross-thread experience</b> (derived — cite the posts, not this)</div>` + syn.slice(0, 12).map(x => `<div class="kn">${stTag(x.kind === 'FREQUENTLY_REPORTED' ? 'strong' : x.kind === 'RARE_BUT_SERIOUS' || x.kind === 'STRONG_DISAGREEMENT' ? 'weak' : 'developing')}<div><b>${esc(x.kind.replace(/_/g, ' '))}</b> · ${x.independent_lines} independent firsthand line${x.independent_lines === 1 ? '' : 's'}${x.contradicting ? ` · ${x.contradicting} disputing` : ''}<div class="why">${esc(x.statement)}</div>${x.coverage && x.coverage.note ? `<div class="muted" style="color:var(--warn);font-size:12px">⚠ ${esc(x.coverage.note)}</div>` : ''}<div>${(x.evidence || []).slice(0, 6).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank">${esc(e.relation === 'CONTRADICTS' ? '✗ ' : '')}${esc(e.locator || '')}${e.independent ? '' : ' ↩'}</a>`).join('')}</div></div></div>`).join('') : '';
   } catch (e) { $('#commMsg').textContent = e.message; }
@@ -918,7 +947,7 @@ globalThis.loadSubredditCatalogs = async function loadSubredditCatalogs() {
     if (s.status === 'blocked') return `blocked · ${s.error || 'access unavailable'}`;
     return `${s.status} · ${s.known_posts || 0} known posts`;
   };
-  host.innerHTML = (r.items || []).map(c => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span class="grow"><b>r/${esc(c.external_id)}</b><div class="muted text-xs">${esc(label(c.scan))}${c.scan && c.scan.observed ? ` · ${c.scan.observed} listing observations` : ''}</div></span><button class="small" onclick="openSubredditCatalog('${c.id}')">Review</button><button class="small ghost" onclick="refreshSubredditCatalog('${c.id}',this)">Refresh</button></div>`).join('') || '<div class="muted">Paste a supported r/subreddit URL to create a catalog.</div>';
+  host.innerHTML = subredditRecovery((r.items || []).filter(c => c.scan?.status === 'blocked').map(c => c.url)) + ((r.items || []).map(c => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span class="grow"><b>r/${esc(c.external_id)}</b><div class="muted text-xs">${esc(label(c.scan))}${c.scan && c.scan.observed ? ` · ${c.scan.observed} listing observations` : ''}</div></span><button class="small" onclick="openSubredditCatalog('${c.id}')">Review</button><button class="small ghost" onclick="refreshSubredditCatalog('${c.id}',this)">Refresh</button></div>`).join('') || '<div class="muted">Paste a supported r/subreddit URL to create a catalog.</div>');
   if (CATALOG.id && !(r.items || []).some(c => c.id === CATALOG.id)) CATALOG.id = null;
 };
 globalThis.openSubredditCatalog = async function openSubredditCatalog(id, reset = true) {
