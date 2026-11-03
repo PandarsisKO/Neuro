@@ -3996,3 +3996,16 @@ assumes a rolling seven-day window cannot start before the current calendar mont
 These unrelated test defects are left bounded to their existing owners; the full suite is **not all green**.
 Full and base-reproduction outputs are preserved in `evals/release/reddit-recovery-pytest-20261103.txt`.
 Prepared change is ready to land; actual live verification and publication are recorded in the follow-up entry.
+
+Delivery and live verification: fast-forwarded the clean shared `main` to code commit
+`262be3cd158c0210e47575a15bab56b70fce5e30`. Publisher request `1793744166-b8bd8009` returned **PASS**;
+`git ls-remote --heads origin main` verified that exact SHA; `tools/git_sync_check.py --delivery` **PASS**
+(main exact, zero local-only commits/tags, zero mismatched tags). No version/tag release is claimed.
+In a separate Chrome tab against the running app, pasting r/quickbooks displayed the new instructions with
+**AI powered Aviation Detailing Company** as the project, the actual extension button names, and the API-access
+warning before Add. No Add/Retry/Start action was invoked; the original tab and running jobs were untouched.
+The original failed rows were outside the latest 30 jobs by then, so their renderer is verified by the deterministic
+workflow/preview rather than claimed as a live replay. Screenshot retained at
+`/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-recovery.jpg`.
+Verification tabs were closed. The next user action is a browser scan through the existing extension; the remaining
+repository issues are the three independently reproduced baseline test defects listed above.
