@@ -196,7 +196,40 @@ def _most_distinctive(cands: list[str], keep: set[str] | None = None) -> list[st
 #
 # Bump this string whenever the matcher's decisions change. Rows from an older version are reported as stale and
 # never pre-ticked; they are not deleted, because the user may already have decided on them.
-SCAN_VERSION = "recall-3"        # recall-1 = before 0.60.2 (3-char tokens, union coverage, no anchor)
+SCAN_VERSION = "recall-4"        # recall-1 = before 0.60.2 (3-char tokens, union coverage, no anchor); recall-4 = S108 subject check
+
+
+# S108 — A MATCH HAS TO BE ABOUT THE PROJECT, NOT JUST ABOUT ONE PHRASE IN ITS BRIEF.
+#
+# Kyle, 2026-11-03, new project "AI powered Aviation Detailing Company" (brief: which AI tools would help his
+# aircraft-cleaning business — a virtual assistant, self-booking, Google Workspace, QuickBooks Online, ROI): "wildly
+# unhelpful and inaccurate". Measured: 6 of the 7 "strong" rows came from ONE clause, "we have quickbooks online" —
+# a statement of what he already uses, not what he is researching — and each was an M&A or bookkeeping video that
+# says "QuickBooks Online" once (a $700k-SDE interview, "How the RICH use Business Structures"). The 7th was a
+# recorded acquisition call that says "aviation" and "business". A two-word clause is trivially "fully covered" by
+# one passage, and the brief's actual subject (AI tools, an assistant, booking) is written in words common enough
+# that the scan rightly treats them as generic — so the incidental proper nouns drove everything.
+#
+# The facet searches stay (they are $0 and explainable), but every match is now also checked against the WHOLE
+# brief by meaning: one embedding of the project text, compared with the source's own passage vectors, which are
+# already stored. A source whose closest passage is far from the project is dropped; one that is only loosely close
+# can be "possible", never "strong" (the row the card pre-ticks). The same comparison also finds sources the facet
+# words missed — a passage that talks about the brief's subject in other words — offered as "possible", so the card
+# is not only negative. "Strong" now means two independent signals agree: a facet search AND closeness by meaning.
+# Without embeddings (no key, tests) the check is skipped and the scan behaves as before.
+#
+# Calibrated on Kyle's live library (3,149 sources, nearly all business content): EVERY source is "close" to a
+# business brief in absolute terms — the QuickBooks-mention M&A interviews scored 0.47-0.57, real AI-for-small-
+# business videos 0.57-0.65. A fixed cosine cut cannot separate those, so the bars are RANKS within this library:
+# how many of the sources you own sit closer to this brief than this one does. Self-calibrating, the same shape as
+# WEAK_QUERY_QUANTILE, and with absolute floors so a tiny or off-theme library cannot promote noise.
+SUBJECT_MIN_Q = 0.90             # below the closest 10% of the library: not about this project — dropped
+SUBJECT_STRONG_Q = 0.99          # "strong" needs the closest 1%
+SUBJECT_ADD_Q = 0.99             # a source no facet found is added only from the closest 1%
+SUBJECT_MIN_ABS, SUBJECT_STRONG_ABS, SUBJECT_ADD_ABS = 0.30, 0.42, 0.45
+SUBJECT_ADD_MAX = 12             # at most this many such additions per scan
+SUBJECT_TEXT_MAX = 6000
+SHORT_QUERY_TOKENS = 3           # a clause of fewer content words cannot make a match "strong" on its own
 
 
 # 0.61.0 — A CLAUSE MADE ONLY OF GENERIC WORDS CANNOT DISCRIMINATE, AND MUST NOT PRODUCE A "STRONG" MATCH.
@@ -304,6 +337,17 @@ def _band(hit: dict[str, Any]) -> str:
     match for a project about AI-assisted UI/UX design. Two queries matching, or 0.6 of the terms appearing
     somewhere among three passages, is a low bar in a library of 1,219 sources about other subjects — and calling
     it "strong" is the part that misleads, because it is the row the card pre-ticks."""
+    # S108: a subject check that ran caps the band (bar = this library's closest 1%); a find the facet searches
+    # missed is judged on it alone.
+    subj, bar = hit.get("subject"), hit.get("subject_strong")
+    if subj is not None and bar is not None:
+        if subj < bar:
+            return "possible"
+        if hit.get("semantic_only"):
+            # Found by meaning alone, in words none of the brief's searches used. Measured on Kyle's library these
+            # are often right ("specialised AI tools for home-service businesses") and sometimes merely adjacent
+            # (an Airbnb side-hustle video), so they are offered, never pre-ticked: strong needs two signals.
+            return "possible"
     passage = hit.get("passage_coverage")
     strong_passage = passage is None or passage >= STRONG_COVERAGE     # None = an older row without the measure
     if not strong_passage:
@@ -315,7 +359,13 @@ def _band(hit: dict[str, Any]) -> str:
         return "possible"
     if hit.get("distinctive_queries") is not None and not hit["distinctive_queries"]:
         return "possible"
-    return "strong" if (len(hit["queries"]) >= STRONG_QUERIES or hit["coverage"] >= STRONG_COVERAGE) else "possible"
+    # S108: a subject check that ran and came back loose caps the band; a semantic-only find is judged on it alone.
+    if len(hit["queries"]) >= STRONG_QUERIES:
+        return "strong"
+    # S108: one short clause ("we have quickbooks online" → quickbooks, online) is fully covered by any passage that
+    # names the product once; coverage alone only means something for a clause that says more.
+    longest = max((len(_content_tokens(q)) for q in hit["queries"]), default=0)
+    return "strong" if hit["coverage"] >= STRONG_COVERAGE and longest >= SHORT_QUERY_TOKENS else "possible"
 
 
 def _open_targets(project_id: str) -> list[dict[str, Any]]:
@@ -327,6 +377,59 @@ def _open_targets(project_id: str) -> list[dict[str, Any]]:
 def _target_revision(targets: list[dict[str, Any]]) -> str:
     return hashlib.sha256(json.dumps([(t["id"], t["question"], t.get("updated_at")) for t in targets],
                                      sort_keys=True).encode()).hexdigest()
+
+
+def _subject_text(project: dict[str, Any]) -> str:
+    parts = [project.get("name") or "", project.get("goal") or "", _plain(project.get("brief") or ""),
+             " ".join(map(str, project.get("tags") or []))]
+    return " ".join(" ".join(parts).split())[:SUBJECT_TEXT_MAX]
+
+
+def _subject_scores(project_id: str, project: dict[str, Any]) -> dict[str, tuple[float, list[int]]] | None:
+    """source_id -> (closest passage similarity to the whole project text, its best chunk ids), over every library
+    source outside the project. None when embeddings are off or fail — the scan then runs without the check."""
+    from .config import settings
+    if not settings.embeddings_enabled:
+        return None
+    text = _subject_text(project)
+    if len(_content_tokens(text)) < MIN_GOAL_TOKENS:
+        return None
+    try:
+        import numpy as np
+        from .embeddings import embed_query
+        gv = embed_query(text)
+        scope = library.library_scope(project_id)
+        mat, cids, sids = db.load_embedding_matrix_by_source(scope)
+        if not cids:
+            return None
+        sims = mat @ gv
+    except Exception as e:  # noqa: BLE001 — the check is a refinement; never let it cost the scan
+        log.warning("bootstrap: subject check unavailable: %s", e)
+        return None
+    out: dict[str, tuple[float, list[int]]] = {}
+    for i in np.argsort(-sims):
+        sid = sids[int(i)]
+        sim, best = out.get(sid, (None, []))
+        if sim is None:
+            out[sid] = (round(float(sims[i]), 3), [cids[int(i)]])
+        elif len(best) < 2:
+            best.append(cids[int(i)])
+    return out
+
+
+def _semantic_hit(sid: str, sim: float, chunk_ids: list[int]) -> dict[str, Any] | None:
+    from .search import deep_link, fmt_locator
+    rows = db.get_chunks_by_ids(chunk_ids)
+    if not rows:
+        return None
+    first = rows[chunk_ids[0]] if chunk_ids[0] in rows else next(iter(rows.values()))
+    passages = [{"chunk_id": c["id"], "timestamp": fmt_locator(c.get("platform") or "", c["start"]),
+                 "link": deep_link(c["url"], c.get("platform") or "", c["start"]), "text": (c["text"] or "")[:280],
+                 "score": sim} for c in (rows[i] for i in chunk_ids if i in rows)]
+    return {"source_id": sid, "title": first.get("title"), "channel": first.get("channel"),
+            "platform": first.get("platform"), "url": first.get("url"), "published_at": first.get("published_at"),
+            "score": sim, "coverage": 0.0, "passage_coverage": None, "queries": [], "distinctive_queries": [],
+            "passages": passages, "terms": [], "subject": sim, "semantic_only": True}
 
 
 def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
@@ -390,7 +493,39 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
                 if len(m["passages"]) < 4 and not any(p["chunk_id"] == c["chunk_id"] for p in m["passages"]):
                     m["passages"].append(c)
 
-    hits = sorted(merged.values(), key=lambda h: (-len(h["queries"]), -h["score"]))
+    if progress:
+        progress(0.8, "checking each match against the whole brief")
+    subject = _subject_scores(project_id, project)
+    off_subject: list[dict[str, Any]] = []
+    added = 0
+    bars: dict[str, float] = {}
+    if subject is not None:
+        import numpy as np
+        allsims = np.array([v[0] for v in subject.values()], dtype=np.float32)
+        q = lambda x: float(np.quantile(allsims, x))  # noqa: E731
+        bars = {"min": round(max(SUBJECT_MIN_ABS, q(SUBJECT_MIN_Q)), 3),
+                "strong": round(max(SUBJECT_STRONG_ABS, q(SUBJECT_STRONG_Q)), 3),
+                "add": round(max(SUBJECT_ADD_ABS, q(SUBJECT_ADD_Q)), 3),
+                "p50": round(q(0.5), 3), "p90": round(q(0.9), 3), "p95": round(q(0.95), 3), "p99": round(q(0.99), 3),
+                "of": len(allsims)}
+        for sid in list(merged):
+            sim = subject.get(sid, (0.0, []))[0]
+            merged[sid]["subject"], merged[sid]["subject_strong"] = sim, bars["strong"]
+            if sim < bars["min"]:
+                off_subject.append({"title": merged[sid]["title"], "subject": sim, "queries": merged[sid]["queries"]})
+                del merged[sid]
+        for sid, (sim, best) in subject.items():               # ordered closest-first
+            if sim < bars["add"] or added >= SUBJECT_ADD_MAX:
+                break
+            if sid in merged:
+                continue
+            h = _semantic_hit(sid, sim, best)
+            if h:
+                h["subject_strong"] = bars["strong"]
+                merged[sid] = h
+                added += 1
+    hits = sorted(merged.values(), key=lambda h: (-(h.get("subject") or 0) if subject is not None else 0,
+                                                  -len(h["queries"]), -h["score"]))
     total_found = len(hits)
     hits = hits[:KEEP]
     if progress:
@@ -399,13 +534,14 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
     rows = []
     for h in hits:
         h["band"] = _band(h)
-        h["weak_query_only"] = bool(h["queries"]) and not h["distinctive_queries"] and not h.get("retried_queries")
+        h["weak_query_only"] = bool(h["queries"]) and not h["distinctive_queries"] and not h.get("retried_queries") and not h.get("semantic_only")
         h["why"] = _why(h)
         rows.append({"object_kind": "source", "object_id": h["source_id"], "band": h["band"], "score": h["score"],
                      "why": json.dumps({"passages": h["passages"], "terms": h["terms"], "coverage": h["coverage"],
                                         "weak_query_only": h["weak_query_only"],
                                         "distinctive_queries": h["distinctive_queries"],
-                                        "retried_queries": h.get("retried_queries") or []}),
+                                        "retried_queries": h.get("retried_queries") or [],
+                                        "subject": h.get("subject"), "semantic_only": bool(h.get("semantic_only"))}),
                      "origin": json.dumps({"queries": h["queries"]})})
     db.upsert_project_reuse(project_id, rows, brev, scan_version=SCAN_VERSION)
     # 0.61.0 — a re-scan has to be able to take a suggestion AWAY.
@@ -426,7 +562,15 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
                "weak_query_only": sum(1 for h in hits if h["weak_query_only"]),
                "query_strength": {"cut": strength["cut"], "weak": strength["weak"], "note": strength["note"],
                                   "rarity": strength["rarity"]},
-               "projects": [{k: p[k] for k in ("project_id", "name", "relevant", "total")} for p in projects]}
+               "projects": [{k: p[k] for k in ("project_id", "name", "relevant", "total")} for p in projects],
+               # S108: the subject check, inspectable — what was dropped and why, what was added, and the closest
+               # sources overall (the numbers SUBJECT_* were calibrated against)
+               "subject": None if subject is None else {
+                   **bars, "added": added,
+                   "dropped": len(off_subject), "dropped_examples": off_subject[:15],
+                   "kept": [{"title": h["title"], "subject": h.get("subject"), "band": h["band"],
+                             "semantic_only": bool(h.get("semantic_only"))} for h in hits[:40]],
+                   "closest": [{"source_id": sid, "subject": v[0]} for sid, v in list(subject.items())[:25]]}}
     db.record_bootstrap_run(project_id, summary, brev)
     return {**summary, "sources": hits, "projects": projects}
 
@@ -442,6 +586,8 @@ def _why(h: dict[str, Any]) -> list[str]:
         why.append(f"matched {len(h['queries'])} separate parts of your goal")
     if h.get("retried_queries") and not h.get("distinctive_queries"):
         why.append("matched only after the search was shortened — check the passage")
+    if h.get("semantic_only"):
+        why.append("talks about what your brief describes, in other words")
     return why
 
 
@@ -486,7 +632,8 @@ def state(project_id: str) -> dict[str, Any]:
              "coverage": why.get("coverage") or 0.0, "passages": why.get("passages") or [],
              "weak_query_only": bool(why.get("weak_query_only")),
              "terms": why.get("terms") or [], "queries": origin.get("queries") or [],
-             "scan_version": r.get("scan_version"),
+             "scan_version": r.get("scan_version"), "subject": why.get("subject"),
+             "semantic_only": bool(why.get("semantic_only")),
              "from_old_matcher": (r.get("scan_version") or "recall-1") != SCAN_VERSION}
         h["why"] = _why(h)
         hits.append(h)

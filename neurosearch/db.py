@@ -2313,6 +2313,22 @@ def load_embedding_matrix(source_ids: list[str] | None = None) -> tuple[np.ndarr
     return mat, ids
 
 
+def load_embedding_matrix_by_source(source_ids: list[str]) -> tuple[np.ndarray, list[int], list[str]]:
+    """S108: like load_embedding_matrix, plus which source each row belongs to (bootstrap's subject check)."""
+    if not source_ids:
+        return np.zeros((0, 0), dtype=np.float32), [], []
+    conn = connect()
+    rows: list[Any] = []
+    for i in range(0, len(source_ids), 900):                      # stay under SQLite's variable limit
+        part = source_ids[i:i + 900]
+        qs = ",".join("?" for _ in part)
+        rows += conn.execute(f"SELECT id, source_id, embedding FROM chunks WHERE embedding IS NOT NULL AND source_id IN ({qs})",
+                             part).fetchall()
+    if not rows:
+        return np.zeros((0, 0), dtype=np.float32), [], []
+    return np.vstack([_unpack(r["embedding"]) for r in rows]), [r["id"] for r in rows], [r["source_id"] for r in rows]
+
+
 def get_chunks_by_ids(ids: list[int]) -> dict[int, dict[str, Any]]:
     if not ids:
         return {}
