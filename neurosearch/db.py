@@ -4630,7 +4630,8 @@ def add_project_sources(project_id: str, source_ids: list[str]) -> None:
 def upsert_project_reuse(project_id: str, rows: list[dict[str, Any]], brief_revision_: str | None = None,
                          scan_version: str | None = None) -> int:
     """Store this scan's suggestions. A row the user has already decided on (attached/dismissed) keeps its state —
-    a re-scan may refresh why it matched, but it never un-decides the user."""
+    a re-scan may refresh why it matched, but it never un-decides the user. S108: a row an earlier scan RETIRED and
+    this scan produces again comes back as a suggestion (it used to stay hidden for ever)."""
     if not rows:
         return 0
     t = time.time()
@@ -4643,6 +4644,7 @@ def upsert_project_reuse(project_id: str, rows: list[dict[str, Any]], brief_revi
                    ON CONFLICT(project_id, object_kind, object_id) DO UPDATE SET
                      band=excluded.band, score=excluded.score, why=excluded.why, origin=excluded.origin,
                      brief_revision=excluded.brief_revision, scan_version=excluded.scan_version,
+                     state=CASE WHEN project_reuse.state='retired' THEN 'suggested' ELSE project_reuse.state END,
                      updated_at=excluded.updated_at""",
                 (project_id, r["object_kind"], r["object_id"], r.get("band"), r.get("score"), r.get("why"),
                  r.get("origin"), brief_revision_, scan_version, t, t))

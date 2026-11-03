@@ -131,3 +131,18 @@ def test_the_real_subject_check_runs_on_stored_vectors():
 
 def test_old_suggestions_are_reported_stale():
     assert bootstrap.SCAN_VERSION == "recall-4"
+
+
+def test_a_retired_suggestion_that_matches_again_comes_back():
+    pid = db.create_project("P", "x y z")["id"]
+    src = db.create_project("Other", "o")["id"]
+    sid = ingest.ingest_text("A source", "0:05 something", project_id=src)["source_id"]
+    row = {"object_kind": "source", "object_id": sid, "band": "possible", "score": 1.0, "why": "{}", "origin": "{}"}
+    db.upsert_project_reuse(pid, [row])
+    db.retire_project_reuse(pid, [])
+    assert db.list_project_reuse(pid)[0]["state"] == "retired"
+    db.upsert_project_reuse(pid, [row])
+    assert db.list_project_reuse(pid)[0]["state"] == "suggested"
+    db.set_project_reuse_state(pid, [sid], "dismissed")
+    db.upsert_project_reuse(pid, [row])
+    assert db.list_project_reuse(pid)[0]["state"] == "dismissed", "a person's decision is never undone by a scan"
