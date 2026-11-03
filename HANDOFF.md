@@ -4071,3 +4071,14 @@ in Chrome** and the preset/settings explanation before Add. No server restart, A
 Live app screenshot: `/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-handoff-live.jpg`.
 The user has been asked to reload the extension once; actual Chrome task preparation/popup activation is pending
 that reload, as distinguished from the passing deterministic handoff/scan workflow above.
+
+Live activation follow-up — Kyle confirmed **Reloaded Neuro Search**. Clicking the actual app's
+**Prepare r/quickbooks in Chrome** returned the extension acknowledgement and opened the Reddit tab with
+the project-specific scan-ready toolbar badge. Opening the installed extension popup verified **Ready from
+Neuro: r/quickbooks**, project **AI powered Aviation Detailing Company** selected and locked, **1 year**,
+**20** posts preselected, and enabled **Start prepared scan**. The popup states **Ready — nothing has been
+scanned yet**. Left the prepared task ready for Kyle; no Start, ranking, capture or ingest was invoked.
+Actual live popup proof:
+`/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-prepared-live.png`.
+This closes the pending live handshake/popup verification above. Documentation-only follow-up; the validated
+production source and test results are unchanged.
