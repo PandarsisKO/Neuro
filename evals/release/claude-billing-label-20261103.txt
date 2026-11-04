@@ -1,0 +1,12 @@
+Label-only follow-up to functional commit 008a5505a91e2bc939f73fe214da015cac8372c2
+File: neurosearch/web/js/sources.js
+SHA-256: a660b28b9fe28eff817761f070b035678e65c4bdca24a45cf95276a48cac16f4
+
+..................................                                       [100%]
+=============================== warnings summary ===============================
+tests/test_s112_claude_billing.py::test_credits_estimate_uses_cache_prices_and_returned_model
+  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+34 passed, 1 warning in 6.18s

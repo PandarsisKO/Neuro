@@ -44,10 +44,10 @@ Instruction", account-level approval banner, Settings auto-refresh (S83).
 - WorkOS is the **staging** environment; fine for two users.
 - The Mac must be awake for collaborators to reach Neuro.
 
-## 2026-11-03 — S112 billing correction (prepared; delivery recorded in HANDOFF)
+## 2026-11-03 — S112 billing correction (live; delivery recorded in HANDOFF)
 
 Kyle changed from Max to Pro and reported repeated Claude usage-credit reloads. The old assumption that
-subscription-authenticated Claude Code calls are free is invalid. Candidate **0.64.5** extends the existing
+subscription-authenticated Claude Code calls are free is invalid. Version **0.64.5** extends the existing
 usage ledger and Spending valve with monthly plan/billing declarations, conservative unverified estimates,
 per-call billing snapshots, separate subscription-fee context, and budget checks for potentially paid local
 work and probes. Legacy rows are not rewritten as invoices or newly verified savings. No external account

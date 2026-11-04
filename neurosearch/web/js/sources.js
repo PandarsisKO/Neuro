@@ -1120,7 +1120,7 @@ globalThis.loadHealth = async function loadHealth() {
           : `$${(+h.cost_value.month.per_kept_finding).toFixed(4)} this month (${h.cost_value.month.kept} kept for $${(+h.cost_value.month.cost).toFixed(2)})`
             + (h.cost_value.week.per_kept_finding == null ? ''
                : ` · $${(+h.cost_value.week.per_kept_finding).toFixed(4)} over 7 days — ${h.cost_value.week_vs_month}`))
-        + ` · $${(+h.cost_value.total_charged_month).toFixed(2)} charged this month, $${(+h.cost_value.unattributed_month).toFixed(2)} of it on work no unit claims`
+        + ` · $${(+h.cost_value.total_charged_month).toFixed(2)} estimated this month, $${(+h.cost_value.unattributed_month).toFixed(2)} of it on work no unit claims`
         + ' — full picture: Cost per unit of value'
       ]] : []),
     ];

@@ -4226,3 +4226,24 @@ Source hash was rechecked unchanged after all checks. Reports: `evals/release/cl
 `evals/release/release-check-0.64.5-fabe5bb-claude-billing-d754124c838e-20261103-160912.{json,txt}`.
 The single warning is the existing Starlette/anyio deprecation. Both baseline date-fixture failures are repaired;
 no full-suite failure remains. Prepared code is ready to activate; actual delivery and live verification follow.
+
+Delivery and live verification: code commit `008a5505a91e2bc939f73fe214da015cac8372c2` fast-forwarded
+the clean shared main. The Mac publisher delivered it; `git ls-remote --heads origin main` verified that exact
+SHA (**PUBLISHED**). The live `/api/version` reports **0.64.5**, `fake_ai=false`; all observations/configuration
+used the supported API and authenticated browser, never an external SQLite connection. The app initialized its
+additive usage columns. Saved Pro as this month's plan with **unverified** usage billing, leaving the existing
+daily/monthly budgets unchanged. The account-wide subscription fee memo is separate from the usage valve.
+Restored the original `paused=false` queue state and verified `blocked=null`; no work was cancelled.
+
+Actual UI proof: the existing legacy local calls now contribute unverified estimated exposure in the sidebar,
+Spending valve and value reports; the Pro selection and monthly declaration controls load from the running app.
+The live provider status now reads **Usage limit**, resetting **5:40pm (America/Los_Angeles)**, with paid API
+fallback off. No Anthropic billing setting or credential was changed. Browser proof:
+`/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a3c2-2b81-7020-9795-10e9a8bda9e5/neuro-claude-billing-live.png`.
+
+Live QA caught one remaining Health headline saying “charged this month” for an estimated value. The follow-up
+changes that single label to “estimated this month”, without Python, routing, storage or version changes and
+without restarting workers. Its affected UI/accounting/integrity/design checks passed **34 tests, 1 warning**
+in **6.18 s**; exact sources.js hash and output are in `evals/release/claude-billing-label-20261103.txt`.
+The **2,623-test full run**, **129-test focused run**, Tier 1 and release-check above cover the functional release;
+the copy-only follow-up is verified by its bounded affected gates. Final remote sync proof follows.
