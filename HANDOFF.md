@@ -4247,3 +4247,13 @@ without restarting workers. Its affected UI/accounting/integrity/design checks p
 in **6.18 s**; exact sources.js hash and output are in `evals/release/claude-billing-label-20261103.txt`.
 The **2,623-test full run**, **129-test focused run**, Tier 1 and release-check above cover the functional release;
 the copy-only follow-up is verified by its bounded affected gates. Final remote sync proof follows.
+
+Final closure: follow-up `b76a7ff42444b05559c43864a8c7fc76073c610d` was published by request
+`1793751644-49d1cc54` with **PASS**, proving the exact remote main SHA. `tools/git_sync_check.py --delivery`
+returned **PASS**: main exact, zero local-only commits/durable tags and zero tag mismatches. A fresh authenticated
+live UI check confirmed version **0.64.5**, Pro, unverified billing, the separate subscription memo, and no remaining
+“charged this month” headline in Health. The screenshot above was refreshed from that actual running UI.
+The queue's temporary pause is removed; production work is progressing while Claude-local work correctly waits
+at its session limit. Temporary in-app verification tabs and the isolated preview server were closed. S112 is
+complete; external Claude credit controls remain the user's account setting, and next month's declaration defaults
+to unverified. No paid model call was made for verification.
