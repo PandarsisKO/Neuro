@@ -12,10 +12,13 @@ were real charges, and because they were booked at zero they were invisible to t
 the spend-rate ceiling and Health. Kyle topped up credit for a week while the app told him he had spent a third of
 what he actually had.
 
-The rule these tests hold: subscription → free; API key → spend; **unknown → spend**. Assuming free is the specific
+The current rule: monthly declaration of credits-disabled → included; API key, credits, or unknown → estimated spend. Assuming free is the specific
 mistake that hid $200, and a bill that is too cautious is recoverable where a hidden one is not.
 """
 from __future__ import annotations
+
+import json
+from datetime import datetime
 
 import pytest
 
@@ -24,13 +27,21 @@ from neurosearch import db, usage
 
 
 @pytest.fixture(autouse=True)
-def _clean(monkeypatch):
+def _clean(monkeypatch, tmp_path):
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    db.close_thread_connection()
     db.init_db()
     monkeypatch.delenv("NEUROSEARCH_LOCAL_BILLING", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     db.kv_set("spend_rate_ceiling", None)
     db.kv_set("weekly_budget", None)
     yield
+    db.close_thread_connection()
+
+
+def _declare(mode="subscription"):
+    db.kv_set(f"claude_billing:{datetime.now():%Y-%m}", json.dumps({"mode": mode, "plan": "pro", "confirmed_at": 1}))
 
 
 class _Resp:
@@ -47,9 +58,9 @@ class _Resp:
 
 # ------------------------------------------------------------------ detection
 
-def test_no_api_key_means_the_subscription_pays():
-    assert cc.billing_mode() == cc.BILLING_SUBSCRIPTION
-    assert cc.local_is_free() is True
+def test_no_api_key_does_not_prove_included_usage():
+    assert cc.billing_mode() == cc.BILLING_UNKNOWN
+    assert cc.local_is_free() is False
 
 
 def test_a_key_in_our_environment_no_longer_decides_who_pays(monkeypatch):
@@ -58,16 +69,16 @@ def test_a_key_in_our_environment_no_longer_decides_who_pays(monkeypatch):
     in our process says nothing about who pays. The honest check became empirical: `usage.reconcile()` reports
     `recorded` beside `likely_total`, and the Console should track `recorded` from here on."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
-    assert cc.billing_mode() == cc.BILLING_SUBSCRIPTION
-    assert cc.local_is_free() is True
-    assert "no longer passed" in cc.billing_note()
+    assert cc.billing_mode() == cc.BILLING_UNKNOWN
+    assert cc.local_is_free() is False
+    assert "unverified" in cc.billing_note()
 
 
 @pytest.mark.parametrize("mode", [cc.BILLING_SUBSCRIPTION, cc.BILLING_API_KEY, cc.BILLING_UNKNOWN])
 def test_the_override_wins_for_a_setup_the_heuristic_reads_wrongly(monkeypatch, mode):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
     monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", mode)
-    assert cc.billing_mode() == mode
+    assert cc.billing_mode() == (cc.BILLING_UNKNOWN if mode == cc.BILLING_SUBSCRIPTION else mode)
 
 
 def test_unknown_is_treated_as_billed(monkeypatch):
@@ -83,7 +94,8 @@ def _record() -> dict:
     return {"cost": float(row["cost"] or 0), "saved": float(row["saved"] or 0), "transport": row["transport"]}
 
 
-def test_a_subscription_call_is_free_and_records_what_it_avoided():
+def test_a_declared_included_call_has_zero_incremental_cost():
+    _declare()
     r = _record()
     assert r["transport"] == "local"
     assert r["cost"] == 0.0 and r["saved"] > 0
@@ -98,6 +110,7 @@ def test_an_api_key_call_is_recorded_as_real_spend(monkeypatch):
 
 def test_cost_and_saved_can_never_double_count(monkeypatch):
     """Exactly one of the two is ever non-zero, so `recorded + local_if_billed` is a sum and not an overcount."""
+    _declare()
     for mode in (cc.BILLING_SUBSCRIPTION, cc.BILLING_API_KEY):
         monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", mode)
         r = _record()
@@ -126,18 +139,14 @@ def test_reconcile_reports_both_numbers_and_says_how_to_read_them(monkeypatch):
     assert r["month"]["local_calls"] >= 1
 
 
-def test_reconcile_adds_the_local_path_only_when_it_is_billed(monkeypatch):
-    """Historic rows always booked local at zero with the avoided spend in `saved`. When the CLI is billing an API
-    key, that `saved` figure was really spend — which is how a month that looked like $112 is recognised as $312
-    without anyone reconstructing it by hand."""
-    monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", cc.BILLING_SUBSCRIPTION)
-    _record()                                        # a free call: saved > 0, cost 0
-    free = usage.reconcile()
-    assert free["month"]["likely_total"] == free["month"]["recorded"]
+def test_reconcile_never_reprices_past_calls_when_the_plan_changes(monkeypatch):
+    _declare()
+    _record()
+    before = usage.reconcile()
     monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", cc.BILLING_API_KEY)
-    billed = usage.reconcile()
-    assert billed["month"]["likely_total"] > billed["month"]["recorded"]
-    assert billed["month"]["local_if_billed"] > 0
+    after = usage.reconcile()
+    assert after["month"] == before["month"]
+    assert after["billing_mode"] != before["billing_mode"]
 
 
 # ------------------------------------------------------------------ the budget levers he actually needs

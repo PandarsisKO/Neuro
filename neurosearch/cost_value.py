@@ -16,9 +16,9 @@ Three rules keep it honest.
    produced; it never divides the whole bill. Every kind that no unit claims is reported by name under
    `unattributed`, and `attributed + unattributed == total_charged` always, so the report reconciles against the
    bill instead of quietly explaining part of it.
-2. **Charged, not recorded.** The cost of a row is `cost` plus, when the local path is billed (0.59.0), the `saved`
-   figure a local call booked instead of a cost. Dividing recorded-only spend by output would have made the local
-   path look free and every local unit cost $0 — the same error that hid $200.
+2. **Estimated exposure, with a fixed per-call basis.** Reuse `usage.cost_expr`: unverified legacy local
+   savings count conservatively; new calls retain their declared billing basis. Today's Pro/Max selection
+   cannot reprice history. These are estimates, not invoices or attribution of account-wide credit reloads.
 3. **A count of zero is not a cost of infinity.** With spend and no output, `per_unit` is `None` with the reason
    stated, and with output and no spend it is `0.0` — a harvested Claim really is free.
 """
@@ -76,9 +76,9 @@ CAVEATS = (
     "per-project report rather than guessed at.",
     "Cache reads and the batch discount are already inside `cost`, so a cheaper unit cost can mean better cache "
     "layout rather than better output.",
-    "A local (Claude Code) row's dollars are an ESTIMATE priced from its tokens, not an amount Anthropic invoiced, "
-    "and they are priced at the CONTRACT's model rather than the model the CLI returned. `estimated_share` says "
-    "how much of a window rests on that estimate; `by_model` refuses to divide where the basis is unknown.",
+    "Claude Code dollars are estimates, not an Anthropic invoice. New calls use the CLI's session estimate "
+    "(including helper models), or returned-model token/cache prices. Legacy local savings are unverified "
+    "exposure. This month's plan never reprices past calls. Subscription fees and account-wide reloads are separate.",
 )
 
 
@@ -99,8 +99,7 @@ def window_start(window: str = "month", days: int | None = None) -> float:
 
 
 def billed_local() -> bool:
-    """True when a Claude Code call is a real charge. `unknown` counts as billed — assuming free is the specific
-    error that hid $200 (0.59.0), so this defers entirely to `claude_code.local_is_free`."""
+    """Whether new local calls count as estimated paid exposure. Historical rows have their own basis."""
     try:
         from . import claude_code
         return not claude_code.local_is_free()
@@ -109,12 +108,9 @@ def billed_local() -> bool:
 
 
 def charged_expr(billed: bool | None = None) -> str:
-    """The SQL for what a usage row actually cost the account."""
-    if billed is None:
-        billed = billed_local()
-    if billed:
-        return "(cost + CASE WHEN transport='local' THEN COALESCE(saved,0) ELSE 0 END)"
-    return "cost"
+    """Same immutable, conservative estimate used by the spending valve. `billed` is legacy API compatibility."""
+    from . import usage
+    return usage.cost_expr()
 
 
 def estimated_share(start: float, project_id: str | None = None, billed: bool | None = None) -> dict[str, Any]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 import contextlib
 import threading
@@ -91,10 +92,11 @@ def _price(model: str) -> tuple[float, float]:
 def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int = 0, seconds: float = 0,
            searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None,
            cache_read: int = 0, cache_write: int = 0, transport: str = "interactive", saved: float = 0.0,
-           price_model: str | None = None, ts: float | None = None) -> float:
+           price_model: str | None = None, ts: float | None = None, billing_basis: str | None = None,
+           billing_plan: str | None = None, api_equivalent: float | None = None) -> float:
     """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately.
-    transport="batch" prices model tokens at BATCH_MULT (the discount stacks with cache pricing); transport="local" is
-    the Claude Code provider (cost 0, `saved` = the avoided API spend, passed by the caller).
+    transport="batch" prices model tokens at BATCH_MULT; transport="local" is Claude Code. Its per-call
+    billing_basis decides whether cost is estimated paid exposure or included subscription usage.
 
     **`ts` is when the spend was INCURRED, not when we learned about it (0.62.3).** Everything defaults to now,
     which is right for an interactive call and wrong for a batch: a Message Batch is billed when Anthropic runs it
@@ -120,9 +122,10 @@ def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int =
             saved = full - model_cost * mult
     try:
         with db.tx() as conn:
-            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport, price_model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport, price_model, billing_basis, billing_plan, api_equivalent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (float(ts) if ts else time.time(), kind, model, input_tokens, output_tokens, seconds, cost,
-                          project_id, source_id, cache_read, cache_write, saved, transport, price_model or model))
+                          project_id, source_id, cache_read, cache_write, saved, transport, price_model or model,
+                          billing_basis, billing_plan, api_equivalent))
     except Exception as e:  # noqa: BLE001
         log.warning("usage record failed: %s", e)
     # A backdated row is spend we are only now LEARNING about, so it can never trip a rate ceiling: the rate it
@@ -156,7 +159,7 @@ RATE_COOLOFF_S = 600          # how long paid background stays held once the cei
 
 def rate_last_hour() -> float:
     try:
-        row = db.connect().execute("SELECT COALESCE(SUM(cost),0) c FROM usage WHERE ts >= ?", (time.time() - 3600,)).fetchone()
+        row = db.connect().execute(f"SELECT COALESCE(SUM({cost_expr()}),0) c FROM usage WHERE ts >= ?", (time.time() - 3600,)).fetchone()
         return round(float(row["c"]), 4)
     except Exception:  # noqa: BLE001
         return 0.0
@@ -204,59 +207,75 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
     except Exception:  # noqa: BLE001
         pass
     if getattr(resp, "provider", None) == "claude_code":
-        # L1: the local provider costs $0 here; `saved` records what the SAME tokens would have cost on the task's API model
-        # (the "avoided spend" number), priced at the contract's model, never the CLI's
-        from . import contracts as C
-        from .providers import _tl
-        task = str(getattr(_tl, "task", "") or "")
-        try:
-            api_model = C.contract(task).model if task else settings.answer_model
-        except Exception:  # noqa: BLE001
-            api_model = settings.answer_model
-        pin, pout = _price(api_model)
-        i, o = int(getattr(u, "input_tokens", 0) or 0), int(getattr(u, "output_tokens", 0) or 0)
-        cr, cw = int(getattr(u, "cache_read_input_tokens", 0) or 0), int(getattr(u, "cache_creation_input_tokens", 0) or 0)
-        priced = (i + cr + cw) / 1e6 * pin + o / 1e6 * pout
-        # 0.59.0 — A LOCAL CALL IS FREE ONLY WHEN WE CAN SHOW IT IS.
-        #
-        # L1 recorded every Claude Code call as cost 0 with `saved` = what the API would have charged, on the
-        # assumption that the CLI runs on the user's subscription. Nothing checked. Measured on Kyle's account:
-        # app ledger $111.96 for the month, local `saved` $210.55, his Anthropic Console $312.40 — the first two sum
-        # to within 3% of the third. Those calls were real charges, and because they were booked at cost 0 they were
-        # invisible to the daily budget, the monthly budget, the spend-rate ceiling and Health. He topped up credit
-        # for a week wondering where it went, and the app kept telling him he had spent a third of what he had.
-        #
-        # So: subscription -> free, as before. API key or UNKNOWN -> priced as spend. Unknown counts as billed
-        # because assuming free is the error that hid $200, and a wrong bill is recoverable where a hidden one is not.
-        from . import claude_code as _cc
-        free = _cc.local_is_free()
-        return record(kind, str(getattr(resp, "model", "claude-code")), input_tokens=i, output_tokens=o,
-                      project_id=project_id, source_id=source_id, cache_read=cr, cache_write=cw,
-                      cost=0.0 if free else priced, saved=priced if free else 0.0, transport="local",
-                      price_model=api_model, ts=ts)
+        from . import claude_code as cc
+        context = getattr(resp, "billing_context", None) or cc.billing_context()
+        mode = context["mode"]
+        included = mode == cc.BILLING_SUBSCRIPTION
+        # CLI total includes helper models and scaffolding. It is a list-price estimate, not a bill.
+        reported = getattr(resp, "cost_reported", None)
+        valid = isinstance(reported, (int, float)) and not isinstance(reported, bool) and math.isfinite(reported) and reported >= 0
+        priced = float(reported) if valid else cost_of(resp)
+        price_model = "claude-code-session" if valid else str(resp.model)
+        return record(kind, str(resp.model),
+                      input_tokens=int(getattr(u, "input_tokens", 0) or 0),
+                      output_tokens=int(getattr(u, "output_tokens", 0) or 0),
+                      project_id=project_id, source_id=source_id,
+                      cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
+                      cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0),
+                      cost=0.0 if included else priced, saved=priced if included else 0.0, transport="local",
+                      price_model=price_model, ts=ts, billing_basis=mode,
+                      billing_plan=context.get("plan", "unknown"), api_equivalent=priced)
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
                   output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
                   cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
                   cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0), transport=transport, ts=ts)
 
 
+def cost_expr() -> str:
+    """Canonical budget/report estimate. Legacy local savings were never verified as included.
+
+    Per-call declarations are immutable: changing this month's plan cannot reprice earlier calls.
+    Legacy dollars remain labelled uncertain rather than rewritten as invoiced charges.
+    """
+    return "(COALESCE(cost,0) + CASE WHEN transport='local' AND billing_basis IS NULL THEN COALESCE(saved,0) ELSE 0 END)"
+
+
+def billing_summary(start: float) -> dict[str, Any]:
+    row = db.connect().execute(
+        f"""SELECT COALESCE(SUM(CASE WHEN transport='local' AND (billing_basis IS NULL OR billing_basis='unknown')
+                  THEN {cost_expr()} ELSE 0 END),0) uncertain,
+            COALESCE(SUM(CASE WHEN transport='local' AND billing_basis IN ('usage_credits','api_key')
+                  THEN cost ELSE 0 END),0) metered,
+            COALESCE(SUM(CASE WHEN transport='local' AND billing_basis='subscription'
+                  THEN api_equivalent ELSE 0 END),0) included,
+            SUM(CASE WHEN transport='local' AND (billing_basis IS NULL OR billing_basis='unknown') THEN 1 ELSE 0 END) n
+            FROM usage WHERE ts>=?""", (start,)).fetchone()
+    return {"unverified_estimate": round(float(row["uncertain"] or 0), 4),
+            "metered_local_estimate": round(float(row["metered"] or 0), 4),
+            "included_api_equivalent": round(float(row["included"] or 0), 4),
+            "unverified_calls": int(row["n"] or 0),
+            "note": "Estimates include unverified Claude Code usage. Subscription fees and account-wide reloads are separate; compare invoices in Claude Settings > Billing."}
+
+
 def _sum_since(ts: float) -> float:
-    row = db.connect().execute("SELECT COALESCE(SUM(cost),0) c FROM usage WHERE ts>=?", (ts,)).fetchone()
+    row = db.connect().execute(f"SELECT COALESCE(SUM({cost_expr()}),0) c FROM usage WHERE ts>=?", (ts,)).fetchone()
     return float(row["c"] or 0)
 
 
 def totals() -> dict[str, Any]:
+    from . import claude_code
     now = datetime.now()
     day0 = datetime(now.year, now.month, now.day).timestamp()
     month0 = datetime(now.year, now.month, 1).timestamp()
     by_kind = {r["kind"]: float(r["c"]) for r in db.connect().execute(
-        "SELECT kind, SUM(cost) c FROM usage WHERE ts>=? GROUP BY kind", (month0,)).fetchall()}
-    saved = db.connect().execute("SELECT COALESCE(SUM(saved),0) s, COALESCE(SUM(cache_read),0) r FROM usage WHERE ts>=?", (month0,)).fetchone()
+        f"SELECT kind, SUM({cost_expr()}) c FROM usage WHERE ts>=? GROUP BY kind", (month0,)).fetchall()}
+    saved = db.connect().execute("SELECT COALESCE(SUM(CASE WHEN transport='local' THEN 0 ELSE saved END),0) s, COALESCE(SUM(cache_read),0) r FROM usage WHERE ts>=?", (month0,)).fetchone()
     return {"today": round(_sum_since(day0), 4), "month": round(_sum_since(month0), 4), "month_by_kind": by_kind,
             "month_saved": round(float(saved["s"] or 0), 4), "month_cached_tokens": int(saved["r"] or 0),
             "daily_budget": budget("daily"), "monthly_budget": budget("monthly"), "weekly_budget": budget("weekly"),
             "week": round(_sum_since((now - timedelta(days=7)).timestamp()), 4),
-            "paused": db.kv_get("queue_paused") == "1"}
+            "paused": db.kv_get("queue_paused") == "1", "billing": billing_summary(month0),
+            "claude_billing": claude_code.billing_settings()}
 
 
 def _batch_dating() -> dict[str, Any]:
@@ -294,7 +313,7 @@ def reconcile(days: int = 14) -> dict[str, Any]:
 
     def window(ts: float) -> dict[str, Any]:
         r = conn.execute("""SELECT COALESCE(SUM(cost),0) c,
-                                   COALESCE(SUM(CASE WHEN transport='local' THEN saved ELSE 0 END),0) local_saved,
+                                   COALESCE(SUM(CASE WHEN transport='local' AND billing_basis IS NULL THEN saved ELSE 0 END),0) local_saved,
                                    COUNT(*) n,
                                    SUM(CASE WHEN transport='local' THEN 1 ELSE 0 END) n_local
                             FROM usage WHERE ts>=?""", (ts,)).fetchone()
@@ -311,7 +330,7 @@ def reconcile(days: int = 14) -> dict[str, Any]:
                                 FROM usage WHERE ts>=?""", (ts,)).fetchone()
         n_charged, n_free = int(mixed["charged"] or 0), int(mixed["free"] or 0)
         out = {"recorded": round(rec, 2), "local_if_billed": round(loc, 2),
-               "likely_total": round(rec + (loc if billed else 0.0), 2),
+               "likely_total": round(rec + loc, 2),
                "calls": int(r["n"] or 0), "local_calls": int(r["n_local"] or 0)}
         if n_charged and n_free:
             out["mixed_basis"] = {
@@ -323,21 +342,21 @@ def reconcile(days: int = 14) -> dict[str, Any]:
 
     per_day = []
     for row in conn.execute("""SELECT date(ts,'unixepoch','localtime') d, COALESCE(SUM(cost),0) c,
-                                      COALESCE(SUM(CASE WHEN transport='local' THEN saved ELSE 0 END),0) ls
+                                      COALESCE(SUM(CASE WHEN transport='local' AND billing_basis IS NULL THEN saved ELSE 0 END),0) ls
                                FROM usage WHERE ts>=? GROUP BY d ORDER BY d DESC""",
                             ((now - timedelta(days=days)).timestamp(),)):
         rec, loc = float(row["c"] or 0), float(row["ls"] or 0)
         per_day.append({"day": row["d"], "recorded": round(rec, 2), "local_if_billed": round(loc, 2),
-                        "likely_total": round(rec + (loc if billed else 0.0), 2)})
+                        "likely_total": round(rec + loc, 2)})
     return {"billing_mode": mode, "local_is_free": not billed, "note": _cc.billing_note(),
+            "claude_billing": _cc.billing_settings(), "billing": billing_summary(month0),
             "month": window(month0), "week": window(week0), "today": window(datetime(now.year, now.month, now.day).timestamp()),
             "per_day": per_day, "batch_dating": _batch_dating(),
-            "how_to_read": ("`recorded` is what the app booked, dated when the spend was INCURRED — batch rows carry "
-                            "the day the provider produced them, not the day we collected them (0.62.3). "
-                            "`local_if_billed` is what the Claude Code path would "
-                            "cost on the API — money kept if the CLI runs on your subscription, money spent if it "
-                            "runs on your API key. `likely_total` is the one to compare against the Anthropic "
-                            "Console. Rows written before 0.59.0 always booked local at zero, whichever it was."),
+            "how_to_read": ("`recorded` is what the app booked; `local_if_billed` is unverified legacy local usage "
+                            "previously labelled savings. `likely_total` includes that estimated exposure, not an invoice. "
+                            "New calls retain their billing declaration when the plan changes. Anthropic Console API "
+                            "billing and Claude Settings > Billing usage credits are separate. Subscription fees and "
+                            "credit reloads are not per-call charges; account-wide spending includes other Claude apps."),
             "budgets": {"daily": budget("daily"), "monthly": budget("monthly"), "weekly": budget("weekly"),
                         "rate_per_hour": rate_ceiling()}}
 
@@ -444,8 +463,7 @@ def estimate_video(duration_s: float | None, rate_per_min: float | None = None) 
         from .findings import WINDOW_CHARS
         chars = mins * CHARS_PER_MINUTE
         windows = max(1, int(-(-chars // WINDOW_CHARS)))
-        pin, pout = _price(settings.answer_model)
-        analyse = (chars / 4 + windows * 1500) / 1e6 * pin + windows * 800 / 1e6 * pout
+        analyse = windows * estimate_findings(int(chars / windows))
         analyse += chars / 4 / 1e6 * _price(settings.embedding_model)[0]
     return {"analyse": round(analyse, 4), "whisper": round(mins * WHISPER_PER_MINUTE, 4)}
 
@@ -455,7 +473,7 @@ def observed_rate_per_minute(min_sources: int = 5) -> float | None:
     try:
         row = db.connect().execute(
             """SELECT COUNT(DISTINCT u.source_id) n, SUM(u.cost) c, SUM(s.duration) d
-               FROM (SELECT source_id, SUM(cost) cost FROM usage WHERE kind='findings' AND source_id IS NOT NULL GROUP BY source_id) u
+               FROM (SELECT source_id, SUM(CASE WHEN transport='local' THEN COALESCE(api_equivalent,cost+COALESCE(saved,0)) ELSE cost END) cost FROM usage WHERE kind='findings' AND source_id IS NOT NULL GROUP BY source_id) u
                JOIN sources s ON s.id=u.source_id WHERE s.duration>0""").fetchone()
         if row and row["n"] and row["n"] >= min_sources and row["d"]:
             return float(row["c"]) / (float(row["d"]) / 60)
@@ -494,7 +512,7 @@ def avoided_this_month() -> float:
     an API key those same calls are booked as real cost instead, so `saved` and `cost` can never double-count."""
     now = datetime.now()
     month0 = datetime(now.year, now.month, 1).timestamp()
-    row = db.connect().execute("SELECT COALESCE(SUM(saved),0) s FROM usage WHERE ts>=? AND transport='local'", (month0,)).fetchone()
+    row = db.connect().execute("SELECT COALESCE(SUM(saved),0) s FROM usage WHERE ts>=? AND transport='local' AND billing_basis='subscription'", (month0,)).fetchone()
     return round(float(row["s"] or 0), 4)
 
 
@@ -504,12 +522,12 @@ def local_split(days: int | None = None) -> dict[str, Any]:
     now = datetime.now()
     since = (now.timestamp() - days * 86400) if days else datetime(now.year, now.month, 1).timestamp()
     row = db.connect().execute(
-        "SELECT COUNT(*) n, SUM(CASE WHEN transport='local' THEN 1 ELSE 0 END) n_local, COALESCE(SUM(cost),0) actual, "
-        "COALESCE(SUM(CASE WHEN transport='local' THEN saved ELSE 0 END),0) avoided FROM usage WHERE ts>=? AND kind<>'whisper'", (since,)).fetchone()
+        f"SELECT COUNT(*) n, SUM(CASE WHEN transport='local' THEN 1 ELSE 0 END) n_local, COALESCE(SUM({cost_expr()}),0) actual, "
+        "COALESCE(SUM(CASE WHEN transport='local' AND billing_basis='subscription' THEN saved ELSE 0 END),0) avoided FROM usage WHERE ts>=? AND kind<>'whisper'", (since,)).fetchone()
     n, nl = int(row["n"] or 0), int(row["n_local"] or 0)
     return {"calls": n, "local_calls": nl, "local_share": round(nl / n, 3) if n else 0.0, "actual": round(float(row["actual"] or 0), 4),
             "avoided": round(float(row["avoided"] or 0), 4), "since": since,
-            "line": (f"{n:,} AI calls · {round(100 * nl / n)}% local · ${float(row['actual'] or 0):.2f} actual · ${float(row['avoided'] or 0):.2f} avoided" if n else "no AI calls yet")}
+            "line": (f"{n:,} AI calls · {round(100 * nl / n)}% local · ${float(row['actual'] or 0):.2f} estimated · ${float(row['avoided'] or 0):.2f} included equivalent" if n else "no AI calls yet")}
 
 
 def estimate_source_findings(source_id: str, rate_per_min: float | None = None) -> float:

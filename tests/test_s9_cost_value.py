@@ -40,11 +40,11 @@ def project(monkeypatch):
 
 
 def _usage(kind, cost, *, model="claude-sonnet-5", project_id=None, transport="interactive", saved=0.0,
-           price_model=None, ago=60.0):
+           price_model=None, ago=60.0, billing_basis=None):
     with db.tx() as conn:
-        conn.execute("INSERT INTO usage (ts, kind, model, cost, project_id, transport, saved, price_model) "
-                     "VALUES (?,?,?,?,?,?,?,?)",
-                     (time.time() - ago, kind, model, cost, project_id, transport, saved, price_model or model))
+        conn.execute("INSERT INTO usage (ts, kind, model, cost, project_id, transport, saved, price_model, billing_basis) "
+                     "VALUES (?,?,?,?,?,?,?,?,?)",
+                     (time.time() - ago, kind, model, cost, project_id, transport, saved, price_model or model, billing_basis))
 
 
 def _note(project_id, *, status="approved", model="claude-sonnet-5", ago=60.0, source_id="s1"):
@@ -172,10 +172,10 @@ def test_a_billed_local_call_counts_as_spend(project, monkeypatch):
 
 def test_a_subscription_local_call_is_free(project, monkeypatch):
     monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", "subscription")
-    _usage("findings", 0.0, transport="local", saved=2.00, project_id=project)
+    _usage("findings", 0.0, transport="local", saved=2.00, project_id=project, billing_basis="subscription")
     _note(project)
     rep = cost_value.unit_costs("today", project)
-    assert rep["local_billed"] is False
+    # Current billing is unknown; the stamped included row still has zero cost.
     assert next(r for r in rep["rows"] if r["unit"] == "finding")["cost"] == pytest.approx(0.0)
 
 
@@ -289,7 +289,9 @@ def test_the_trend_gives_one_row_per_day(project):
 
 def test_windows_are_ordered_and_bounded(project):
     assert cost_value.window_start("today") >= cost_value.window_start("week")
-    assert cost_value.window_start("week") >= cost_value.window_start("month") - 1
+    # Rolling weeks cross month boundaries, especially early in a month.
+    assert 6 * 86400 < time.time() - cost_value.window_start("week") < 8 * 86400
+    assert cost_value.window_start("today") >= cost_value.window_start("month")
     assert cost_value.window_start("all") == 0.0
     assert cost_value.window_start("month", days=3) > cost_value.window_start("week")
 

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.64.4">
+<meta name="neurosearch-ui-version" content="0.64.5">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -41,7 +41,7 @@
     <!-- F0-3: this was an unlabeled brief line directly above the status footer, easy to mistake for
          system state on a long brief. Rung W5 labels it rather than just reflowing around it. -->
     <div class="foot briefFoot"><span class="footLabel">Brief</span><span id="wsFoot"></span></div>
-    <div class="statusfoot" id="sideSpend" title="estimated API spend and local-AI health"></div>
+    <div class="statusfoot" id="sideSpend" title="estimated usage cost and Claude Code health"></div>
     <div class="themefoot"><button class="themeBtn" onclick="toggleTheme()">Dark</button><span class="muted verTag" title="app version (page / server)"></span></div>
   </aside>
 
@@ -367,9 +367,20 @@
         </div>
       </div>
       <div class="card"><b>Spending valve</b>
-        <div class="muted">Estimated API spend across all projects. When a budget is reached the background queue pauses (nothing fails or is lost) and resumes when the window rolls over or you raise the limit. Chat answers and plan builds you start yourself are still allowed.</div>
+        <div class="muted">Estimated usage cost across all projects, including Claude Code calls that may use paid credits. Budgets hold queued work; they are estimates, not an Anthropic spending limit. Subscription fees are separate.</div>
         <div class="row mt-2"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
         <div class="muted" id="bBreak" style="margin-top:6px"></div>
+        <hr>
+        <b>Claude billing this month</b>
+        <div class="muted" id="bClaudeNote"></div>
+        <div class="row mt-2">
+          <label class="muted">Plan <select id="bClaudePlan"><option value="unknown">Not confirmed</option><option value="pro">Pro</option><option value="max_5x">Max 5×</option><option value="max_20x">Max 20×</option><option value="other">Other</option></select></label>
+          <label class="muted">Subscription $<input id="bClaudeFee" type="number" min="0" step="0.01" placeholder="optional"></label>
+          <label class="muted claude-billing-mode">Claude Code usage <select id="bClaudeMode" onchange="claudeBillingModeChanged()"><option value="unknown">Unverified — estimate as paid</option><option value="usage_credits">May use paid credits</option><option value="subscription">Included only — credits disabled</option></select></label>
+        </div>
+        <label class="muted mt-2" id="bClaudeConfirmWrap" hidden><input id="bClaudeConfirm" type="checkbox"> I checked Claude: usage credits are disabled.</label>
+        <div class="row mt-2"><button class="small primary" onclick="saveClaudeBilling()">Save this month's billing</button><span class="muted" id="bClaudeMsg" role="status"></span><a href="https://claude.ai/settings/usage" target="_blank" rel="noopener">Check usage in Claude ↗</a></div>
+        <div class="muted mt-2">Applies to new calls this month. Confirm again next month or when your plan or credit settings change. Plan names do not tell Neuro your remaining allowance. The subscription fee is account-wide and is not added to Neuro's per-call budget. Disabling paid API fallback does not disable Claude usage credits.</div>
       </div>
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>

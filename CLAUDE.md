@@ -12,7 +12,7 @@ separately and is not it). Historical checklists are not assignments. The Founda
 (`docs/archive/FOUNDATION-HANDOFF.md`) is a closed historical record.
 
 Runtime: the released application version is whatever `pyproject.toml` / `neurosearch/__init__.py` /
-`web/js/state.js` (`UI_VERSION`) agree on — 0.64.3 at the time of writing — and the extension version is
+`web/js/state.js` (`UI_VERSION`) agree on — 0.64.5 at the time of writing — and the extension version is
 `extension/manifest.json` (1.11.5). Do not trust a version number quoted in prose anywhere else. Delivery and
 validation status live in `HANDOFF.md` and the newest `STATE-OF-THE-APP-*.md`.
 
@@ -24,6 +24,19 @@ clean checkout without that `.env` line runs Sonnet 5 at 2.3× the cost. `answer
 
 ## Standing rules (never break these)
 
+- **Claude Code login is not a billing verdict (S112, 2026-11-03).** Pro/Max subscriptions can spend paid
+  usage credits. Default billing is `unknown`, counted conservatively by `usage.cost_expr()` in totals,
+  budgets and value reports. Settings' current-calendar-month declaration lives in the existing KV
+  (`claude_billing:YYYY-MM`); only a declaration that credits are disabled permits new calls to be counted
+  as included. It expires next month. A permanent `NEUROSEARCH_LOCAL_BILLING=subscription` cannot declare
+  calls free. Each new local usage row stamps `billing_basis`, `billing_plan`, `api_equivalent`; `_run`
+  snapshots before the subprocess, so changing plans cannot reprice an in-flight or historical call.
+  CLI session dollar totals (helpers included) are estimates, never invoices; token fallback prices the
+  returned model and discounts cache reads/writes correctly. Legacy local `saved` is unverified exposure,
+  not proven savings. Subscription fees are a separate account-wide memo; reloads buy credits and must
+  not be added again as per-call spending. API fallback off does not disable Claude usage credits.
+  Neuro cannot verify shared remaining allowance or change Claude account controls. Gates S7, S9, S18,
+  S112, N2 and P0 budget exhaustion. No live paid calls are needed to verify accounting.
 - **Never OPEN `data/neurosearch.db` from outside the running app — not to write, and not to read.** Opening it
   read-only crashed the live server on 2026-09-11 (0.63.32), twice. SQLite in WAL mode mmaps a shared-memory index
   (`-shm`) into every connection and decides "I am the only connection" from POSIX file locks. A session reaching

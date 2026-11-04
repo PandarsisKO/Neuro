@@ -1023,7 +1023,34 @@ globalThis.loadCoursePane = async function loadCoursePane() {
 globalThis.loadBudget = async function loadBudget() {
   const u = await api('/api/usage'); $('#bDaily').value = u.daily_budget; $('#bMonthly').value = u.monthly_budget;
   const kinds = Object.entries(u.month_by_kind || {}).map(([k, v]) => `${k} $${v.toFixed(2)}`).join(' · ');
-  $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.month_saved >= 0.01 ? ` · prompt caching saved $${u.month_saved.toFixed(2)}` : '') + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
+  $('#bBreak').textContent = `Estimated this month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.month_saved >= 0.01 ? ` · API caching/discount savings $${u.month_saved.toFixed(2)}` : '') + ((u.billing || {}).unverified_calls ? ` · $${u.billing.unverified_estimate.toFixed(2)} is unverified Claude Code usage, not a confirmed charge` : '') + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
+  const c = u.claude_billing || {};
+  $('#bClaudePlan').value = c.plan || 'unknown';
+  $('#bClaudeFee').value = c.subscription_usd == null ? '' : c.subscription_usd;
+  $('#bClaudeMode').value = c.mode || 'unknown';
+  $('#bClaudeMode').dataset.period = c.period || '';
+  $('#bClaudeConfirm').checked = c.mode === 'subscription';
+  $('#bClaudeNote').textContent = `${c.period || 'This month'} · ${c.confirmed_at ? 'Declared by you; Neuro cannot verify your account billing.' : 'Not confirmed. Claude Code costs count as estimated paid usage.'}`;
+  claudeBillingModeChanged();
+}
+globalThis.claudeBillingModeChanged = function claudeBillingModeChanged() {
+  $('#bClaudeConfirmWrap').hidden = $('#bClaudeMode').value !== 'subscription';
+}
+globalThis.saveClaudeBilling = async function saveClaudeBilling() {
+  const msg = $('#bClaudeMsg');
+  const mode = $('#bClaudeMode').value;
+  if (mode === 'subscription' && !$('#bClaudeConfirm').checked) { msg.textContent = 'Check usage credits in Claude, then confirm they are disabled.'; return; }
+  const fee = $('#bClaudeFee').value.trim();
+  if (fee && (!Number.isFinite(Number(fee)) || Number(fee) < 0)) { msg.textContent = 'Enter a valid subscription amount.'; return; }
+  msg.textContent = 'Saving…';
+  try {
+    await post('/api/usage/spend-settings', {claude_billing: {
+      period: $('#bClaudeMode').dataset.period, plan: $('#bClaudePlan').value,
+      mode, subscription_usd: fee ? Number(fee) : null, credits_disabled_confirmed: $('#bClaudeConfirm').checked
+    }});
+    msg.textContent = 'Saved for new calls this month. Past calls are unchanged.';
+    await loadBudget(); loadSpend(); loadHealth();
+  } catch (e) { msg.textContent = e.message || 'Could not save billing.'; }
 }
 globalThis.loadHealth = async function loadHealth() {
   try {
@@ -1073,11 +1100,9 @@ globalThis.loadHealth = async function loadHealth() {
       [`${ok(!(h.network || {}).fetch_blocked)} Network boundary`, `${(h.network || {}).fetch_blocked || 0} fetch${(h.network || {}).fetch_blocked === 1 ? '' : 'es'} refused (private/internal address, size or time limit)`],
       // 0.59.0: the recorded-vs-actual spend gap belongs on the page you open when you wonder where the money went.
       ...(h.spend ? [[
-        `${h.spend.local_is_free ? '<span class="status-ok">OK</span>' : '<span class="status-warn">Warn</span>'} Spend (recorded vs likely charged)`,
+        `${h.spend.local_is_free ? '<span class="status-ok">OK</span>' : '<span class="status-warn">Warn</span>'} Estimated usage cost`,
         `today $${(h.spend.today || {}).likely_total ?? 0} · 7 days $${(h.spend.week || {}).likely_total ?? 0} · month $${(h.spend.month || {}).likely_total ?? 0}`
-        + (h.spend.local_is_free
-            ? ` · local path free (${(h.spend.month || {}).local_calls || 0} calls, $${(h.spend.month || {}).local_if_billed ?? 0} avoided)`
-            : ` — of the month, $${(h.spend.month || {}).recorded ?? 0} was recorded and $${(h.spend.month || {}).local_if_billed ?? 0} came from the local Claude Code path, which is NOT free here`)
+        + ` · $${(h.spend.billing || {}).unverified_estimate ?? 0} unverified Claude Code estimate; not an invoice`
         + ` · budgets: $${(h.spend.budgets || {}).daily ?? '—'}/day, $${(h.spend.budgets || {}).monthly ?? '—'}/month`
         + ((h.spend.budgets || {}).weekly ? `, $${h.spend.budgets.weekly}/week` : ', no weekly budget set')
         + ` · ceiling $${(h.spend.budgets || {}).rate_per_hour ?? '—'}/hour`
@@ -1137,23 +1162,23 @@ globalThis.valueReport = async function valueReport() {
     for (const w of ['today', 'week', 'month']) {
       const rep = r.windows[w]; if (!rep) continue;
       html += tbl(`Per unit of value — ${w === 'week' ? 'last 7 days' : w}`,
-        ['unit', 'spend', 'produced', 'each', 'why not'],
+        ['unit', 'estimated cost', 'produced', 'each', 'why not'],
         rep.rows.map(x => [x.label, money(x.cost), x.count, x.per_unit == null ? '—' : money(x.per_unit),
                            x.per_unit_unavailable || '']),
-        `${money(rep.total_charged)} charged in total · ${money(rep.attributed)} attributed · `
+        `${money(rep.total_charged)} estimated in total · ${money(rep.attributed)} attributed · `
         + `${money(rep.unattributed.total)} on work no unit claims (${Object.keys(rep.unattributed.by_kind || {}).join(', ') || 'none'})`
         + (rep.estimated && rep.estimated.share ? ` · ${Math.round(rep.estimated.share * 100)}% of it estimated from the local path rather than metered` : ''));
     }
     for (const [unit, bm] of Object.entries(r.by_model || {})) {
       if (!bm.supported || !(bm.rows || []).length) continue;
-      html += tbl(`Per ${bm.label}, by model (month)`, ['model', 'spend', 'calls', 'produced', 'each', 'why not'],
+      html += tbl(`Per ${bm.label}, by model (month)`, ['model', 'estimated cost', 'calls', 'produced', 'each', 'why not'],
         bm.rows.map(x => [x.model, money(x.cost), x.calls, x.count, x.per_unit == null ? '—' : money(x.per_unit),
                           x.per_unit_unavailable || '']),
         bm.verdict || 'not enough models on their own rates to compare');
     }
     const tr = r.trend || {};
     if ((tr.rows || []).length) {
-      html += tbl(`Per ${tr.label}, by day`, ['day', 'spend', 'kept', 'each'],
+      html += tbl(`Per ${tr.label}, by day`, ['day', 'estimated cost', 'kept', 'each'],
         tr.rows.map(x => [x.day, money(x.cost), x.count, x.per_unit == null ? '—' : money(x.per_unit)]));
     }
     html += `<div class="muted" style="margin-top:10px">Compare a row against the same row in an earlier window, never against another row.<br>${(r.caveats || []).map(c => '• ' + esc(c)).join('<br>')}</div>`;

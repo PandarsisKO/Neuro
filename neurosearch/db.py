@@ -1241,6 +1241,10 @@ MIGRATIONS = [
     # written before this column therefore attribute Sonnet-priced dollars to a Haiku row, which is exactly the
     # shape of a wrong per-model verdict — so `cost_value.by_model` refuses to divide where the basis is unknown.
     ("usage", "price_model", "ALTER TABLE usage ADD COLUMN price_model TEXT"),
+    # S112: billing is a per-call fact/declaration, never inferred from today's plan. NULL = legacy/unverified.
+    ("usage", "billing_basis", "ALTER TABLE usage ADD COLUMN billing_basis TEXT"),
+    ("usage", "billing_plan", "ALTER TABLE usage ADD COLUMN billing_plan TEXT"),
+    ("usage", "api_equivalent", "ALTER TABLE usage ADD COLUMN api_equivalent REAL"),
     # 0.62.3: when the provider's result arrived, which is the honest date for the spend it carries. `updated_at`
     # cannot serve — it moves again when the item becomes `materialized`, so by the time the ledger row is written
     # the collection moment has been overwritten.
@@ -2112,9 +2116,10 @@ def fun_stats(project_id: str | None = None) -> dict[str, Any]:
     for r in rows:
         by_platform[r["platform"]] = by_platform.get(r["platform"], 0) + 1
     try:
-        q = "SELECT COALESCE(SUM(cost),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
+        from . import usage
+        q = f"SELECT COALESCE(SUM({usage.cost_expr()}),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
         spend = float(conn.execute(q, (project_id,) if project_id else ()).fetchone()[0])
-        q = "SELECT COALESCE(SUM(saved),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
+        q = "SELECT COALESCE(SUM(CASE WHEN transport='local' THEN 0 ELSE saved END),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
         saved = float(conn.execute(q, (project_id,) if project_id else ()).fetchone()[0])
     except sqlite3.OperationalError:
         spend, saved = 0.0, 0.0
@@ -4129,6 +4134,7 @@ def _spend_health() -> dict[str, Any]:
         from . import usage
         r = usage.reconcile(days=7)
         return {"billing_mode": r["billing_mode"], "local_is_free": r["local_is_free"], "note": r["note"],
+                "claude_billing": r["claude_billing"], "billing": r["billing"],
                 "today": r["today"], "week": r["week"], "month": r["month"], "budgets": r["budgets"],
                 "how_to_read": r["how_to_read"]}
     except Exception as e:  # noqa: BLE001

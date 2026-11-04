@@ -253,11 +253,12 @@ def test_heartbeat_and_cancel(monkeypatch):
 def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
     from neurosearch import providers
     import anthropic
-    body = {"type": "error", "error": {"type": "invalid_request_error", "message": "You have reached your specified API usage limits. You will regain access on 2026-10-01 at 00:00 UTC."}}
+    named_date = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 30 * 86400))
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": f"You have reached your specified API usage limits. You will regain access on {named_date} at 00:00 UTC."}}
     exc = anthropic.BadRequestError(message=body["error"]["message"], response=__import__("httpx").Response(400, request=__import__("httpx").Request("POST", "https://x")), body=body)
     assert providers.classify_error(exc) == providers.SPEND_CAP
     until = providers.spend_cap_until(exc)
-    assert until and time.strftime("%Y-%m-%d", time.gmtime(until)) == "2026-10-01"
+    assert until and time.strftime("%Y-%m-%d", time.gmtime(until)) == named_date
     pid = db.create_project("cap", "x")["id"]
     src = db.upsert_source(platform="web", external_id="cap-src", url="https://example.com/cap", title="cap", status="ready")
     db.add_project_sources(pid, [src["id"]])
@@ -266,7 +267,7 @@ def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
     job = db.claim_job(("suggest_findings",), worker_id="sim")
     assert jobs.execute(job, "sim") == "queued"
     row = db.get_job(j["id"])
-    assert row["status"] == "queued" and row["wait_reason"] == "budget" and "usage limit" in row["message"] and "2026-10-01" in row["message"] and int(row.get("attempts") or 0) == 0
+    assert row["status"] == "queued" and row["wait_reason"] == "budget" and "usage limit" in row["message"] and named_date in row["message"] and int(row.get("attempts") or 0) == 0
     from neurosearch import api
     u = api.api_usage()
     assert u["account_limit_until"] == until and "usage limit" in (u["blocked"] or "")

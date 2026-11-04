@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import shutil
 import subprocess
 import threading
 import time
+from datetime import datetime
 from typing import Any
 
 from .config import settings
@@ -51,8 +53,8 @@ CLI = {
 }
 
 # text patterns in a failed result that mean the SUBSCRIPTION limit, not a broken install
-LIMIT_RE = re.compile(r"(usage limit|rate limit|limit (?:has been )?reached|out of (?:credits|quota)|too many requests)", re.I)
-RESET_RE = re.compile(r"(?:reset|resets|try again|available)\s*(?:at|in|after)?\s*([^.\n]{3,60})", re.I)
+LIMIT_RE = re.compile(r"(usage limit|session limit|rate limit|limit (?:has been )?reached|out of (?:extra usage|usage credits|credits|quota)|too many requests)", re.I)
+RESET_RE = re.compile(r"(?:resets?|try again|available)\s*(?:at|in|after)?\s*([^.\n]{3,60})", re.I)
 AUTH_RE = re.compile(r"(not (?:logged|signed) in|please (?:log|sign) in|run /login|authenticat|invalid api key|api key)", re.I)
 
 
@@ -97,7 +99,7 @@ class LocalResponse:
         self.model = model
         self.id = session_id or ""
         self.provider = PROVIDER
-        self.cost_reported = cost_reported       # what the CLI says the call would cost — informational; actual spend is $0
+        self.cost_reported = cost_reported       # CLI list-price estimate, never proof of an invoice
 
 
 # ------------------------------------------------------------------ fake mode (tests)
@@ -209,43 +211,63 @@ CLI_CREDENTIAL_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_API_
 
 
 def billing_mode() -> str:
-    """Who pays for a Claude Code call: the user's subscription, or their API account.
+    """Authentication does not establish billing: subscriptions can spend usage credits.
 
-    This exists because L1 asserted "local = subscription = free" and nothing ever checked. Measured on Kyle's
-    account 2026-09-10: the app recorded $111.96 of spend for the month while the local path logged $210.55 as
-    `saved`, and his Console said $312.40 — the two sum to within 3%. Every local call was a real API charge that
-    no budget, no rate ceiling and no Health panel could see.
+    Only a current-month declaration that credits are disabled permits included-usage accounting.
+    Old subscription environment overrides cannot silently assert that for every future month.
+    """
+    return billing_context()["mode"]
 
-    The signal is cheap and needs no network: the Claude Code CLI uses `ANTHROPIC_API_KEY` when it is present in the
-    environment it inherits, and the subscription otherwise. `NEUROSEARCH_LOCAL_BILLING` overrides it for anyone
-    whose setup this heuristic reads wrongly.
 
-    UNKNOWN IS TREATED AS BILLED by every caller. Assuming free is the mistake that hid $200."""
+def billing_context() -> dict[str, Any]:
+    """Read plan and declaration once so a concurrent setting change cannot mix two snapshots."""
+    context = billing_settings()
     override = (os.environ.get("NEUROSEARCH_LOCAL_BILLING") or "").strip().lower()
-    if override in (BILLING_SUBSCRIPTION, BILLING_API_KEY, BILLING_UNKNOWN):
-        return override
-    # Since 0.59.1 `_run` strips every credential in CLI_CREDENTIAL_VARS from the subprocess environment, so the CLI
-    # uses its own stored login (a subscription) and the presence of a key in OUR environment no longer decides who
-    # pays. The remaining honest check is empirical, not a guess: `usage.reconcile()` reports `recorded` beside
-    # `likely_total`, and if the Anthropic Console tracks `recorded` from here on, local really is free.
-    return BILLING_SUBSCRIPTION
+    if override in (BILLING_API_KEY, BILLING_UNKNOWN, "usage_credits"):
+        context["mode"] = override
+    return context
+
+
+def billing_settings() -> dict[str, Any]:
+    """Current calendar month's user declaration, stored in the existing settings KV.
+
+    No credential inspection, paid probe, or unsupported account endpoint. A plan name cannot predict
+    remaining allowance shared with Claude/Cowork. Historical usage carries its own immutable basis.
+    """
+    from . import db
+    period = datetime.now().strftime("%Y-%m")
+    raw = db.kv_get(f"claude_billing:{period}")
+    try:
+        value = json.loads(raw or "{}")
+    except (ValueError, TypeError):
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    mode = value.get("mode", BILLING_UNKNOWN)
+    if mode not in (BILLING_SUBSCRIPTION, "usage_credits", BILLING_UNKNOWN) or not value.get("confirmed_at"):
+        mode = BILLING_UNKNOWN
+    return {"period": period, "plan": value.get("plan", "unknown"), "mode": mode,
+            "subscription_usd": value.get("subscription_usd"), "confirmed_at": value.get("confirmed_at")}
 
 
 def local_is_free() -> bool:
-    """True only when a local call is genuinely free. Anything else — including not knowing — is spend."""
+    """True only for this month's explicit credits-disabled declaration; never inferred from login."""
     return billing_mode() == BILLING_SUBSCRIPTION
 
 
 def billing_note() -> str:
     m = billing_mode()
     if m == BILLING_API_KEY:
-        return ("local calls are being counted as spend (NEUROSEARCH_LOCAL_BILLING=api_key). Until 0.59.1 the app "
-                "passed your ANTHROPIC_API_KEY to the Claude Code CLI, which is why they were billed.")
+        return "Claude Code calls count toward the budget at estimated API cost; API-key billing was declared."
     if m == BILLING_SUBSCRIPTION:
-        return ("your API key is no longer passed to the Claude Code CLI (0.59.1), so it uses its own login and "
-                "local calls are free. Verify it rather than trust it: Health shows `recorded` beside "
-                "`likely charged`, and from now on the Anthropic Console should track `recorded`.")
-    return "cannot tell who pays for local calls, so they are counted as spend — set NEUROSEARCH_LOCAL_BILLING to say."
+        return ("You declared usage credits disabled for this month. New Claude Code calls are counted as "
+                "included usage. Change this setting if you enable credits or change your plan. Neuro cannot "
+                "verify your allowance or disable credits in Claude.")
+    if m == "usage_credits":
+        return ("Usage credits may be charged. Claude Code calls count toward Neuro's budgets at estimated "
+                "list price, including cached tokens. This is not an Anthropic invoice.")
+    return ("Claude Code billing is unverified. Subscription login does not prove calls are free. "
+            "Estimated call costs count toward budgets until you confirm this month's billing in Settings.")
 
 
 def health(force: bool = False, wait: bool = True, model: str | None = None) -> dict[str, Any]:
@@ -449,7 +471,13 @@ def _probe(model: str | None = None) -> dict[str, Any]:
         # respects the pin). A probe on the unpinned default can report the whole local path dead over one model's own
         # limit while the pinned model — the one every real call actually uses — is completely fine. Probe with the same
         # pin real work uses, so health reflects what's actually about to be asked to run.
+        from . import usage
+        if not local_is_free():
+            usage.guard()
         resp = _run("Reply with exactly the word OK and nothing else.", system=None, model=model, timeout=PROBE_TIMEOUT, schema=None)
+        usage.record_anthropic(resp, "local_probe")
+    except usage.BudgetPaused as e:
+        return {"state": "budget_wait", "detail": str(e), "version": version}
     except LocalLimit as e:
         return {"state": "usage_limit", "detail": e.detail[:300], "version": version, "reset_hint": e.reset_hint}
     except LocalUnavailable as e:
@@ -584,6 +612,7 @@ def _run(prompt: str, *, system: str | None, model: str | None, timeout: float, 
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("NEUROSEARCH_") and k not in CLI_CREDENTIAL_VARS}
     env["CLAUDE_CODE_NO_TELEMETRY"] = env.get("CLAUDE_CODE_NO_TELEMETRY", "1")
+    billing = billing_context()
     t0 = time.time()
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=_scratch_cwd(), env=env, stdin=subprocess.DEVNULL)
@@ -615,7 +644,10 @@ def _run(prompt: str, *, system: str | None, model: str | None, timeout: float, 
     model_name = _answering_model(mu, model)
     cost = data.get("total_cost_usd")
     log.info("claude code %s answered in %.1fs (%s in / %s out)", model_name, time.time() - t0, usage.get("input_tokens"), usage.get("output_tokens"))
-    return LocalResponse(text, usage, str(model_name), data.get("session_id"), float(cost) if isinstance(cost, (int, float)) else None)
+    estimate = float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost >= 0 else None
+    resp = LocalResponse(text, usage, str(model_name), data.get("session_id"), estimate)
+    resp.billing_context = billing
+    return resp
 
 
 def create(**kw: Any) -> LocalResponse:

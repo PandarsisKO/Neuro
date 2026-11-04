@@ -40,6 +40,9 @@ def _fresh(tmp_path, monkeypatch):
     providers.set_policy(None)
     db._local.conn = None
     db.init_db()
+    # This routing fixture explicitly exercises included usage; default/credit billing is covered by S112.
+    from datetime import datetime
+    db.kv_set(f"claude_billing:{datetime.now():%Y-%m}", json.dumps({"mode":"subscription", "plan":"pro", "confirmed_at":1}))
     fake_ai.OUTAGES.clear()
     with jobs._running_lock:
         jobs._running.clear()

@@ -2411,3 +2411,27 @@ comments and HANDOFF entries. Recorded now so the verdict table above is not the
   after the next cost review"). Kyle asked 2026-09-21 for a delete decision; awaiting his word.
 - **UI is no longer a single file** (rows above that say so are historical): `web/index.html` + `web/js/*.js`
   (11 modules) + `styles.css`, no build step, since the 2026-09-13 frontend split.
+
+## S112 — subscription authentication does not establish zero cost — 2026-11-03
+
+Supersedes 0.59.1's inference (recorded above) that stripping the API key makes the local path free.
+Claude subscription usage can switch to paid usage credits; its credit pool and reload controls are separate
+from Claude Platform API billing. A reported Max → Pro change cannot be modelled by subtracting a fixed
+monthly dollar allowance: included capacity is shared across products and constrained by usage windows.
+Official references: https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans
+and https://code.claude.com/docs/en/costs (CLI session dollars are estimates, not subscription invoices).
+
+The existing accounting path now defaults unverified local usage to budgeted estimated exposure. A current-month
+credits-disabled declaration permits included accounting for new calls only. Billing and plan are stamped at
+invocation start; new `usage` columns retain the basis. Historical local `saved` is uncertain exposure, never
+an automatically verified saving or invoice. CLI estimates include helper overhead; token fallback prices
+actual returned models with cache read/write multipliers. Forecasts cannot learn zero from included calls.
+Subscription fees and credit purchases are not duplicated into the per-call budget. No token count, model
+contract, price table, Tier-1 baseline or production credential changed.
+
+Acceptance: S112 reproduces unknown/credits/included modes, Max → Pro → Max without repricing, month rollover,
+a stale month form, required credits-disabled confirmation, cache prices, CLI helper overhead, invalid estimates,
+legacy exposure across API/budgets/value reports, pre-invocation budget holds (including probes), in-flight
+setting changes, and the shipped Settings UI save/error workflow. S7/S9/N2 now declare included fixtures explicitly.
+S9's calendar-order test and L1's expired account-limit date fixture were corrected to express their actual
+rolling-window/future-reset contracts; both failures existed on unchanged base. Delivery evidence is in HANDOFF.

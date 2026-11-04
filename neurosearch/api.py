@@ -20,7 +20,7 @@ import secrets
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import anyio
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.staticfiles import StaticFiles
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import bootstrap, cache, db, ingest, jobs, perf, qa, t1
 from .chunking import fmt_ts
@@ -496,9 +496,18 @@ class ScholarSearchIn(BaseModel):
     remember: bool = True
 
 
+class ClaudeBillingIn(BaseModel):
+    period: str
+    plan: Literal["unknown", "pro", "max_5x", "max_20x", "other"]
+    mode: Literal["unknown", "subscription", "usage_credits"]
+    subscription_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    credits_disabled_confirmed: bool = False
+
+
 class SpendSettingsIn(BaseModel):
     weekly_budget: float | None = None
     rate_per_hour: float | None = None
+    claude_billing: ClaudeBillingIn | None = None
 
 
 @app.get("/api/usage/reconcile", dependencies=[Depends(require_auth)])
@@ -549,13 +558,24 @@ def api_spend_settings(body: SpendSettingsIn) -> dict[str, Any]:
     """Set the weekly budget (0 = off) and the $/hour rate ceiling. Both were constants; the ceiling's default of
     $6/hour is about $1,000 a week, which is not a budget, it is a runaway detector."""
     from . import usage
+    from . import claude_code
+    if body.claude_billing is not None:
+        declared = body.claude_billing
+        current = claude_code.billing_settings()
+        if declared.period != current["period"]:
+            raise HTTPException(409, "The month changed. Reload Settings and confirm this month's billing.")
+        if declared.mode == "subscription" and not declared.credits_disabled_confirmed:
+            raise HTTPException(422, "Confirm usage credits are disabled in Claude before counting calls as included.")
+        db.kv_set(f"claude_billing:{current['period']}", json.dumps({
+            "plan": declared.plan, "mode": declared.mode, "subscription_usd": declared.subscription_usd,
+            "confirmed_at": time.time()}))
     if body.weekly_budget is not None:
         db.kv_set("weekly_budget", str(max(0.0, float(body.weekly_budget))))
     if body.rate_per_hour is not None:
         v = float(body.rate_per_hour)
         db.kv_set("spend_rate_ceiling", str(v) if v > 0 else None)
     return {"weekly_budget": usage.budget("weekly"), "rate_per_hour": usage.rate_ceiling(),
-            "default_rate_per_hour": usage.SPEND_RATE_CEILING}
+            "default_rate_per_hour": usage.SPEND_RATE_CEILING, "claude_billing": claude_code.billing_settings()}
 
 
 @app.get("/api/scholar/status", dependencies=[Depends(require_auth)])
@@ -2706,7 +2726,7 @@ def api_project_scheduled(project_id: str) -> dict[str, Any]:
         "recent": {"done": len(done), "done_sources": sum(_n_sources(j) for j in done), "failed": len(failed),
                    "missed_window": len(missed), "cancelled": len(cancelled),
                    "spend_usd": round(float(db.connect().execute(
-                       "SELECT COALESCE(SUM(cost),0) c FROM usage WHERE project_id=? AND ts>=?", (project_id, cutoff)).fetchone()["c"]), 4)
+                       f"SELECT COALESCE(SUM({usage.cost_expr()}),0) c FROM usage WHERE project_id=? AND ts>=?", (project_id, cutoff)).fetchone()["c"]), 4)
                    if recent else 0.0,
                    "needs_attention": bool(failed or missed)},
     }

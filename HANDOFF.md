@@ -4161,3 +4161,68 @@ ranking and ingest were not invoked during activation verification. Actual insta
 `/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a370-fead-7d22-9034-20500d7050c2/reddit-listing-recovery-live.png`.
 Installed UI activation is verified; an actual review submission remains a user action, rather than a claimed
 live end-to-end ingest. Documentation-only follow-up; the tested candidate source remains unchanged.
+
+## S112 — account for Claude usage credits when subscription plans change — 2026-11-03
+
+Kyle: “our cost estimates in Neuro are wrong” and “I dropped down to the Pro instead of the Max.”
+Base `fabe5bba8c4e1d8ff3afc243701ba093b6a97a3e`; prepared in isolated worktree
+`/tmp/neuro-claude-usage-20261103`, branch `codex/claude-usage-accounting`, without `.env`, live data or cookies.
+Shared main was clean. Candidate **0.64.5**; extension unchanged **1.11.5**.
+
+Root cause: `claude_code.billing_mode()` defaulted subscription-authenticated calls to free. Claude's subscription
+usage-credit pool can bill these calls independently of API credits. The former reconciliation also repriced
+old rows according to today's mode. A read-only CLI auth check reported Max while the observed Claude web account
+showed Pro, so cached login/plan labels cannot establish available allowance or zero marginal cost.
+
+The existing `usage` ledger gains `billing_basis`, `billing_plan`, `api_equivalent`. `_run` takes one billing snapshot
+before execution. CLI session list-price estimates include helper overhead; fallback prices the returned model
+with cache multipliers. New unverified or credit-eligible calls count toward budgets and are labelled estimates;
+only a current-calendar-month user declaration that credits are disabled permits included usage. Legacy local
+“saved” dollars are displayed as unverified exposure without rewriting rows. All principal spend/value surfaces,
+forecasts, and probe accounting use the same owner; no provider, account-scraping, storage, job or billing system
+was added. Settings extends the existing spend-settings API/KV with plan, fee memo and billing declaration.
+Declarations expire next month; changing one never reprices history. Subscription fees remain separate account-wide
+context, and credit reload purchases are not duplicated as usage. Neuro does not inspect private OAuth endpoints,
+verify remaining shared allowance, or change Claude billing controls. API fallback off is not a usage-credit lock.
+
+Regression surface: provider routing and local/API fallback, schema retry accounting, additive migration, budget/rate
+gates, source forecasts, per-model comparisons, cost/value reports, probes, stale clients and Settings UI.
+Baseline: **73 passed, 1 failed** on S7/S9/P0/R3/N2; the failure was S9's known rolling-week/calendar-month assertion.
+The first baseline command named a nonexistent local-AI test file and collected no tests; the corrected command
+used `test_n2_local_ai.py`. Focused first passing run: **124 passed** on S112/S7/S9/S18/P0/R3/N2/S44/S50/L1.
+S9's date-order assertion and L1's expired 2026-10-01 billing fixture now use meaningful date-relative contracts.
+The final candidate adds probe/in-flight/extra-usage-limit cases. Validation, source manifest and delivery follow.
+
+Visual QA (agent, isolated shipped-markup preview): light/dark and 390px. A real narrow-width overflow was fixed by
+bounding/wrapping the billing-mode label; final document scroll width equals viewport width **390px**.
+Screenshot: `/Users/kyleowen/.codex/visualizations/2026/11/03/01a1a3c2-2b81-7020-9795-10e9a8bda9e5/claude-billing-dark-mobile.png`.
+The JS harness executes the shipped render/load/save/error handlers, not a parallel UI implementation. This is
+agent verification, not user visual sign-off. No paid model call has been performed during this work.
+
+Final source freeze: `d754124c838ea1bc69c4c2b7e4d3a3f5ce20f8ad56ac9ba9bc33bac9cce2f65f`
+(`evals/release/claude-billing-candidate-20261103.json`). Two broad runs passed at intermediate candidates
+(**2,621**, then **2,622** tests). Final review added the regression that a cached Neuro budget hold must never
+select paid fallback. Read-only live UI then exposed Pro's actual refusal, “You've hit your session limit · resets
+5:40pm (America/Los_Angeles)”, classified by old code as generic error. The final candidate recognizes session
+limits and fixes `reset|resets` prefix matching so the reset hint does not begin with a stray “s”. **129 final
+focused tests pass**. The full final-candidate run writes `/tmp/neuro-usage-full-activation.txt`; final result follows.
+No token/model/price baseline changes are involved in either follow-up.
+
+Operational custody during validation: this chat temporarily paused the live queue through the supported budget
+API; its original `paused` value was **false**. It drained to **0 running, 27 queued**. No jobs were cancelled and no
+live DB was opened. After a successful, idle activation, restore that prior queue state; do not leave the temporary
+pause behind. Record Pro as the current-month plan with unverified usage billing, not as proof that calls are free.
+The browser sign-in used the existing local app token without printing it; CLI `auth status` was read-only and
+used the same account as the browser while still reporting Max. No login, credential, credit or subscription
+setting was changed at Anthropic. The next steps are final full-suite result, exact-source verification, commit,
+fast-forward delivery, publish receipt/remote SHA proof, supported-API activation check and queue restoration.
+
+Final validation (macOS / Python 3.14, private data directories, deterministic providers):
+`python -m pytest tests -q` → **2,623 passed, 0 failed, 1 warning** in **390.68 s**.
+Final focused S112/S7/S9/S18/P0/R3/N2/S44/S50/L1 → **129 passed, 1 warning** in **20.25 s**.
+`NEUROSEARCH_FAKE_AI=1 python -m neurosearch.cli eval` → **Tier 1 PASS** on the final source;
+`python -c 'from neurosearch.cli import app; app()' release-check --no-pytest` → **PASS**.
+Source hash was rechecked unchanged after all checks. Reports: `evals/release/claude-billing-{pytest,focused,tier1}-20261103.txt`;
+`evals/release/release-check-0.64.5-fabe5bb-claude-billing-d754124c838e-20261103-160912.{json,txt}`.
+The single warning is the existing Starlette/anyio deprecation. Both baseline date-fixture failures are repaired;
+no full-suite failure remains. Prepared code is ready to activate; actual delivery and live verification follow.

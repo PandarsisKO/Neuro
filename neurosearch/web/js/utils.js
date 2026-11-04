@@ -23,15 +23,15 @@ globalThis.statusBar = function statusBar(u, compact) {
     const h = healthInfo(u);
     const bits = [];
     if (h) bits.push(`<span class="stbit" title="${esc(h.title)}"><span class="${h.cls}">●</span> ${esc(h.label)}</span>`);
-    bits.push(`<span class="stbit" title="spent today">$${u.today.toFixed(2)} today</span>`);
+    bits.push(`<span class="stbit" title="${esc((u.billing || {}).note || 'Estimated usage cost')}">≈$${u.today.toFixed(2)} today${(u.billing || {}).unverified_calls ? ' · billing unverified' : ''}</span>`);
     return `<span class="statusbar">${bits.join('')}</span>`;
   }
   const bits = [];
   if (u.blocked) bits.push(`<span class="stbit status-warn" title="${esc(u.blocked)}">⏸ paused</span>`);
   const h = healthInfo(u);
   if (h) bits.push(`<span class="stbit" title="${esc(h.title)}"><span class="${h.cls}">●</span> ${esc(h.label)}</span>`);
-  bits.push(`<span class="stbit" title="spent today">$${u.today.toFixed(2)} today</span>`);
-  bits.push(`<span class="stbit" title="spent this month">$${u.month.toFixed(2)} this month</span>`);
+  bits.push(`<span class="stbit" title="estimated usage cost">≈$${u.today.toFixed(2)} today</span>`);
+  bits.push(`<span class="stbit" title="${esc((u.billing || {}).note || 'Estimated usage cost')}">≈$${u.month.toFixed(2)} this month${(u.billing || {}).unverified_calls ? ' · billing unverified' : ''}</span>`);
   // RD-2: this used to also append the local/paid split line (call count, % local, "actual"/"avoided"
   // dollar figures) -- a third and fourth reading of the same money Settings' Health panel already
   // shows authoritatively (recorded vs likely-charged, local calls avoided). One canonical place for

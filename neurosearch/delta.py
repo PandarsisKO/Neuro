@@ -97,8 +97,9 @@ def _project_delta(conn: Any, pid: str, p: dict[str, Any], start_ts: float, end_
     for row in tension_rows:
         new_tensions[row["kind"]] = new_tensions.get(row["kind"], 0) + 1
 
+    from . import usage
     spend = float(conn.execute(
-        "SELECT COALESCE(SUM(cost),0) c FROM usage WHERE project_id=? AND ts>=? AND ts<=?",
+        f"SELECT COALESCE(SUM({usage.cost_expr()}),0) c FROM usage WHERE project_id=? AND ts>=? AND ts<=?",
         (pid, start_ts, end_ts)).fetchone()["c"])
 
     before = p.get("snapshot_before")

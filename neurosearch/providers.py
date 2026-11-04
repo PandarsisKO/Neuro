@@ -557,6 +557,10 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     C.forbid_sampling_knobs(extra, c)
     if c.provider != "anthropic":
         raise C.ContractError(f"{task}: invoke() serves message tasks; {c.provider} tasks use their own client methods")
+    if settings.ai_profile == "local" and c.local_capable and current_policy() not in ("api_only", "api_requested"):
+        from . import claude_code as CC, usage
+        if not CC.local_is_free():
+            usage.guard(usage.estimate_model_call(task, len(str(system or "")) + len(str(messages or ""))))
     client = anthropic_client(**({"timeout": c.timeout} if c.timeout else {}))
     kw: dict[str, Any] = {"model": c.model, **C.request_params(c), "extra_headers": {"x-neurosearch-task": task}, **extra}
     if max_output_tokens:
@@ -584,6 +588,11 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     target, reason = route(task)
     if target == "local":
         from . import claude_code as CC
+        from . import usage
+        if not CC.local_is_free():
+            # Local is a transport, not a free billing tier. Check before the invocation starts so a
+            # budget hold remains BudgetPaused (same durable job), never a provider error/API fallback.
+            usage.guard(usage.estimate_model_call(task, len(str(system or "")) + len(str(messages or ""))))
         try:
             resp = _Ledgered(CC.create, CC.PROVIDER, task, policy={"max_attempts": 1, "backoff": []}, operation="claude_code:print")(**kw)
         except ProviderError as e:
@@ -697,7 +706,8 @@ def route(task: str) -> tuple[str, str]:
     # the exact failure the comment above `_probe` claims 0.45.14 fixed, still live because that fix keyed on a
     # setting that is usually unset. This is what made a four-source re-analysis cost $0.59 instead of $0.
     h = CC.health(model=CC.local_model_for(task))
-    if h.get("state") == "ready" or pol == "local_only" or not settings.local_api_fallback:
+    # A Neuro budget hold says nothing about provider availability and must never choose paid fallback.
+    if h.get("state") in ("ready", "budget_wait") or pol == "local_only" or not settings.local_api_fallback:
         return "local", "local_preferred" if pol != "local_only" else "policy:local_only"
     return "api", f"local_{h.get('state')}"
 

@@ -242,10 +242,10 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
         mode = _cc.billing_mode()
         if settings.ai_profile == "local" and mode != _cc.BILLING_SUBSCRIPTION:
             rec = _u.reconcile(days=7)
-            r.check("local calls are free (Claude Code on a subscription)", False,
+            r.check("Claude Code billing declaration is current", mode != _cc.BILLING_UNKNOWN,
                     f"billing_mode={mode} — {_cc.billing_note()} Last 7 days: ${rec['week']['recorded']:.2f} recorded, "
                     f"${rec['week']['local_if_billed']:.2f} on the local path, "
-                    f"${rec['week']['likely_total']:.2f} likely charged.", warn=True)
+                    f"${rec['week']['likely_total']:.2f} estimated exposure, not an invoice.", warn=True)
         else:
             r.check("local billing understood", True, f"{mode} — {_cc.billing_note()}")
     except Exception as e:  # noqa: BLE001

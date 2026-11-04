@@ -1,0 +1,12 @@
+Candidate source SHA-256: d754124c838ea1bc69c4c2b7e4d3a3f5ce20f8ad56ac9ba9bc33bac9cce2f65f
+Base: fabe5bba8c4e1d8ff3afc243701ba093b6a97a3e
+
+........................................................................ [ 55%]
+.........................................................                [100%]
+=============================== warnings summary ===============================
+tests/test_s112_claude_billing.py::test_credits_estimate_uses_cache_prices_and_returned_model
+  /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/.venv/lib/python3.14/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+129 passed, 1 warning in 20.25s

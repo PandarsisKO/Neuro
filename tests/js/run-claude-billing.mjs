@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import {readFileSync, writeFileSync} from 'node:fs';
+import {JSDOM} from 'jsdom';
+const root = new URL('../../', import.meta.url);
+const read = name => readFileSync(new URL(name, root), 'utf8');
+const dom = new JSDOM(read('neurosearch/web/index.html'), {url:'http://localhost:8000/',runScripts:'outside-only'});
+const w=dom.window, $=s=>w.document.querySelector(s);
+w.$=$;w.esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+for(const file of ['utils','sources']) w.eval(read(`neurosearch/web/js/${file}.js`).replace(/^export const moduleName = .*;$/m,''));
+w.loadSpend=async()=>{}; w.loadHealth=async()=>{};
+let u={today:4.8,month:4.8,month_saved:0,daily_budget:5,monthly_budget:50,billing:{unverified_calls:10,unverified_estimate:4.8},claude_billing:{period:'2026-11',plan:'unknown',mode:'unknown',subscription_usd:null}};
+w.api=async url=>{assert.equal(url,'/api/usage');return u;};
+let requests=[];
+w.post=async(url,payload)=>{assert.equal(url,'/api/usage/spend-settings');requests.push(payload);u={...u,claude_billing:{...payload.claude_billing,confirmed_at:1}};};
+await w.loadBudget();
+assert.match($('#bBreak').textContent,/unverified Claude Code usage/);
+assert.match(w.statusBar(u,true),/≈\$4.80 today.*billing unverified/);
+assert.equal($('#bClaudeMode').value,'unknown');assert.equal($('#bClaudeConfirmWrap').hidden,true);
+$('#bClaudePlan').value='pro';$('#bClaudeFee').value='20';$('#bClaudeMode').value='subscription';w.claudeBillingModeChanged();
+assert.equal($('#bClaudeConfirmWrap').hidden,false);
+await w.saveClaudeBilling();assert.equal(requests.length,0);assert.match($('#bClaudeMsg').textContent,/confirm/);
+$('#bClaudeConfirm').checked=true;
+await w.saveClaudeBilling();assert.equal(requests.length,1);assert.equal(requests[0].claude_billing.plan,'pro');
+assert.equal(requests[0].claude_billing.subscription_usd,20);assert.equal(requests[0].claude_billing.period,'2026-11');
+assert.equal(requests[0].claude_billing.credits_disabled_confirmed,true);
+assert.match($('#bClaudeMsg').textContent,/Past calls are unchanged/);
+$('#bClaudeMode').value='usage_credits';w.claudeBillingModeChanged();await w.saveClaudeBilling();
+assert.equal(requests[1].claude_billing.mode,'usage_credits');assert.equal($('#bClaudeConfirmWrap').hidden,true);
+w.post=async()=>{throw Error('The month changed. Reload Settings.');};await w.saveClaudeBilling();
+assert.match($('#bClaudeMsg').textContent,/month changed/);
+assert.match($('#bBreak').textContent,/4.80/,'past totals survive mode changes');
+const card=$('#bClaudeMode').closest('.card');
+assert.match(card.textContent,/Subscription fees are separate/);
+assert.match(card.textContent,/Disabling paid API fallback does not disable Claude usage credits/);
+if(process.env.NEURO_BILLING_PREVIEW){
+  $('#bClaudeMsg').textContent='';
+  for(const input of card.querySelectorAll('input')) { input.setAttribute('value',input.value); input.toggleAttribute('checked',input.checked); }
+  for(const option of card.querySelectorAll('option')) option.toggleAttribute('selected',option.selected);
+  const css=read('neurosearch/web/styles.css');
+  writeFileSync(process.env.NEURO_BILLING_PREVIEW,`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}body{padding:20px;max-width:960px;margin:auto}</style>${card.outerHTML}`);
+}
+console.log('Claude billing UI workflow PASS');

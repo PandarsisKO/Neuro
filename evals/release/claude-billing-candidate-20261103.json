@@ -1,0 +1,103 @@
+{
+  "base": "fabe5bba8c4e1d8ff3afc243701ba093b6a97a3e",
+  "version": "0.64.5",
+  "source_sha256": "d754124c838ea1bc69c4c2b7e4d3a3f5ce20f8ad56ac9ba9bc33bac9cce2f65f",
+  "files": [
+    {
+      "path": ".env.example",
+      "sha256": "23d2efff753b0c6835d904c915e0025f91e865c3b2890c6a34a48954d98fb8a9"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "05eab710983a019b9964aaf503abe55a3990a9e833dbde244a47bb7a89410f94"
+    },
+    {
+      "path": "neurosearch/__init__.py",
+      "sha256": "7c154f6e08b9e2e1b9283efd4284521710192e33f56c14df08448b289adeff85"
+    },
+    {
+      "path": "neurosearch/api.py",
+      "sha256": "80c585aafdf7080b25d0a9fc9f6efed44f194b44d53bd9961a835c94dbfad376"
+    },
+    {
+      "path": "neurosearch/claude_code.py",
+      "sha256": "c1cd57352837c893d42cfa89c28e1bcd57ce9ffabae0e26dc3eca02425a5c315"
+    },
+    {
+      "path": "neurosearch/cost_value.py",
+      "sha256": "a8fe590fe753a9f4dee9da727655c27d9fea8b1ca179bcb0bb269ac2505c64d0"
+    },
+    {
+      "path": "neurosearch/db.py",
+      "sha256": "d3fbf98732ae6cbf9d1453b3f2b96088972c8813eaada48d4aaa8d6c8e9d19ba"
+    },
+    {
+      "path": "neurosearch/delta.py",
+      "sha256": "4344000657f5169fc6e00e7530cfecaf3747380565797793ba185270264e83cb"
+    },
+    {
+      "path": "neurosearch/providers.py",
+      "sha256": "70023410e8b92b284f3c167c245040529854fe856bfadb047006c6700620ea17"
+    },
+    {
+      "path": "neurosearch/release.py",
+      "sha256": "2dcb2f8af038e13e9b217ec8f82e96cff4ae5c842802a915947fa25a47f30653"
+    },
+    {
+      "path": "neurosearch/usage.py",
+      "sha256": "e5dd4992cc70ec3bc942e8e74ce0c0081fac82b9c11a3c50e0a1987dee188300"
+    },
+    {
+      "path": "neurosearch/web/index.html",
+      "sha256": "5bfac3ed4b2f3e52710b6a7aafefeea9615b65180fd8312d8009caf9f204a521"
+    },
+    {
+      "path": "neurosearch/web/js/research.js",
+      "sha256": "0c00af742db343a9ef9ed04c00a0ef9622dedf2eede07000b3658fba67e8ea7e"
+    },
+    {
+      "path": "neurosearch/web/js/sources.js",
+      "sha256": "5a16fb39507cc7d9afbd28c8913d2e5fcebc6d2c220ed3a397f8cdfc88c49c2f"
+    },
+    {
+      "path": "neurosearch/web/js/state.js",
+      "sha256": "a10c8740047ac5c25207b471d1147a05b836bb1c62364332be816de22b8fdb4b"
+    },
+    {
+      "path": "neurosearch/web/js/utils.js",
+      "sha256": "28d045f7807a25d66a1d9caf21e12961b669299f8dad6085ce8a6a3d0fa6b1ec"
+    },
+    {
+      "path": "neurosearch/web/styles.css",
+      "sha256": "dc695ae79c75b8270e7dc63fdc403bcb7012a51178cbfa3867b6b7494f30433e"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "2e7a36a9fe45823f4008c9599806bee3f6ddf7dfbed40a8cca4a1308b2623dff"
+    },
+    {
+      "path": "tests/js/run-claude-billing.mjs",
+      "sha256": "0e00d2d1a5f65fcb786740dc1409a01cbc8bc6a2af1c9c973bdbe7374cfadabe"
+    },
+    {
+      "path": "tests/test_l1_browser_capture.py",
+      "sha256": "9a93c9d5f4742c8325d1ae166e18bebdbd78ee8985c20779f4db055d3aa793a4"
+    },
+    {
+      "path": "tests/test_n2_local_ai.py",
+      "sha256": "a492ace317224a6183b9d792e9ba2e57e0e9a89201673b3fd0f20eb6a91d6f36"
+    },
+    {
+      "path": "tests/test_s112_claude_billing.py",
+      "sha256": "5e0f7b5323dba0e59dfffee221e2480ef38db7c499833c1b481a76b076fcc010"
+    },
+    {
+      "path": "tests/test_s7_local_billing.py",
+      "sha256": "4fdb444ceedc20a5e4d36c160fa39fa140714773a11afb64c545be4e0628c98a"
+    },
+    {
+      "path": "tests/test_s9_cost_value.py",
+      "sha256": "4c0fa9c724ea824bcfe967b1ae1ad82cc6483e14f99a2664ed4843848f5c791c"
+    }
+  ]
+}
