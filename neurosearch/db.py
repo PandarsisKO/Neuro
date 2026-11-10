@@ -1257,6 +1257,11 @@ MIGRATIONS = [
     # research policy. Keep the additive columns so existing databases and downgrade paths remain compatible.
     ("project_notes", "embedding", "ALTER TABLE project_notes ADD COLUMN embedding BLOB"),
     ("project_claims", "embedding", "ALTER TABLE project_claims ADD COLUMN embedding BLOB"),
+    # S114: when the paid contract normalized a Claim. Normalization rewrites the row in place, so `created_at` stays
+    # the harvest date and a window of "Claims normalized" (and the cost per Claim) was counted in the wrong window —
+    # the October sweep ($228, ~5,400 Claims) showed as $0.259 per Claim. Legacy rows stay NULL (cost_value falls back
+    # to updated_at and says so).
+    ("project_claims", "normalized_at", "ALTER TABLE project_claims ADD COLUMN normalized_at REAL"),
     # P0.3 (docs/SPEED-AUDIT-2026-09-17.md): how many characters the source's transcript holds — the SAME number
     # `ingest.caption_recovery_candidates` used to recompute per source on every Sources poll by loading every
     # segment of ~770 sources (601k rows / 22 MB, p50 186 s under load). Maintained by `replace_transcript`, the

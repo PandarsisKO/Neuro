@@ -74,6 +74,9 @@ CAVEATS = (
     "tomorrow without any new spend. The count only ever rises for a past window.",
     "Transcription and embedding rows carry no project, so `source` is a whole-app number and is omitted from a "
     "per-project report rather than guessed at.",
+    "A Claim is rewritten in place when it is normalized, so Claims are counted when the paid step ran "
+    "(`normalized_at`). Rows normalized before that column existed fall back to `updated_at`, which also moves on "
+    "status and evidence changes, so a historical Claims window is approximate (see detail.claims.normalized_approximate).",
     "Cache reads and the batch discount are already inside `cost`, so a cheaper unit cost can mean better cache "
     "layout rather than better output.",
     "Claude Code dollars are estimates, not an Anthropic invoice. New calls use the CLI's session estimate "
@@ -158,15 +161,23 @@ def _findings_counts(start: float, project_id: str | None) -> dict[str, int]:
             "dismissed": by.get("dismissed", 0), "by_status": by}
 
 
+# S114: a Claim is normalized IN PLACE, so its `created_at` is the harvest date, not the date the paid step ran.
+# "Claims normalized" is counted at the normalization time (`normalized_at`; legacy rows fall back to `updated_at`,
+# which also moves on status and evidence changes, so those are approximate and reported as such).
+NORM_TS = "COALESCE(normalized_at, updated_at)"
+CLAIM_EVENT_TS = f"CASE WHEN normalized=1 THEN {NORM_TS} ELSE created_at END"
+
+
 def _claims_counts(start: float, project_id: str | None) -> dict[str, int]:
-    q = "SELECT normalized, COUNT(*) n FROM project_claims WHERE created_at>=?"
-    args: list[Any] = [start]
-    if project_id:
-        q += " AND project_id=?"
-        args.append(project_id)
-    q += " GROUP BY normalized"
-    by = {int(r["normalized"] or 0): int(r["n"]) for r in db.connect().execute(q, args).fetchall()}
-    return {"tracked": sum(by.values()), "normalized": by.get(1, 0), "harvested": by.get(0, 0)}
+    conn = db.connect()
+    pq, pargs = ("", []) if not project_id else (" AND project_id=?", [project_id])
+    tracked = conn.execute("SELECT COUNT(*) FROM project_claims WHERE created_at>=?" + pq, [start, *pargs]).fetchone()[0]
+    harvested = conn.execute("SELECT COUNT(*) FROM project_claims WHERE normalized=0 AND created_at>=?" + pq,
+                             [start, *pargs]).fetchone()[0]
+    row = conn.execute(f"SELECT COUNT(*) n, SUM(CASE WHEN normalized_at IS NULL THEN 1 ELSE 0 END) fb "
+                       f"FROM project_claims WHERE normalized=1 AND {NORM_TS}>=?" + pq, [start, *pargs]).fetchone()
+    return {"tracked": int(tracked), "normalized": int(row["n"] or 0), "harvested": int(harvested),
+            "normalized_approximate": int(row["fb"] or 0)}
 
 
 def _sources_ready(start: float) -> int:
@@ -332,7 +343,7 @@ def by_model(unit: str = "finding", window: str = "month", project_id: str | Non
     basis = price_basis(start, spec["kinds"], project_id, billed)
 
     if unit.endswith("claim"):
-        cq = "SELECT COALESCE(model,'?') m, COUNT(*) n FROM project_claims WHERE created_at>=?"
+        cq = f"SELECT COALESCE(model,'?') m, COUNT(*) n FROM project_claims WHERE {CLAIM_EVENT_TS}>=?"
         cargs: list[Any] = [start]
         if unit == "normalized_claim":
             cq += " AND normalized=1"
@@ -402,7 +413,7 @@ def trend(unit: str = "kept_finding", days: int = 14, project_id: str | None = N
         if unit == "kept_finding":
             cq += " AND COALESCE(status,'approved') IN ('approved','suggested')"
     elif unit in ("claim", "normalized_claim"):
-        cq = "SELECT date(created_at,'unixepoch','localtime') d, COUNT(*) n FROM project_claims WHERE created_at>=?"
+        cq = f"SELECT date({CLAIM_EVENT_TS},'unixepoch','localtime') d, COUNT(*) n FROM project_claims WHERE {CLAIM_EVENT_TS}>=?"
         cargs = [start]
         if unit == "normalized_claim":
             cq += " AND normalized=1"

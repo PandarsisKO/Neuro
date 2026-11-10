@@ -1118,7 +1118,7 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                     continue
                 merge = item.get("merge_into")
                 if merge and merge in by_id and merge != cid:
-                    n_sup = conn.execute("UPDATE project_claims SET status='superseded', superseded_by=?, normalized=1, extraction_hash=?, updated_at=? WHERE id=? AND status='proposed'", (merge, ih, t, cid)).rowcount
+                    n_sup = conn.execute("UPDATE project_claims SET status='superseded', superseded_by=?, normalized=1, normalized_at=?, extraction_hash=?, updated_at=? WHERE id=? AND status='proposed'", (merge, t, ih, t, cid)).rowcount
                     conn.execute("UPDATE claim_evidence SET claim_id=? WHERE claim_id=?", (merge, cid))
                     if n_sup:
                         from . import ledger
@@ -1127,10 +1127,10 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                     continue
                 ctype = item.get("claim_type") if item.get("claim_type") in TYPES else by_id[cid]["claim_type"]
                 fresh = item.get("freshness_class") if item.get("freshness_class") in FRESHNESS else by_id[cid]["freshness_class"]
-                conn.execute("UPDATE project_claims SET text=?, claim_type=?, qualifiers=?, topic=?, freshness_class=?, normalized=1, extraction_hash=?, model=?, prompt_version=?, "
+                conn.execute("UPDATE project_claims SET text=?, claim_type=?, qualifiers=?, topic=?, freshness_class=?, normalized=1, normalized_at=?, extraction_hash=?, model=?, prompt_version=?, "
                              "schema_version=?, routing=?, transport=?, updated_at=? WHERE id=?",
                              ((item.get("text") or by_id[cid]["text"]).strip(), ctype, json.dumps(item.get("qualifiers") or {}), (item.get("topic") or by_id[cid]["topic"] or "")[:80].lower(),
-                              fresh, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
+                              fresh, t, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
                 new_text = (item.get("text") or by_id[cid]["text"]).strip()
                 if new_text != (by_id[cid]["text"] or "").strip():
                     from . import ledger

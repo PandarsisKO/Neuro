@@ -407,3 +407,20 @@ def test_requirement_attributed_to_the_seller_opens_the_governing_question(monke
     tg = [t for t in knowledge.list_targets(pid) if t["claim_id"] == c["id"] and t["sufficiency"] == "governing"]
     assert tg and "professional licensing" in tg[0]["question"] and tg[0]["closure_rule"]["primary_required"] is True
 
+
+
+def test_extract_stamps_normalized_at_on_every_normalized_claim(monkeypatch):
+    """S114: the real normalization path (not a hand-written row) records WHEN the paid step ran, because the row is
+    rewritten in place and `created_at` stays the harvest date."""
+    pid, _ = _acceptance_fixture(monkeypatch)
+    claims.harvest(pid)
+    assert all(c.get("normalized_at") is None for c in _raw_claims(pid)), "a $0 candidate has no normalization time"
+    t0 = time.time()
+    res = claims.extract(pid)
+    done = [c for c in _raw_claims(pid) if c["normalized"] == 1]
+    assert res["normalized"] >= 1 and done
+    assert all(c["normalized_at"] and c["normalized_at"] >= t0 for c in done)
+
+
+def _raw_claims(pid):
+    return [dict(r) for r in db.connect().execute("SELECT id, normalized, normalized_at FROM project_claims WHERE project_id=?", (pid,)).fetchall()]

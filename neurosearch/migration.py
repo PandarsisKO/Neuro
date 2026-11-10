@@ -500,7 +500,7 @@ def _reset_normalization(pid: str, ids: list[str], before: dict[str, Any]) -> No
             b = (before.get("claims") or {}).get(cid)
             if not b:
                 continue
-            conn.execute("UPDATE project_claims SET normalized=0, extraction_hash=NULL, text=?, claim_type=?, topic=?, "
+            conn.execute("UPDATE project_claims SET normalized=0, normalized_at=NULL, extraction_hash=NULL, text=?, claim_type=?, topic=?, "
                          "freshness_class=?, status=CASE WHEN status='superseded' THEN 'proposed' ELSE status END, superseded_by=NULL WHERE id=?",
                          (b["text"], b["type"], b["topic"], b["freshness"], cid))
     db.kv_set(f"claims:eval:{pid}", None)
