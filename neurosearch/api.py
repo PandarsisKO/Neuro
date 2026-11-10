@@ -533,10 +533,14 @@ def api_usage_value(window: str = "month", project_id: str | None = None, days: 
 
 @app.get("/api/usage/value/by-model", dependencies=[Depends(require_auth)])
 def api_usage_value_by_model(unit: str = "finding", window: str = "month",
-                             project_id: str | None = None) -> dict[str, Any]:
-    """The same ratio per model — how a Haiku-versus-Sonnet decision gets checked after the fact."""
+                             project_id: str | None = None, days: int | None = None) -> dict[str, Any]:
+    """The same ratio per model — how a Haiku-versus-Sonnet decision gets checked after the fact.
+    S113: `days` (as on /api/usage/value) selects a rolling window. Without it, "month" means since the 1st, so a
+    spend that landed in last month's final weeks could not be split by model or billing basis from this endpoint."""
     from . import cost_value
-    return cost_value.by_model(unit, window, project_id)
+    if window not in cost_value.WINDOWS:
+        raise HTTPException(400, f"window must be one of {', '.join(cost_value.WINDOWS)}")
+    return cost_value.by_model(unit, window, project_id, days=days if days is None else max(1, min(days, 180)))
 
 
 @app.get("/api/usage/value/trend", dependencies=[Depends(require_auth)])
