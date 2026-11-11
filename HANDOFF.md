@@ -4279,3 +4279,23 @@ Candidate implementation/test SHA256 (ordered path bytes + content for cost_valu
 test_s114_claims_normalized_at.py): `391e6fda5d7e658b8c32462b742c5d4006fb5dabd496f315dcb03377b02a335c`.
 No production activation, paid comparison, harness cap/filter or model override has been performed.
 Next: finish/record full validation, review this exact candidate, then request approval before landing runtime files.
+
+
+## Library suggestions disclosure prepared — 2026-11-10
+
+Kyle additionally requested collapsing “Research in your library that may help this project”. Prepared in the same
+isolated branch, without landing runtime files. `research.js` reuses the native details/summary and jobsPanel
+styling; the title and match counts stay visible when closed. The closed choice is kept per project for this page
+session, survives changed poll results and project switching, and does not discard checkbox choices. A full browser
+reload resets this in-memory preference. No backend, fetch, schema, price or model-routing change.
+
+UI baseline: 41 passed, one existing Starlette warning. Candidate UI/bootstrap/design gates include the new Node
+behavior test in test_s85_rank_loop_and_boot_picks.py. Initial test harness failed on a missing Path import; fixed
+that harness and its DOM stub before the final run. Actual native browser QA: mouse collapse; changed-poll redraw
+stays closed; Enter expands/collapses; a cleared checkbox and selected count survive. Screenshot:
+`/Users/kyleowen/.codex/visualizations/2026/11/10/01a1c7e0-07e6-7383-a531-b838fe475e1c/library-panel-collapsed.png`.
+Temporary preview uses synthetic research only and has been removed. No live DB access or paid call.
+
+The earlier full suite began before this UI change and cannot certify the combined candidate. Final combined full
+pytest/Tier-1/release-check and activation remain pending. Owner instruction “No paid experiments or app restarts
+yet” still applies. Hard runtime checkpoint enforcement remains unresolved, instruction-based controls accepted.
