@@ -4257,3 +4257,25 @@ The queue's temporary pause is removed; production work is progressing while Cla
 at its session limit. Temporary in-app verification tabs and the isolated preview server were closed. S112 is
 complete; external Claude credit controls remain the user's account setting, and next month's declaration defaults
 to unverified. No paid model call was made for verification.
+
+
+## Cost mission takeover: Claims report repair prepared, activation prohibited — 2026-11-10
+
+Owner approved instruction-enforced checkpoints in Codex and the Claims report repair; hard runtime enforcement
+is explicitly unresolved. No paid experiments or app restarts are authorized. No hooks were installed.
+Base `687b81d`, isolated checkout `/private/tmp/neuro-claims-report-20261110`, branch `codex/claims-report-repair`.
+Shared main, live configuration and live DB were not changed or opened.
+
+Repair: preserve costs/counts but refuse normalized-Claims ratios with missing normalization timestamps; refuse
+affected per-model comparisons and Claims trend ratios. Exact project/window results remain available. Existing
+UI already renders `per_unit_unavailable`. Historical cost/claim and a bound inferred from today's batch size
+are not asserted. Details and enforcement evidence: `docs/COST-CLAIMS-DESIGN-2026-11-10.md` §5.
+
+Validation: focused baseline **39 passed**, candidate billing/report/isolation **61 passed**, each with one existing
+Starlette/anyio warning. Fake-AI Tier 1 **PASS**. `release-check --no-pytest` **PASS** (private data, deterministic).
+Full suite is running at this preparation checkpoint; its result must be checked before delivery.
+Logs: `/private/tmp/neuro-claims-report-{full,tier1,release}-20261110.txt`.
+Candidate implementation/test SHA256 (ordered path bytes + content for cost_value.py, test_s9_cost_value.py,
+test_s114_claims_normalized_at.py): `391e6fda5d7e658b8c32462b742c5d4006fb5dabd496f315dcb03377b02a335c`.
+No production activation, paid comparison, harness cap/filter or model override has been performed.
+Next: finish/record full validation, review this exact candidate, then request approval before landing runtime files.

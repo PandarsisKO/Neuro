@@ -58,3 +58,37 @@ merges, type changes); runs in a temporary database; the cohort is reset between
 
 Batch API for Claims (50% off, applies only on the API transport), re-using extraction results, and the ranking task
 (about $34 estimated over 30 days on Sonnet 5): later rungs of the cost ladder, each to be baselined first.
+
+
+## 5. Codex takeover: reporting repair and checkpoint limits (2026-11-10)
+
+Owner approval: "Approved. Continue with instruction-enforced checkpoints in Codex and repair the Claims report.
+Treat hard runtime enforcement as unresolved. No paid experiments or app restarts yet."
+
+Base: `687b81d`; isolated branch `codex/claims-report-repair` at `/private/tmp/neuro-claims-report-20261110`.
+The shared checkout, live application and live database remain untouched. No paid experiment is authorized in this interval.
+
+S114's `updated_at` fallback can count later reviews as paid normalization. Merely flagging approximate counts still
+publishes a misleading ratio. The repair retains costs and approximate counts but withholds the affected normalized
+unit ratio, affected model ratios/comparability, and all ratios in an affected Claims trend window. Trend suppression
+covers all days because the last edit cannot locate the original normalization day. Scope is the requested project
+and window; unrelated projects and legacy rows last updated before the window do not suppress exact results.
+Tracked-Claims totals still describe creation, including free harvest, as before. No data, prices or routing change.
+
+Do not substitute a claimed exact cost or a call-count ceiling: the currently configured group size is not a proven
+historical output count. The earlier ~$0.04 estimate is not a measured per-claim result. Affected historical ratios
+remain unavailable; this repair does not reconstruct missing normalization timestamps.
+
+Checkpoint investigation: local Claude Code is 2.1.306; no hooks or agent definitions were present in the inspected
+project/user settings. Official hooks documentation supports SessionStart, PreToolUse, PreModelSwitch and
+PostModelSwitch; `onFailure: "block"` requires >=2.1.295. Those Claude hooks do not enforce this Codex chat.
+No hooks were installed and no runtime enforcement claim is made. Agent-writable approval files cannot establish
+owner authorization. Installation must also account for Neuro's existing Claude subprocesses rather than blocking
+production processing accidentally. Owner explicitly accepted instruction-based checkpoints here; hard runtime
+enforcement and its seven acceptance tests remain unresolved, not completed.
+Reference: https://code.claude.com/docs/en/hooks
+
+Baseline focused tests: 39 passed, 1 existing Starlette/anyio warning. Candidate focused billing/report/isolation tests:
+61 passed, 1 existing warning. Regression cases cover mixed exact/legacy output, withheld model verdicts, separate
+spend/output days, and project/window isolation. Full pytest, Tier 1 and release-check results are recorded in HANDOFF.
+Paid Claims experiment, harness task filter/cap, production model changes and app activation remain pending approval.
