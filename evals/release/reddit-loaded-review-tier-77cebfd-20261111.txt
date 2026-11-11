@@ -1,0 +1,74 @@
+  · ingested 9 golden sources
+  · retrieval: recall@5 32/32, recall@10 32/32
+  · findings: 36 suggested, 0 rejected by the quote validator, evidence recall 9/10
+  · answers: 34, invalid citations 0
+
+Neuro Search eval · fake · model fake · app 0.64.5 @ 77cebfd
+
+CONTRACTS  (task · model · thinking/effort · max_out · attempts)
+  answer.chat        claude-sonnet-5              disabled             4000  2
+  answer.repair      claude-sonnet-5              disabled             2000  2
+  answer.share       claude-haiku-4-5             disabled             1200  2
+  findings.extract   claude-sonnet-5              disabled             4000  3
+  retrieval.rerank   claude-haiku-4-5             disabled              120  1
+  findings.prefilter claude-haiku-4-5             disabled              200  2
+  rank.relevance     claude-sonnet-5              disabled             6000  3
+  library.profile    claude-haiku-4-5             disabled             1200  2
+  claims.extract     claude-sonnet-5              disabled             5000  2
+  t4.research        claude-haiku-4-5             disabled             4000  3
+  t5.adjudicate      claude-sonnet-5              disabled             1200  3
+  discover.quick     claude-haiku-4-5             disabled             3500  3
+  image.read         claude-haiku-4-5             disabled             4000  3
+  discover.verify    claude-haiku-4-5             disabled             2500  3
+  planner.analysis   claude-sonnet-5              disabled             7000  3
+  planner.build      claude-sonnet-5              disabled            16000  3
+  planner.situation  claude-sonnet-5              disabled             6000  3
+  planner.core       claude-sonnet-5              disabled             5000  3
+  planner.execution  claude-sonnet-5              disabled             6000  3
+  planner.economics  claude-sonnet-5              disabled             6000  3
+  planner.actions    claude-sonnet-5              disabled             5000  3
+  planner.update     claude-sonnet-5              disabled             4000  3
+  export.synthesis   claude-haiku-4-5             disabled             6000  3
+
+PIPELINE QUALITY  (does Neuro Search process AI-shaped output correctly?)
+  Retrieval recall@5 / @10   100.0% / 100.0%   MRR 0.8865   locator 80.0%   (32 questions)
+  Citation integrity         100.0%   (invalid [n] caught, repaired or flagged)
+  Evidence integrity         100.0%   (36 findings kept, 0 rejected; stored re-verified 100.0%)
+  Plan evidence integrity    100.0%   (18 references)
+  Calculator                 ok   DSCR 1.776
+  Validation events          none
+  Structured outputs         mismatches 0 · fallbacks 0 · truncated 0 · refused 0   (schema'd tasks: claims.extract, discover.quick, findings.extract, findings.prefilter, library.profile, planner.actions, planner.core, planner.economics, planner.execution, planner.situation, planner.update, rank.relevance, retrieval.rerank)
+  Provider calls             126 logical · 126 transport attempts · outcome unknown 0 · returned models fake-claude, text-embedding-3-small
+
+MODEL QUALITY
+  Not evaluated (fake provider). The numbers below only show the pipeline can carry them; run `neurosearch eval --live`.
+
+  Golden evidence recall     90.0%   (planted nuggets that became findings)
+  Cites expected source      90.6%   gap detection 0.0%   contradictions surfaced 66.7%
+
+VOLUME
+  Input tokens 157,049   output 5,677   cache read 113,114   cache write 7,706   cache read rate 40.7%
+    answer      34 calls   in   99,654   out   1,855   cached  108,702   $0.3718   fake-claude
+    embed       81 calls   in   24,896   out       0   cached        0   $0.0005   text-embedding-3-small
+    findings     9 calls   in   30,297   out   2,677   cached        0   $0.1310   fake-claude
+    plan         2 calls   in    2,202   out   1,145   cached    4,412   $0.0416   fake-claude
+
+ECONOMICS
+  Cost $0.5449   per source-hour $0.3307   (1.65 h of media)   [fake token estimates at list price]
+
+PERFORMANCE
+  ingest 0.75s   retrieval 0.0011s/q   findings 0.18s   answer 0.004s/q   plan 0.01s   total 4.19s
+
+GATES
+  PASS  retrieval_recall_at_10       1.0  (floor 0.9)
+  PASS  citation_validity            1.0  (floor 1.0)
+  PASS  finding_quote_validity       1.0  (floor 0.98)
+  PASS  plan_evidence_validity       1.0  (floor 1.0)
+  PASS  calculator_ok                True  (floor True)
+  PASS  schema_mismatches            0  (floor 0)
+  PASS  schema_fallbacks             0  (floor 0)
+  PASS  output_truncated             0  (floor 0)
+  PASS  output_refused               0  (floor 0)
+  PASS  fixture_evidence_present     1.0  (floor 1.0)
+
+Tier 1: PASS

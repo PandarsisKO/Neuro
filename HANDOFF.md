@@ -4257,3 +4257,27 @@ The queue's temporary pause is removed; production work is progressing while Cla
 at its session limit. Temporary in-app verification tabs and the isolated preview server were closed. S112 is
 complete; external Claude credit controls remain the user's account setting, and next month's declaration defaults
 to unverified. No paid model call was made for verification.
+
+
+## Reddit review opens with the loaded posts action — 2026-11-11
+
+Kyle confirmed that the loaded-post review works but the failure-first workflow is cumbersome.
+Extension 1.11.6 promotes Review posts on this page to the main action on subreddit tabs, including
+prepared tasks, and places the existing project selector with the age and pre-selection settings.
+The JSON listing remains under Scan the subreddit listing. The main action uses the existing loaded DOM
+reader and proposal workflow directly, with an explicit click, a same-subreddit check, and the existing
+prepared/retry project and app-origin checks. The scope, scroll guidance and possible ranking cost are
+visible before the click. Sources guidance uses the new label. No server code or worker configuration
+changed. The separate Claims/library branch is outside this delivery.
+
+Tested source: `77cebfd` (base `687b81d`), isolated checkout `/private/tmp/neuro-reddit-loaded-review`.
+Full pytest: **2,632 passed**, one existing Starlette/anyio warning, **374.66 s**. Fake Tier 1 and
+release-check --no-pytest passed. All used macOS, the shared Python 3.14 venv, private test data and
+PYTHON_DOTENV_DISABLED=true. The worker/popup harness verifies direct review from a fresh tab without
+a JSON request, the still available listing path, and prepared and failed-task guards. Browser preview
+verified the project, primary action and collapsed listing control using fixture data.
+Evidence: `evals/release/reddit-loaded-review-{full,tier,release}-77cebfd-20261111.txt` and
+`evals/release/release-check-0.64.5-77cebfd-20261111-095918.{json,txt}`.
+Preview: `/Users/kyleowen/.codex/visualizations/2026/11/10/01a1c7e0-07e6-7383-a531-b838fe475e1c/reddit-review-popup.png`.
+Chrome must reload the unpacked extension to activate 1.11.6. Browser preview and automated tests
+do not constitute installed-worker verification. No live ranking, ingestion or app restart performed.
