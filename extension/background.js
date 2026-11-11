@@ -1004,7 +1004,7 @@ const CSCAN_PACE_MS = 250;        // between API reads: a member scrolling, not 
 const CSCAN_BATCH = 10;           // threads per POST to the app
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function startCommunityScan(tabId, projectId, maxAgeDays, want, listingMode) {
+async function startCommunityScan(tabId, projectId, maxAgeDays, want, listingMode, expectedUrl) {
   const cur = await getCScan(tabId);
   if (cur && CSCAN_ACTIVE.has(cur.status)) return { error: 'A community scan is already running in this tab.', scan: cur };
   let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
@@ -1012,8 +1012,14 @@ async function startCommunityScan(tabId, projectId, maxAgeDays, want, listingMod
   if (!adapter) return { error: 'This page is not a community Neuro Search knows how to walk.' };
   if (!projectId) return { error: 'Pick a project first.' };
   if (listingMode && listingMode !== 'loaded') return { error: 'Unknown listing mode.' };
-  if (listingMode === 'loaded' && (adapter.key !== 'reddit' || cur?.status !== 'failed' || !['feed_unreadable', 'no_loaded_posts', 'rendered_unreadable'].includes(cur.reason)
-      || cur.project_id !== projectId || (cur.app_origin && new URL((await cfg()).appUrl).origin !== cur.app_origin) || NSC.subredditUrl(cur.url) !== NSC.subredditUrl(tab.url))) {
+  if (listingMode === 'loaded' && (adapter.key !== 'reddit' || NSC.subredditUrl(expectedUrl) !== NSC.subredditUrl(tab.url))) {
+    return { error: 'The subreddit tab changed. Reopen the extension on the subreddit you want to review.' };
+  }
+  const retryingLoadedReview = cur?.status === 'failed'
+    && ['feed_unreadable', 'no_loaded_posts', 'rendered_unreadable'].includes(cur.reason)
+    && NSC.subredditUrl(cur.url) === NSC.subredditUrl(tab.url);
+  if (listingMode === 'loaded' && retryingLoadedReview
+      && (cur.project_id !== projectId || (cur.app_origin && new URL((await cfg()).appUrl).origin !== cur.app_origin))) {
     return { error: 'Return to the failed subreddit and its project before reviewing loaded posts.' };
   }
 
@@ -1144,7 +1150,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-retry') { withCapture(msg.tabId, () => retryCapture(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
-  if (msg.type === 'cscan-start') { withScan('subreddit-prepare', () => startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want, msg.listingMode)).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'cscan-start') { withScan('subreddit-prepare', () => startCommunityScan(msg.tabId, msg.projectId, msg.maxAgeDays, msg.want, msg.listingMode, msg.expectedUrl)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-cancel') { cancelCommunityScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-dismiss-prepared') { dismissPreparedScan(msg.tabId).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'cscan-get') { getCScan(msg.tabId).then(scan => reply({ scan }), e => reply({ error: String(e) })); return true; }

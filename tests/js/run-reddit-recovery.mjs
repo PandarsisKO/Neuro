@@ -34,7 +34,7 @@ assert.equal($('#jobs').querySelectorAll('.subreddit-recovery a').length, 1, 'de
 assert.equal($('#jobs .subreddit-recovery a').href, sub);
 assert.match($('#jobs').textContent, /Business <research>/);
 assert.equal($('#jobs .subreddit-recovery research'), null, 'escape project name');
-assert.match($('#jobs').textContent, /Scan this subreddit/);
+assert.match($('#jobs').textContent, /Review posts on this page/);
 assert.match($('#jobs').textContent, /Start ingesting selected/);
 assert.match($('#jobs').textContent, /Retry server scan/);
 assert.match($('#jobs').textContent, /Reddit API credentials are required/, 'keep original diagnostic');
@@ -52,7 +52,7 @@ w.chrome = {runtime:{sendMessage(id,msg,reply){
 await w.prepareSubredditInChrome(sub,$('#jobs .subreddit-step button'));
 assert.equal(handoff.type,'prepare-subreddit-scan');assert.equal(handoff.projectId,'project-fixture');
 assert.equal(handoff.url,sub);assert.equal(handoff.maxAgeDays,365);assert.equal(handoff.want,20);
-assert.match($('#jobs [role=status]').textContent,/press Start prepared scan/);
+assert.match($('#jobs [role=status]').textContent,/choose Review posts on this page/);
 w.chrome = null;
 await w.prepareSubredditInChrome(sub,$('#jobs .subreddit-step button'));
 assert.match($('#jobs [role=status]').textContent,/Open Neuro in Chrome/);
@@ -74,7 +74,7 @@ assert.equal($('#jobs .subreddit-recovery'), null);
 
 catalogs = [{id:'catalog', external_id:'quickbooks', url:sub, scan:{status:'blocked', error:failed.message}}];
 await w.loadSubredditCatalogs();
-assert.match($('#subredditCatalogs').textContent, /Scan this subreddit/);
+assert.match($('#subredditCatalogs').textContent, /Review posts on this page/);
 assert.match($('#subredditCatalogs').textContent, /Reddit API credentials are required/);
 catalogs = [];
 await w.loadSubredditCatalogs();
@@ -88,7 +88,7 @@ w.post = async (url, body) => {
   return {items:[{kind:'subreddit', url:sub, label:'Subreddit detected', detail:'A reusable catalog', actions:[]}]};
 };
 await w.classifyInput();
-assert.match($('#inDetect').textContent, /Scan this subreddit/, 'guidance before queueing');
+assert.match($('#inDetect').textContent, /Review posts on this page/, 'guidance before queueing');
 assert.match($('#inDetect').textContent, /no Reddit API keys are needed/);
 for (const url of ['javascript:alert(1)', 'https://reddit.com.evil.test/r/test/', 'https://example.test/r/test/',
   'https://www.reddit.com/r/test/comments/abc/title/', 'https://www.reddit.com/r/\"><img>']) {
@@ -101,7 +101,7 @@ w.api=async()=>[{id:'loaded-review',kind:'subreddit',title:'r/quickbooks',meta:{
 await w.loadReviews();
 assert.match($('#reviewWrap').textContent,/Listed posts only/);
 assert.match($('#reviewWrap').textContent,/Open & capture/);
-assert.match($('#inDetect').textContent,/Review loaded posts instead/);
+assert.match($('#inDetect').textContent,/Review posts on this page/);
 
 // Optional static, isolated browser preview: the actual rendered failure markup and shipped CSS.
 if (process.argv[2]) writeFileSync(process.argv[2], `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reddit recovery preview</title><style>${read('neurosearch/web/styles.css')}</style><main class="card"><h2>In progress</h2>${failureMarkup}</main>`);

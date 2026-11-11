@@ -39,7 +39,7 @@
   <div id="queue" class="muted" style="display:none;margin-bottom:8px"></div>
   <div style="border:1px solid #e1e5eb;border-radius:8px;background:#fff;padding:10px;margin-bottom:10px">
     <b>Send this page</b> <span class="muted">— an article or guide as your browser sees it (works on sites that block automated readers or need a login); on an Instagram reel or profile (newest 40 posts, for review), TikTok, Vimeo or Loom page it sends the link with your session instead</span>
-    <label>To project</label><select id="pageProject"></select>
+    <div id="pageProjectField"><label for="pageProject">To project</label><select id="pageProject"></select></div>
     <button class="primary" id="sendPage">Send this page to Neuro Search</button>
     <span id="pageMsg" class="muted"></span>
   </div>
@@ -60,14 +60,18 @@
   </div>
   <div id="subredditCard" style="display:none;border:1px solid #e1e5eb;border-radius:8px;background:#fff;padding:10px;margin-bottom:10px">
     <div id="preparedScan" hidden></div>
-    <b>Scan this subreddit</b> <span class="muted" id="subredditLabel"></span>
-    <div class="muted">Lists posts for a review card ranked against your brief, then captures the ones you pick. If Reddit blocks the listing, you can review posts already loaded on this page instead.</div>
-    <label>How far back</label><select id="subredditAge"><option value="365" selected>1 year</option><option value="90">3 months</option><option value="30">30 days</option><option value="">Everything Reddit lists (~1,000 newest)</option></select>
+    <b>Review Reddit posts</b> <span class="muted" id="subredditLabel"></span>
+    <div class="muted">Review posts already loaded on this page. Scroll Reddit to load more. Ranking may use your model budget.</div>
+    <div id="subredditProject"></div>
+    <label for="subredditAge">Post age filter</label><select id="subredditAge"><option value="365" selected>1 year</option><option value="90">3 months</option><option value="30">30 days</option><option value="">Any age</option></select>
     <label>Pre-select the best</label><input id="subredditWant" type="number" min="1" max="200" value="20" style="width:80px">
-    <button class="primary" id="subredditScan">Scan this subreddit</button>
+    <button class="primary" id="subredditLoaded" hidden>Review posts on this page</button>
+    <details id="subredditListing"><summary>Scan the subreddit listing</summary>
+      <div class="muted">Requests posts from Reddit for the selected time range. Reddit may refuse this request.</div>
+      <button id="subredditScan">Scan this subreddit</button>
+    </details>
     <button id="dismissPrepared" hidden>Dismiss prepared scan</button>
     <button id="subredditCancel" style="display:none">Stop</button>
-    <button id="subredditLoaded" hidden>Review loaded posts instead</button>
     <div id="subredditMsg" class="muted" style="margin-top:6px"></div>
   </div>
   <b>Scan this course</b>

@@ -817,7 +817,7 @@ globalThis.prepareSubredditInChrome = async function prepareSubredditInChrome(ur
         });
       } catch (e) { clearTimeout(timeout); reject(e); }
     });
-    const message = r.status === 'prepared' ? `Ready for ${r.project_name}. Open the Neuro Search extension on the Reddit tab and press Start prepared scan.`
+    const message = r.status === 'prepared' ? `Ready for ${r.project_name}. Open the Neuro Search extension on the Reddit tab and choose Review posts on this page.`
       : `A scan for ${r.project_name} is already running in that Reddit tab.`;
     SUBREDDIT_PREP.set(project.id + ':' + url, message); note.textContent = message;
   } catch (e) { note.textContent = e.message || String(e); }
@@ -839,13 +839,13 @@ globalThis.subredditRecovery = function subredditRecovery(urls) {
     <b>Scan Reddit with the Chrome extension</b>
     <div>Server catalogs need Reddit API access. If access is missing or denied, Retry alone will not fix it.</div>
     <div class="subreddit-prepared-actions">${[...links].map(([name, url]) => `<div class="subreddit-step"><button class="small primary" onclick="prepareSubredditInChrome('${url}',this)">Prepare r/${esc(name)} in Chrome</button><span role="status">${esc(SUBREDDIT_PREP.get(state.project?.id + ':' + url) || '')}</span></div>`).join('')}</div>
-    <div>Prepare opens Reddit and sends this project, a 1-year window, and the pre-selection count to the extension. Open the extension there; it will be ready for you to start. Nothing is scanned until you press Start prepared scan.</div>
+    <div>Prepare opens Reddit and sends this project, a 1-year window, and the pre-selection count to the extension. Open the extension on that tab and choose Review posts on this page to begin.</div>
     <details><summary>Manual steps if the extension cannot connect</summary><ol>
       <li>Open a subreddit in Chrome and sign in to Reddit if asked: ${[...links].map(([name, url]) => `<a href="${url}" target="_blank" rel="noopener noreferrer">r/${esc(name)}</a>`).join(' · ')}.</li>
-      <li>Open the Neuro Search extension, select <b>${esc(state.project?.name || 'this project')}</b>, then choose <b>Scan this subreddit</b>.</li>
+      <li>Open the Neuro Search extension, select <b>${esc(state.project?.name || 'this project')}</b>, then choose <b>Review posts on this page</b>.</li>
       <li>Choose how far back to scan and how many posts to pre-select. Return here, review the ranked posts, then choose <b>Start ingesting selected</b>.</li>
     </ol></details>
-    <div class="muted">The browser scan uses your Reddit session; no Reddit API keys are needed. If Reddit refuses the listing, choose <b>Review loaded posts instead</b> in the extension (only posts already loaded on that page). It brings back posts Reddit makes available, not a guaranteed full history. For one discussion, open that thread and use <b>Send this page</b> instead.</div>
+    <div class="muted">The browser scan uses your Reddit session; no Reddit API keys are needed. The extension reviews posts already loaded on the page. Scroll Reddit to load more. For one discussion, open that thread and use <b>Send this page</b> instead.</div>
     <details><summary>Prefer the server catalog?</summary><div>Configure approved Reddit API access with <code>REDDIT_CLIENT_ID</code> and <code>REDDIT_CLIENT_SECRET</code> in Neuro’s server configuration, then retry the server scan. If access is already configured, check the error details below.</div></details>
   </div>`;
 }
@@ -906,7 +906,7 @@ globalThis.loadCommunity = async function loadCommunity() {
     $('#commMission').innerHTML = '<option value="">— pick a mission from the research state —</option>' + COMM_MISSIONS.map((x, i) => `<option value="${i}">${esc(x.kind.replace('_', ' '))}: ${esc(x.query.slice(0, 90))}</option>`).join('');
     const s = await api(`/api/projects/${state.project.id}/community/synthesis`); const st = s.stats || {};
     $('#commCounts').textContent = st.threads ? `· ${st.threads} thread${st.threads === 1 ? '' : 's'} · ${st.substantive} substantive posts · ${st.corrections} correction${st.corrections === 1 ? '' : 's'}` : '';
-    $('#commAccess').innerHTML = st.reddit_api ? '' : `<div class="muted text-xs">To scan a subreddit without API access, open it in Chrome, select this project in the Neuro Search extension, and choose <b>Scan this subreddit</b>. For one thread, use <b>Send this page</b>.</div>`;
+    $('#commAccess').innerHTML = st.reddit_api ? '' : `<div class="muted text-xs">To scan a subreddit without API access, open it in Chrome, select this project in the Neuro Search extension, and choose <b>Review posts on this page</b>. For one thread, use <b>Send this page</b>.</div>`;
     const syn = s.syntheses || [];
     $('#commSynth').innerHTML = syn.length ? `<div class="muted" style="margin-top:6px"><b>Cross-thread experience</b> (derived — cite the posts, not this)</div>` + syn.slice(0, 12).map(x => `<div class="kn">${stTag(x.kind === 'FREQUENTLY_REPORTED' ? 'strong' : x.kind === 'RARE_BUT_SERIOUS' || x.kind === 'STRONG_DISAGREEMENT' ? 'weak' : 'developing')}<div><b>${esc(x.kind.replace(/_/g, ' '))}</b> · ${x.independent_lines} independent firsthand line${x.independent_lines === 1 ? '' : 's'}${x.contradicting ? ` · ${x.contradicting} disputing` : ''}<div class="why">${esc(x.statement)}</div>${x.coverage && x.coverage.note ? `<div class="muted" style="color:var(--warn);font-size:12px">⚠ ${esc(x.coverage.note)}</div>` : ''}<div>${(x.evidence || []).slice(0, 6).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank">${esc(e.relation === 'CONTRADICTS' ? '✗ ' : '')}${esc(e.locator || '')}${e.independent ? '' : ' ↩'}</a>`).join('')}</div></div></div>`).join('') : '';
   } catch (e) { $('#commMsg').textContent = e.message; }

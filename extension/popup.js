@@ -435,6 +435,13 @@ async function renderCommunity() {
   for (const c of Object.values(CARDS)) $(c.card).style.display = 'none';
   $('#pageProject').disabled = false;
   $('#subredditLoaded').hidden = true;
+  const projectField = $('#pageProjectField');
+  if (adapter?.key === 'reddit') {
+    if (projectField.parentElement !== $('#subredditProject')) $('#subredditProject').append(projectField);
+    if ($('#subredditCard').nextElementSibling !== $('#wanted')) $('#wanted').before($('#subredditCard'));
+  } else if (projectField.nextElementSibling !== $('#sendPage')) {
+    $('#sendPage').before(projectField);
+  }
   if (!adapter) return;
   const C = CARDS[adapter.mode === 'propose' ? 'propose' : 'store'];
   $(C.card).style.display = ''; $(C.label).textContent = '· ' + (adapter.title ? adapter.title(CSCAN?.status === 'prepared' ? CSCAN.url : TAB.url) : adapter.label);
@@ -447,14 +454,14 @@ async function renderCommunity() {
     const projectAvailable = [...$('#pageProject').options].some(p => p.value === s.project_id);
     $('#preparedScan').hidden = false; $('#dismissPrepared').hidden = false; $('#dismissPrepared').disabled = false;
     $('#pageProject').disabled = true;
-    $('#subredditCard').parentElement.insertBefore($('#subredditCard'), $('#wanted'));
-    $('#preparedScan').innerHTML = `<b>Ready from Neuro: ${esc(adapter.title(s.url))}</b><br>Project: <b>${esc(s.project_name)}</b><br>Next: review the settings below, then start the scan. The ranked posts return to Neuro for your review; starting may use your model budget for ranking.`;
+    $('#preparedScan').innerHTML = `<b>Ready from Neuro: ${esc(adapter.title(s.url))}</b><br>Project: <b>${esc(s.project_name)}</b><br>Choose how to gather posts for review.`;
     if (valid && projectAvailable && preparedApplied !== s.scan_id) {
       $('#pageProject').value = s.project_id; $(C.age).value = s.max_age_days == null ? '' : String(s.max_age_days);
       $(C.want).value = s.want; preparedApplied = s.scan_id;
     }
     $(C.btn).textContent = 'Start prepared scan';
     $(C.btn).disabled = !valid || !projectAvailable;
+    $('#subredditLoaded').hidden = false; $('#subredditLoaded').disabled = $(C.btn).disabled;
     $(C.cancel).style.display = 'none';
     $(C.msg).textContent = !valid ? 'This prepared scan expired or the tab changed. Prepare it again from Neuro.'
       : !projectAvailable ? 'Waiting for the requested project. If it is unavailable, choose the project again in Neuro.' : 'Ready — nothing has been scanned yet.';
@@ -462,7 +469,7 @@ async function renderCommunity() {
   }
   const recoverable = adapter.key === 'reddit' && s?.status === 'failed' && ['feed_unreadable', 'no_loaded_posts', 'rendered_unreadable'].includes(s.reason)
     && self.NSCommunityAdapters.subredditUrl(s.url) === self.NSCommunityAdapters.subredditUrl(TAB.url);
-  $('#subredditLoaded').hidden = !recoverable; $('#subredditLoaded').disabled = active;
+  $('#subredditLoaded').hidden = adapter.key !== 'reddit'; $('#subredditLoaded').disabled = active;
   if (recoverable) {
     $('#pageProject').disabled = true;
     const available = [...$('#pageProject').options].some(p => p.value === s.project_id);
@@ -471,28 +478,31 @@ async function renderCommunity() {
       $('#pageProject').value = s.project_id; $(C.age).value = s.max_age_days == null ? '' : String(s.max_age_days);
       $(C.want).value = s.want || 20; failedApplied = s.scan_id;
     }
-    $('#subredditCard').parentElement.insertBefore($('#subredditCard'), $('#wanted'));
   }
-  $(C.btn).disabled = active; $(C.cancel).style.display = active ? '' : 'none';
+  $(C.btn).disabled = active || (recoverable && $('#subredditLoaded').disabled); $(C.cancel).style.display = active ? '' : 'none';
   if (!s) { $(C.msg).textContent = ''; return; }
   const errs = s.errors && s.errors.length ? ` <span class="warn">${s.errors.length} problem${s.errors.length === 1 ? '' : 's'}</span>` : '';
   if (active) { $(C.msg).innerHTML = `${esc(s.current || s.status)}<br>${s.listed} listed${s.mode === 'propose' ? '' : ` · ${s.read} read · ${s.stored} stored`}${s.failed ? ` · ${s.failed} failed` : ''}${errs}`; return; }
-  const why = { nothing_in_window: 'no posts in that time window', feed_unreadable: adapter.key === 'reddit' ? 'Reddit refused the post listing. This can happen even while signed in.' : 'the listing could not be read — check access to this community', rendered_unreadable: 'the subreddit tab changed. Prepare it again from Neuro.', no_loaded_posts: 'no loaded posts match the time window. Load posts on the subreddit page, widen the window, then scan again.', cancelled: 'you stopped it', runner_error: 'the walker hit an error', send_failed: 'Neuro Search did not accept the listing' }[s.reason] || '';
+  const why = { nothing_in_window: 'no posts in that time window', feed_unreadable: adapter.key === 'reddit' ? 'Reddit refused the post listing. This can happen even while signed in.' : 'the listing could not be read — check access to this community', rendered_unreadable: 'the subreddit tab changed. Prepare it again from Neuro.', no_loaded_posts: 'no loaded posts match the time window. Scroll the subreddit to load more posts or widen the age filter, then review this page again.', cancelled: 'you stopped it', runner_error: 'the walker hit an error', send_failed: 'Neuro Search did not accept the listing' }[s.reason] || '';
   const head = s.status === 'proposed' ? `<span class="ok">Sent ${s.listed} post${s.listed === 1 ? '' : 's'} to Neuro Search for review${s.already ? ` (${s.already} already in your library)` : ''}.</span><br>Open Neuro Search → Sources: the review card ranks them against your brief with the best ${s.want || 20} pre-selected. ${s.listing_method === 'rendered' ? 'After Start, a chosen thread may wait for browser capture because Reddit also blocks its JSON. Use Open &amp; capture in Neuro to read that thread’s rendered page.' : 'Press Start there; keep any reddit.com tab open and the extension captures the chosen posts on its own.'}`
     : s.status === 'done' ? `<span class="ok">Done — ${s.stored} conversation${s.stored === 1 ? '' : 's'} stored in Neuro Search</span>` : `<span class="bad">${s.status === 'cancelled' ? 'Stopped' : 'Failed'}${why ? ' — ' + esc(why) : ''}</span>`;
-  $(C.msg).innerHTML = `${head}${recoverable ? '<br>Review loaded posts instead reads only posts already loaded on this page, using your settings above. Scroll Reddit to load more first if needed. It does not cover the full time window; ranking may use your model budget.' : ''}${s.listing_method === 'rendered' ? '<br><b>Loaded posts only</b> — this is a partial listing, not the full time window. Post text may be shortened by Reddit. Load more posts and scan again to expand it.' : ''}${s.skipped_undated ? ` ${s.skipped_undated} posts without dates skipped.` : ''}${s.status === 'proposed' ? `<br><a href="${esc(cfg.appUrl.replace(/\/$/, '') + '/#p/' + encodeURIComponent(s.project_id) + '/sources')}" target="_blank" rel="noopener">Review posts in Neuro</a>` : ''}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
+  $(C.msg).innerHTML = `${head}${recoverable ? '<br>Choose <b>Review posts on this page</b> to continue with the posts you can see in Reddit.' : ''}${s.listing_method === 'rendered' ? '<br><b>Loaded posts only</b> — this is a partial listing, not the full time window. Post text may be shortened by Reddit. Load more posts and scan again to expand it.' : ''}${s.skipped_undated ? ` ${s.skipped_undated} posts without dates skipped.` : ''}${s.status === 'proposed' ? `<br><a href="${esc(cfg.appUrl.replace(/\/$/, '') + '/#p/' + encodeURIComponent(s.project_id) + '/sources')}" target="_blank" rel="noopener">Review posts in Neuro</a>` : ''}${s.skipped_old ? ` <span class="muted">· ${s.skipped_old} older than the window skipped</span>` : ''}${s.failed ? ` <span class="warn">· ${s.failed} could not be stored</span>` : ''}${errs}` + (s.errors && s.errors.length ? `<details><summary class="muted">Problems</summary>${s.errors.slice(0, 12).map(e => `<div class="muted">${esc(e)}</div>`).join('')}</details>` : '');
+}
+async function startCommunityFromPopup(C, listingMode) {
+  if (!TAB) TAB = await currentTab();
+  const pid = $('#pageProject').value;
+  if (!pid) { $(C.msg).textContent = 'Choose a project first.'; return; }
+  chrome.storage.local.set({ lastProject: pid });
+  $(C.btn).disabled = true; $('#subredditLoaded').disabled = true; $('#dismissPrepared').disabled = true;
+  $(C.msg).textContent = listingMode === 'loaded' ? 'Reading posts on this page…' : 'Listing…';
+  const age = $(C.age).value;
+  const want = C.want ? +$(C.want).value || 20 : null;
+  const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null, want, listingMode, expectedUrl: TAB.url });
+  await renderCommunity();
+  if (r.error) $(C.msg).textContent = r.error;
 }
 for (const C of Object.values(CARDS)) {
-  $(C.btn).onclick = async () => {
-    if (!TAB) TAB = await currentTab();
-    const pid = $('#pageProject').value; if (!pid) { $(C.msg).innerHTML = '<span class="bad">Pick a project above first.</span>'; return; }
-    chrome.storage.local.set({ lastProject: pid });
-    $(C.btn).disabled = true; $('#dismissPrepared').disabled = true; $(C.msg).textContent = 'Listing…';
-    const age = $(C.age).value; const want = C.want ? +$(C.want).value || 20 : null;
-    const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: pid, maxAgeDays: age ? +age : null, want });
-    if (r.error) { $(C.msg).innerHTML = `<span class="bad">${esc(r.error)}</span>`; $(C.btn).disabled = false; }
-    renderCommunity();
-  };
+  $(C.btn).onclick = () => startCommunityFromPopup(C);
   $(C.cancel).onclick = async () => { if (!TAB) return; $(C.cancel).disabled = true; await bg({ type: 'cscan-cancel', tabId: TAB.id }); $(C.cancel).disabled = false; renderCommunity(); };
 }
 chrome.storage.onChanged.addListener((changes) => { if (TAB && changes[`cscan:${TAB.id}`]) renderCommunity(); });
@@ -501,13 +511,4 @@ renderCommunity();
 
 $('#dismissPrepared').onclick = async () => { if (!TAB) return; await bg({ type: 'cscan-dismiss-prepared', tabId: TAB.id }); preparedApplied = null; renderCommunity(); };
 
-// Explicit recovery choice: preserve the failed task's project/window, reuse the same walker and review endpoint.
-$('#subredditLoaded').onclick = async () => {
-  const C = CARDS.propose;
-  $('#subredditLoaded').disabled = true; $(C.msg).textContent = 'Reading loaded posts…';
-  const age = $(C.age).value;
-  const r = await bg({ type: 'cscan-start', tabId: TAB.id, projectId: $('#pageProject').value,
-    maxAgeDays: age ? +age : null, want: +$(C.want).value || 20, listingMode: 'loaded' });
-  if (r.error) { $(C.msg).textContent = r.error; $('#subredditLoaded').disabled = false; return; }
-  renderCommunity();
-};
+$('#subredditLoaded').onclick = () => startCommunityFromPopup(CARDS.propose, 'loaded');
