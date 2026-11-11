@@ -4299,3 +4299,29 @@ Temporary preview uses synthetic research only and has been removed. No live DB 
 The earlier full suite began before this UI change and cannot certify the combined candidate. Final combined full
 pytest/Tier-1/release-check and activation remain pending. Owner instruction “No paid experiments or app restarts
 yet” still applies. Hard runtime checkpoint enforcement remains unresolved, instruction-based controls accepted.
+
+
+## Combined Claims/library candidate: final validation PASS, activation held — 2026-11-10
+
+Owner approved final validation only: “Keep activation on hold, with no paid experiments or app restarts.”
+Exact tested candidate: `c2cf4142530bbc1523f2f682276b965a0628ec89` (base `687b81d`).
+Final combined full suite: **2,636 passed, 0 failed, 1 existing Starlette/anyio deprecation warning**, **447.08 s**,
+macOS/Python 3.14 using the existing venv, deterministic test boundaries and private temporary data directories.
+Commands, each from `/private/tmp/neuro-claims-report-20261110` with `PYTHON_DOTENV_DISABLED=true`:
+- `NEUROSEARCH_DATA_DIR=/private/tmp/neuro-combined-full-data <repo>/.venv/bin/python -m pytest tests -q`
+- `NEUROSEARCH_FAKE_AI=1 NEUROSEARCH_DATA_DIR=/private/tmp/neuro-combined-tier1-data <repo>/.venv/bin/python -c 'from neurosearch.cli import app; app()' eval` → **Tier 1 PASS**
+- `NEUROSEARCH_DATA_DIR=/private/tmp/neuro-combined-release-data <repo>/.venv/bin/python -c 'from neurosearch.cli import app; app()' release-check --no-pytest` → **PASS**, including version agreement and repo hygiene.
+`<repo>` is the shared Mac checkout named in this HANDOFF's coordination section; it supplied only the Python venv.
+Final focused UI/bootstrap/design tests: **69 passed**, one existing warning; browser proof is recorded above.
+The earlier pre-combined full run passed **2,635 tests**, but is not substituted for this final candidate run.
+
+Evidence in `evals/release/`: `claims-library-candidate-20261110.json` binds all five changed implementation/test
+files by SHA256 to candidate/base; every hash was rechecked unchanged after validation. Full, Tier-1 and release
+console logs are `claims-library-{full,tier1,release}-c2cf414-20261110.txt`. Structured gate result:
+`release-check-0.64.5-c2cf414-20261110-162915.{json,txt}`. This closeout changes documentation/evidence only.
+
+Prepared and validated; **NOT ACTIVATED**. Repair commits and evidence are published only on
+`codex/claims-report-repair`; main and live app remain untouched. No paid inference, model-routing/configuration
+change or app restart was performed. Hard runtime enforcement remains unresolved; instruction-based checkpoints
+are the accepted limit. Next runtime action requires explicit activation approval; do not infer it from validation.
+The pending paid comparison and its hard-cap/task-filter implementation remain outside this approved scope.

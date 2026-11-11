@@ -1,6 +1,7 @@
 # Cost mission: Claims experiment design and Claims dating fix (2026-11-10)
 
-Design only. Nothing here has been run, and no production routing has changed. Authority: the Cost Reduction mission
+Status: Claims reporting repair and library disclosure prepared and fully validated on an isolated branch; activation held.
+The paid experiment remains design only and has not run. No production routing has changed. Authority: the Cost Reduction mission
 checkpoints (owner approval required before any paid run or app-interrupting delivery).
 
 ## 1. Evidence behind it (read-only, from the live API and the owner's invoices)
@@ -92,3 +93,11 @@ Baseline focused tests: 39 passed, 1 existing Starlette/anyio warning. Candidate
 61 passed, 1 existing warning. Regression cases cover mixed exact/legacy output, withheld model verdicts, separate
 spend/output days, and project/window isolation. Full pytest, Tier 1 and release-check results are recorded in HANDOFF.
 Paid Claims experiment, harness task filter/cap, production model changes and app activation remain pending approval.
+
+
+## 6. Final combined candidate validation (activation held)
+
+Candidate `c2cf414`: full suite **2,636 passed** (447.08 s, one existing deprecation warning), Tier 1 **PASS**,
+release-check **PASS**. Final source hashes unchanged. Canonical evidence and exact commands are in the newest
+HANDOFF entry and `evals/release/claims-library-candidate-20261110.json`. Evidence is published on the repair
+branch only. Main, the live app and production settings are unchanged. No paid experiment or restart occurred.

@@ -1,0 +1,12 @@
+{
+  "base": "687b81d",
+  "candidate": "c2cf4142530bbc1523f2f682276b965a0628ec89",
+  "files": {
+    "neurosearch/cost_value.py": "62cd7f07b3e800b3f14ab6ffcc4bde1506bacd0ce0d22986631292c8ebcb617e",
+    "neurosearch/web/js/research.js": "7984805f8ca5d2a24003c6647013a33a5004f0697d824b15cd8b2a0a30f4f403",
+    "tests/test_s114_claims_normalized_at.py": "43d5329e365ac387f78201f74fc26b06345a43b696e759d367be466c1c544347",
+    "tests/test_s85_rank_loop_and_boot_picks.py": "a3d01a2482f197677eebde00b825a794636ea0df0f2235029238023d93f40523",
+    "tests/test_s9_cost_value.py": "fe6a6bcc3ce1a9c2aa28106d1089896e5d63605014d95c5c8017c46575dd1cf3"
+  },
+  "scope": "Claims report repair and library suggestions disclosure; no activation"
+}
