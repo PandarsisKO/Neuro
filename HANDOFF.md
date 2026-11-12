@@ -4761,3 +4761,24 @@ Full coverage was 2,669 tests across six shards and the serial rerun of
 the local Claude module. Tier 1 and release-check passed.
 See `evals/release/claims-provider-pytest-88cc0ce-20261112.txt` and
 `evals/release/release-check-0.64.11-88cc0ce-20261112-151241.{json,txt}`.
+
+#### Live activation
+
+Fast-forwarded the Mac checkout to the published `c2aec48` and restarted
+the LaunchAgent after the existing Claims research-map update finished.
+The live app reports 0.64.11, and its served JavaScript matches the
+checkout. Enabled `claims.extract` on the existing connected ChatGPT
+plan in the Mac configuration. The local profile and disabled automatic
+paid fallback were verified. Six queued Claims jobs returned positive
+Accelerate quotes, covering 25 to 215 remaining groups per job.
+
+The temporary background pause stopped one local Claims job at a safe
+point. Resumed background work and requeued its project through the
+existing resume endpoint. The replacement priority and bulk jobs both
+had the local-preferred policy. No queued Claims job was marked for paid
+API execution at activation.
+
+With Claude Code reporting a usage limit, the live model-by-value
+endpoint recorded three GPT-6 Luna Claims calls and 16 saved normalized
+Claims by 15:26 PT. This verified the connected plan route on actual
+queue work after the synthetic pilot.

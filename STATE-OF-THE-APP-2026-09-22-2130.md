@@ -85,3 +85,13 @@ seconds while active. Its bars follow measured work where a count is
 available, with current stage and worker check-in visible during longer
 steps. The previously repeating Claims harvest finished in one pass.
 HANDOFF records the live check and release evidence.
+
+## 2026-11-12 — Claims provider fallback and Accelerate
+
+Version **0.64.11** is live on the Mac. Claude Code remains the primary
+provider for Claims extraction, and the connected ChatGPT plan is the
+first fallback. Priority Claims use the same local-preferred policy as
+bulk Claims. The paid API remains available by explicit choice.
+Accelerate quotes the remaining Claims work, with the quote visible
+during a Claude hold. See HANDOFF for the synthetic pilot, release
+gates, and live checks.
