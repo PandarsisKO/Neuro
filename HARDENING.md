@@ -2463,3 +2463,11 @@ and corroboration have their own reasons. Claim challenges reuse project and
 library membership, full-text and optional hybrid retrieval, existing locators,
 and canonical Works. Search results are for explicit passage assessment. See
 HANDOFF and `tests/test_novelty_challenge.py` for the verification record.
+
+## Queue progress and harvest convergence — 2026-11-12
+
+The queue uses the existing job record and project tick to show completed
+work alongside stage text and lease activity. A running job callback is
+scoped to its run. Harvest passes stop once the only remaining findings
+are intentionally ignored, and a subsequent request can check them again.
+The progress, tick, and harvest isolation gates cover these behaviors.

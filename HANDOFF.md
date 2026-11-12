@@ -4679,3 +4679,37 @@ script and stylesheet matched disk. Authenticated checks covered all seven
 project review queues. The visible rows included 150 corroboration reasons
 and no disagreement reasons. One live keyword challenge returned eight
 located passages in 0.33 s with 1,964 ready sources in scope.
+
+### 2026-11-12 — Queue progress and harvest convergence (0.64.10)
+
+Runtime candidate `db1a7d4`, base `5a7f6ca`. The Sources queue checks for
+updates every two seconds while open and active. Worker lease check-ins
+and provider checks have their own revision in the existing project tick.
+Sources and bootstrap coalesce job-only changes for six seconds. Job
+progress callbacks are scoped to the current run.
+
+The batch bar follows completed provider requests during processing, then
+sources written during collection. Active steps without a measured total
+keep their last checkpoint and show activity. Queued jobs show their wait
+state. The panel gives elapsed time and the age of the last worker check-in
+and stage update. Narrow layouts place the bar and description under the
+job controls. Harvest and assessment report committed findings and checked
+claims, extraction counts completed groups even if responses finish out
+of order, and audio and ranking report downloaded bytes, transcribed parts
+and saved rankings at the relevant boundaries.
+
+The live harvest history had 249 visible yield events and reported zero new
+claims. A finding too short to produce a claim, or marked as a gap, was
+eligible for the follow-up scan after every pass even after the harvest
+intentionally skipped it. The job now excludes these findings from the
+remainder of that job. A new request still reads the current findings, and
+a finding that arrives during a pass is picked up in the next pass.
+
+The baseline passed 61 focused tests. Chrome verified the open queue at
+500 px and 1,050 px, including the provider bar and the queued state.
+Screenshots are in `/private/tmp/ns-queue-preview.xL17hP/`. The focused
+tests cover the separate tick revision, older run callbacks, real provider
+counts, and harvest convergence with ignored findings.
+
+The release evidence is in `evals/release/queue-progress-pytest-db1a7d4-20261112.txt`
+and `evals/release/release-check-0.64.10-db1a7d4-20261112-143932.{json,txt}`.

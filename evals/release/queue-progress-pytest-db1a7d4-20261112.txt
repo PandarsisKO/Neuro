@@ -1,0 +1,13 @@
+Runtime candidate db1a7d4, base 5a7f6ca, app 0.64.10.
+macOS, Python 3.14, provider keys unset, dotenv disabled, private data directory per process.
+Command: python -m pytest -q -p neuro_sources_shards -o cache_dir=<private-cache-dir>
+Temporary hook assigned test modules by collection order modulo 6.
+Shard 0: 493 passed, 2173 deselected, 1 warning in 70.85s (0:01:10)
+Shard 1: 415 passed, 2251 deselected, 1 warning in 72.69s (0:01:12)
+Shard 2: 466 passed, 2200 deselected, 1 warning in 52.65s
+Shard 3: 436 passed, 2230 deselected, 1 warning in 119.98s (0:01:59)
+Shard 4: 427 passed, 2239 deselected, 1 warning in 61.94s (0:01:01)
+Shard 5: 429 passed, 2237 deselected, 1 warning in 45.73s
+
+2,666 passed. Existing Starlette/AnyIO warning.
+Deterministic Tier 1 and release-check passed.
