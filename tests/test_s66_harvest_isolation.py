@@ -151,8 +151,8 @@ def test_harvest_job_picks_up_notes_that_land_mid_job(isolated, monkeypatch):
     real = claims.harvest
     calls = []
 
-    def harvest_then_add(p):
-        r = real(p)
+    def harvest_then_add(p, **kwargs):
+        r = real(p, **kwargs)
         calls.append(r)
         if len(calls) == 1:                                        # a findings job finishes while we run
             db.add_project_note(p, "late arrival: the DSCR floor on an SBA deal is one point two five.",
@@ -162,6 +162,22 @@ def test_harvest_job_picks_up_notes_that_land_mid_job(isolated, monkeypatch):
     out = claims.run_harvest_job({"project_id": pid, "reason": "test"})
     assert out["passes"] == 2 and out["created"] == 3
     assert not claims.unharvested_note_ids(pid)
+
+
+def test_harvest_reports_committed_chunks_and_does_not_yield_on_ignored_findings(isolated, monkeypatch):
+    monkeypatch.setattr(claims, "HARVEST_TX_NOTES", 4)
+    pid = _project_with_notes(6)
+    gap = db.add_project_note(pid, "Gap: compare long-term results", status="approved")
+    short = db.add_project_note(pid, "too short", status="approved")
+    seen = []
+
+    result = claims.run_harvest_job({"project_id": pid}, progress=lambda fraction, message: seen.append((fraction, message)))
+
+    assert result["passes"] == 1
+    assert claims.unharvested_note_ids(pid) == {gap["id"], short["id"]}
+    checked = [fraction for fraction, message in seen if "findings checked" in message]
+    assert len(checked) == 2 and 0 < checked[0] < checked[1]
+    assert all(a[0] <= b[0] for a, b in zip(seen, seen[1:]))
 
 
 def test_harvest_kind_is_zero_dollar_maintenance_not_ai_or_background_work(isolated):

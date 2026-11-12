@@ -300,7 +300,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
         batch = pool[b:b + BATCH]
         done_now = min(b + BATCH, len(pool))
         if progress:
-            progress(max(0.02, b / len(pool)), f"ranking {b + 1}-{done_now} of {len(pool)}")
+            progress(len(persisted) / len(pool), f"Ranking items {b + 1}–{done_now} of {len(pool)} in this pass")
         user = _user(batch)
         try:
             res = _call(SYSTEM, user, project_id, collection_id, head=head)
@@ -340,7 +340,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                     db.set_relevance(s_["id"], sc, why, project_id=project_id, input_hash=input_hash(project, s_), **bprov)
                     persisted.add(s_["id"])
         if progress:                                       # the bar moves when a batch is actually scored, not when one starts
-            progress(min(0.99, done_now / len(pool)), f"ranked {len(scored)} of {len(pool)}")
+            progress(len(persisted) / len(pool), f"{len(persisted)} of {len(pool)} items ranked and saved in this pass")
     if yielding and persisted:
         # Yield's contract: durable progress is written and the next run skips it (_pool re-ranks only what is still
         # unscored). A run that persisted NOTHING has no such progress, so yielding would restart it identically and

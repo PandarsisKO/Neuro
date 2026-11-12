@@ -433,7 +433,8 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop,
         from . import usage
         usage.guard(usage.estimate_transcription(info.get("duration")))
         progress(0.2, "no captions; downloading audio…")
-        audio = media.download_audio(url, cookies_file=cookies_file, referer=referer)
+        audio = media.download_audio(url, cookies_file=cookies_file, referer=referer,
+                                     progress=lambda p, m: progress(0.2 + 0.09 * p, m))
         try:
             segments, lang = transcribe_file(audio, progress=lambda p, m: progress(0.3 + 0.5 * p, m))
         finally:
@@ -602,7 +603,8 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
                 audio = Path(src["audio_path"]) if src.get("audio_path") else None
                 if not (audio and audio.exists()):
                     progress(0.2, "no captions; downloading audio…")
-                    audio = media.download_audio(url, cookies_file=cookies_file, referer=referer)
+                    audio = media.download_audio(url, cookies_file=cookies_file, referer=referer,
+                                                 progress=lambda p, m: progress(0.2 + 0.09 * p, m))
                     db.set_audio_path(source_id, str(audio))            # durable: a retry reuses the download
                     stage_event("audio", "downloaded", path=str(audio))
                     crash_point("audio_downloaded")

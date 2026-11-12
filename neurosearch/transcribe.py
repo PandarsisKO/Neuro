@@ -73,6 +73,8 @@ def transcribe_file(
     detected: str | None = None
     with tempfile.TemporaryDirectory(prefix="ns_tx_") as td:
         workdir = Path(td)
+        if progress:
+            progress(0.0, "Preparing audio for transcription")
         if providers.fake():
             pieces = [(0.0, path)]
         else:
@@ -80,7 +82,7 @@ def transcribe_file(
             pieces = split_audio(src, workdir)
         for n, (offset, piece) in enumerate(pieces):
             if progress:
-                progress(n / max(len(pieces), 1), f"transcribing part {n + 1}/{len(pieces)}")
+                progress(n / len(pieces), f"Transcribing audio part {n + 1} of {len(pieces)} · waiting for transcript")
             with open(piece, "rb") as fh:
                 kwargs: dict[str, Any] = dict(
                     model=settings.transcribe_model, file=fh, response_format="verbose_json",
@@ -101,4 +103,6 @@ def transcribe_file(
                 text = (getattr(s, "text", "") or "").strip()
                 if text:
                     segments.append({"start": start, "end": end, "text": text})
+            if progress:
+                progress((n + 1) / len(pieces), f"{n + 1} of {len(pieces)} audio parts transcribed")
     return segments, detected

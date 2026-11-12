@@ -2777,11 +2777,13 @@ def project_view_revision(project_id: str) -> dict[str, str]:
         "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM jobs),"
         "       (SELECT COUNT(*)||':'||COALESCE(MAX(created_at),0)||':'"
         "               ||SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END)||':'"
-        "               ||SUM(CASE WHEN status='suggested' THEN 1 ELSE 0 END) FROM project_notes WHERE project_id=?)",
+        "               ||SUM(CASE WHEN status='suggested' THEN 1 ELSE 0 END) FROM project_notes WHERE project_id=?),"
+        "       (SELECT MAX(CASE WHEN status='running' THEN heartbeat_at ELSE external_last_checked_at END) "
+        "        FROM jobs WHERE status IN ('running','external_pending'))",
         (project_id,)).fetchone()
     # project_notes has no updated_at, so the status counts stand in for it: approving a finding changes what the
     # Sources rows show (their suggested/approved badges) without touching any timestamp.
-    return {"sources": str(r[0]), "jobs": str(r[1]), "notes": str(r[2]), "research": project_research_revision(project_id)}
+    return {"sources": str(r[0]), "jobs": str(r[1]), "notes": str(r[2]), "job_activity": str(r[3]), "research": project_research_revision(project_id)}
 
 
 def _pctile(vals: list[float], p: float) -> float:
@@ -3232,12 +3234,12 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         run_id = new_id()
         t = now()
         cur = conn.execute(
-            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, not_before=NULL, wait_reason=NULL, bumped_at=NULL, "
+            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, updated_at=?, not_before=NULL, wait_reason=NULL, bumped_at=NULL, "
                      # Kyle, live: an extract_claims job showed "paused: the account's credit balance is too low" while it was
                      # actually RUNNING and making successful calls. Claiming cleared not_before/wait_reason but left the
                      # message from when it was parked, so the panel kept showing a resolved error as if it were current.
                      "message=CASE WHEN message LIKE 'paused:%' THEN NULL ELSE message END "
-            "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, row["id"])
+            "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, t, row["id"])
         )
         if cur.rowcount != 1:
             return None
@@ -3593,7 +3595,7 @@ def finish_job(job_id: str, run_id: str | None, status: str, *, message: str | N
 
 
 def update_job(job_id: str, *, progress: float | None = None, message: str | None = None,
-               status: str | None = None, result: dict | None = None) -> None:
+               status: str | None = None, result: dict | None = None, run_id: str | None = None) -> None:
     """0.61.0: a progress update NEVER touches a job that has already finished.
 
     Four of Kyle's failed jobs showed `[download] Finished downloading playlist: Mark J Kohler` as their error.
@@ -3621,6 +3623,9 @@ def update_job(job_id: str, *, progress: float | None = None, message: str | Non
     sets.append("updated_at=?"); args.append(now())
     where = "id=?"
     args_tail: list[Any] = [job_id]
+    if run_id is not None:
+        where += " AND status='running' AND run_id=?"
+        args_tail.append(run_id)
     if status is None:
         # not a deliberate status change: this is progress, and progress on a finished job is late news
         where += f" AND status NOT IN ({','.join('?' for _ in JOB_TERMINAL)})"

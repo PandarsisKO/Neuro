@@ -518,7 +518,10 @@ def refresh(project_id: str, progress: Callable[[str], None] | None = None) -> d
     say = progress or (lambda m: None)
     n_claims = db.connect().execute("SELECT COUNT(*) FROM project_claims WHERE project_id=? AND status!='rejected'", (project_id,)).fetchone()[0]
     say(f"re-checking {n_claims} claims against the evidence")
-    claims.assess_project(project_id)
+    if progress:
+        claims.assess_project(project_id, progress=progress)
+    else:
+        claims.assess_project(project_id)
     say("looking for tensions between claims")
     detect(project_id)
     dedupe_targets(project_id)

@@ -738,7 +738,7 @@ def parse_vtt(raw: str) -> list[dict[str, Any]]:
 # ------------------------------------------------------------- audio
 
 def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | None = None,
-                   referer: str | None = None) -> Path:
+                   referer: str | None = None, progress: Any = None) -> Path:
     """Download best audio as m4a/mp3 for transcription. Returns the file path."""
     dest_dir = dest_dir or settings.media_dir
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -750,6 +750,25 @@ def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | N
         path.write_bytes(b"FAKEAUDIO " + json.dumps({"duration": d.get("duration")}).encode())
         path.with_suffix(".segments.json").write_text(json.dumps(d["segments"]))     # what the fake transcriber "hears"
         return path
+    last_report = None
+
+    def download_progress(event: dict[str, Any]) -> None:
+        nonlocal last_report
+        if event.get("status") == "finished":
+            progress(1.0, "Audio downloaded · preparing it for transcription")
+        elif event.get("status") == "downloading":
+            now = _time.monotonic()
+            if last_report is not None and now - last_report < 1.0:
+                return
+            last_report = now
+            received = event.get("downloaded_bytes") or 0
+            total = event.get("total_bytes")
+            fraction = min(1.0, received / total) if total and total > 0 else 0.0
+            message = f"Downloading audio · {received / 1048576:.1f} MB received"
+            if total and total > 0:
+                message = f"Downloading audio · {fraction:.0%} of file received"
+            progress(fraction, message)
+
     opts = _base_opts(
         cookies_file, referer,
         site_url=url,
@@ -759,6 +778,8 @@ def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | N
         postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "64"}],
         ignoreerrors=False,
     )
+    if progress:
+        opts["progress_hooks"] = [download_progress]
     with polite(url), yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         if info and info.get("_type") == "playlist" and info.get("entries"):

@@ -25,7 +25,7 @@ import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from . import db
 from .config import settings
@@ -530,7 +530,7 @@ def _strip_cites(text: str) -> str:
     return re.sub(r"\s*\[\d{1,2}\]", "", text or "").strip()
 
 
-def harvest(project_id: str) -> dict[str, Any]:
+def harvest(project_id: str, *, progress=None, ignored: set[int] | None = None) -> dict[str, Any]:
     """Zero-cost candidate Claims from findings that already exist (approved → proposed candidate; suggested → candidate
     for investigation, origin 'finding_suggested'). Idempotent per note. Never touches the model.
 
@@ -551,13 +551,15 @@ def harvest(project_id: str) -> dict[str, Any]:
     652 ms for 605 findings on a real database), so a few callers doing back-to-back scans that mostly find
     nothing new is a cheap, correct trade against a silent, permanent lost harvest."""
     with _harvest_lock(project_id):
-        return _harvest_locked(project_id)
+        return _harvest_locked(project_id, progress=progress, ignored=ignored)
 
 
-def _harvest_locked(project_id: str) -> dict[str, Any]:
+def _harvest_locked(project_id: str, *, progress=None, ignored: set[int] | None = None) -> dict[str, Any]:
     created, merged = 0, 0
     have = {r["origin_note_id"] for r in db.connect().execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
     have |= {r["note_id"] for r in db.connect().execute("SELECT note_id FROM claim_evidence_notes")}
+    if ignored:
+        have.update(ignored)
     # L-18 (2026-09-15): cheap short-circuit BEFORE the expensive part. L-16 made every concurrent caller for a
     # busy project run its own full pass rather than coalescing into the in-flight one -- correct (no more lost
     # notes) but every pass used to start by fetching every approved/suggested note's FULL TEXT
@@ -592,6 +594,8 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
     # is held for one chunk at a time and every other writer interleaves.
     pending = [(status, n) for status in ("approved", "suggested") for n in db.list_project_notes(project_id, status=status)
                if n["id"] not in have]
+    if progress:
+        progress(0.05, f"Checking {len(pending):,} findings")
     for start in range(0, len(pending), HARVEST_TX_NOTES):
       with db.batch():                                 # one SHORT write transaction per chunk
         for status, n in pending[start:start + HARVEST_TX_NOTES]:
@@ -599,6 +603,8 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
             title = (n.get("title") or "").strip()
             text = f"{title} — {body}" if title and title.lower() not in body.lower() else body
             if len(text) < 20 or text.lower().startswith("gap:"):
+                if ignored is not None:
+                    ignored.add(n["id"])
                 continue
             cites = n.get("citations") or []
             if isinstance(cites, str):
@@ -644,6 +650,12 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
                 _works.cite(project_id, body, source_id=(first or {}).get("source_id"), claim_id=c["id"])
             except Exception as e:  # noqa: BLE001
                 log.warning("work citation skipped: %s", e)
+      if progress:
+        checked = min(start + HARVEST_TX_NOTES, len(pending))
+        progress(0.05 + 0.65 * checked / len(pending),
+                 f"{checked:,} of {len(pending):,} findings checked · {created:,} claims added · {merged:,} linked")
+    if progress:
+        progress(0.72, "Updating claim topics and freshness")
     # $0 topics and freshness follow the project's vocabulary / the Claim's own semantics (normalized Claims keep what the contract named)
     _first_class = {r["claim_id"]: r["evidence_class"] for r in db.connect().execute(
         "SELECT claim_id, evidence_class FROM claim_evidence WHERE claim_id IN (SELECT id FROM project_claims WHERE project_id=? AND normalized=0) GROUP BY claim_id", (project_id,))}
@@ -661,8 +673,13 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
         with db.batch():
             for t, f, cid in updates[start:start + HARVEST_TX_UPDATES]:
                 db.connect().execute("UPDATE project_claims SET topic=?, freshness_class=? WHERE id=? AND normalized=0", (t, f, cid))
-    for cid in touched:                                    # assess once per touched Claim, not once per finding
+    if progress and touched:
+        progress(0.78, f"Checking evidence for {len(touched):,} claims")
+    for checked, cid in enumerate(touched, 1):
         assess(cid)
+        if progress and (checked % 25 == 0 or checked == len(touched)):
+            progress(0.78 + 0.20 * checked / len(touched),
+                     f"{checked:,} of {len(touched):,} claims checked against evidence")
     return {"created": created, "merged": merged}
 
 
@@ -858,13 +875,16 @@ def assess(claim_id: str) -> dict[str, Any] | None:
     return c
 
 
-def assess_project(project_id: str) -> int:
+def assess_project(project_id: str, progress: Callable[[str], None] | None = None) -> int:
     from . import ledger
     mark = ledger.cursor(project_id)
     n = 0
-    for r in db.connect().execute("SELECT id FROM project_claims WHERE project_id=? AND status!='rejected'", (project_id,)).fetchall():
+    rows = db.connect().execute("SELECT id FROM project_claims WHERE project_id=? AND status!='rejected'", (project_id,)).fetchall()
+    for r in rows:
         assess(r["id"])
         n += 1
+        if progress and (n % 25 == 0 or n == len(rows)):
+            progress(f"{n:,} of {len(rows):,} claims checked against evidence")
     if n:
         # P11 §48: one summary row per pass, so an external client can be told "56 reassessed, 2 changed" without 56
         # rows of "re-derived, same answer". Counts only (floor standard); the changed Claims have their own events.
@@ -1058,7 +1078,7 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     total_groups = max(1, (len(cands) + EXTRACT_GROUP - 1) // EXTRACT_GROUP)
     if progress:
         progress(0.02, f"reading {len(cands)} candidate claim{'' if len(cands) == 1 else 's'} in {total_groups} group{'' if total_groups == 1 else 's'}")
-    ran, more = 0, False
+    ran, finished_groups, more = 0, 0, False
     work = []
     from . import knowledge as _kn
     existing_topics = [r["topic"] for r in db.connect().execute(
@@ -1075,9 +1095,10 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
         group = cands[i:i + EXTRACT_GROUP]
         ih = extraction_hash(project, group)
         if all(c.get("extraction_hash") == ih for c in group):
+            finished_groups += 1
             if progress:
-                progress(0.02 + 0.96 * ((i + len(group)) / max(1, len(cands))),
-                         f"group {gno} of {total_groups} already complete · {normalized} claims written so far")
+                progress(0.02 + 0.91 * finished_groups / total_groups,
+                         f"group {gno} of {total_groups} already complete")
             continue
         user = json.dumps({"brief": project.get("brief"), "goal": project.get("goal"), "questions": project.get("questions"),
                            "existing_topics": existing_topics, "existing_targets": existing_targets,
@@ -1124,10 +1145,11 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     max_workers = concurrency.limit_for("claims.extract") if current_job()[0] and transport == "job" else 1
 
     def _completed(index, value):
+        nonlocal finished_groups
+        finished_groups += 1
         if progress:
-            gno = value[0]
-            progress(0.02 + 0.96 * (gno / max(1, total_groups)),
-                     f"finished group {gno} of {total_groups}; writing durable results")
+            progress(0.02 + 0.91 * finished_groups / total_groups,
+                     f"{finished_groups} of {total_groups} groups processed · results saved for writing")
 
     extracted = concurrency.bounded_map(
         _extract, work, max_workers=max_workers, completed=_completed,
@@ -1135,6 +1157,8 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     )
     if not _inputs_current():
         raise RuntimeError("claims inputs changed during normalization; completed compatible groups were kept for retry")
+    if progress and extracted:
+        progress(None, f"Writing {len(extracted)} completed claim groups")
     for gno, group, ih, parsed, model, saved_routing, called in extracted:
         if not _inputs_current():
             raise RuntimeError("claims inputs changed during normalization; completed compatible groups were kept for retry")
@@ -1298,18 +1322,22 @@ def run_harvest_job(payload: dict[str, Any], progress: Any = None) -> dict[str, 
     pid = payload["project_id"]
     reason = payload.get("reason") or "findings landed"
     totals = {"created": 0, "merged": 0, "passes": 0}
-    for _ in range(HARVEST_JOB_MAX_PASSES):
+    ignored: set[int] = set()
+    for pass_number in range(1, HARVEST_JOB_MAX_PASSES + 1):
+        def report(fraction, message):
+            progress(fraction, f"Pass {pass_number} · {message}" if pass_number > 1 else message)
+
         if progress:
-            progress(0.1 + 0.8 * totals["passes"] / HARVEST_JOB_MAX_PASSES, "collecting Claims from new findings ($0)")
-        r = harvest(pid)
+            report(0.0, "Looking for findings to turn into claims")
+        r = harvest(pid, progress=report if progress else None, ignored=ignored)
         totals["created"] += r.get("created", 0)
         totals["merged"] += r.get("merged", 0)
         totals["passes"] += 1
         checked_at = time.time()
-        if not unharvested_note_ids(pid):
+        if not (unharvested_note_ids(pid) - ignored):
             break
     else:
-        if unharvested_note_ids(pid):
+        if unharvested_note_ids(pid) - ignored:
             raise Yield(f"harvested {totals['created']} new Claims — more findings landed meanwhile, continuing")
     # Kyle, 2026-09-18: "why does our progress window show 3× collecting claims from new findings? feels
     # confusing/redundant." Every findings completion while a harvest is RUNNING queues another (a running job's
@@ -1381,7 +1409,7 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
         return run_evaluation(pid, budget=int(payload.get("budget") or EVAL_BUDGET), progress=progress)
     if progress:
         progress(0.01, "collecting new candidate claims")
-    harvest(pid)
+    harvest(pid, progress=(lambda _f, m: progress(None, m)) if progress else None)
     ids = set(payload.get("claim_ids") or [])
     cands = [c for c in unnormalized(pid) if c["id"] in ids] if ids else None
     if ids and not cands:
@@ -1394,10 +1422,10 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     from . import knowledge
     written = res.get("normalized", 0)
     if progress:
-        progress(0.99, f"updating the research map ({written} claims written)")
+        progress(None if res.get("more") else 0.95, f"Updating the research map · {written} claims written")
     # The refresh is the long tail of this job on a big project; every phase it reports is a heartbeat, so the panel
     # keeps saying what it is doing instead of "quiet for 26m" (Kyle's screenshot, 2026-09-29).
-    knowledge.refresh(pid, progress=(lambda m: progress(0.99, f"updating the research map ({written} claims written) · {m}")) if progress else None)
+    knowledge.refresh(pid, progress=(lambda m: progress(None, f"Updating the research map · {m}")) if progress else None)
     if res.get("more"):
         # 0.55.1: use the SHARED yield rather than leaning on maybe_extract happening to re-trigger. Everything
         # this run normalized is already stamped with its extraction_hash, so the requeued job resumes at the

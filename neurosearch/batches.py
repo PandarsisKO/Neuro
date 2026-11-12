@@ -386,7 +386,8 @@ def ui_state(job: dict[str, Any]) -> dict[str, Any]:
             checked = "just now" if mins < 1 else f"{mins} min ago"
             return {"phase": phase, "label": f"{finished} of {total} request{'' if total == 1 else 's'} done at the provider "
                                              f"· checked {checked} · {len(done)}/{n_src} source{'' if n_src == 1 else 's'} written",
-                    "done": len(done), "sources": n_src, "counts": by, "provider_done": finished, "provider_total": total}
+                    "done": len(done), "sources": n_src, "counts": by, "provider_done": finished, "provider_total": total,
+                    "cohort": cohort}
         label = f"processing in background — up to 24 hours; {len(done)}/{n_src} sources ready" + (f" · retrying {retrying} item{'s' if retrying != 1 else ''} (round {cohort})" if retrying else "")
     elif st == "done":
         phase, label = "complete", f"complete — {len(done)}/{n_src} sources analysed"
@@ -422,7 +423,7 @@ def run(job_id: str, payload: dict[str, Any], progress: Any = None) -> dict[str,
     # ---- a cohort ended: its results are already persisted locally (AnthropicBatch.check did that before reporting done)
     batch_id = result["batch_id"]
     jobs.crash_point("batch_results_persisted_before_materialize")
-    out = materialize_ready(job_id, pid)
+    out = materialize_ready(job_id, pid, progress=progress) if progress else materialize_ready(job_id, pid)
     failed = [it for it in db.batch_items(job_id, cohort_no) if it["status"] in ("errored", "expired", "canceled")]
     db.job_event(job_id, "batch_ended", cohort_no=cohort_no, batch_id=batch_id, counts=result.get("counts"), materialized_sources=out["materialized"], failed_items=len(failed))
     if failed and not result.get("cancelled"):
@@ -471,7 +472,7 @@ def _prefilter_summary(project_id: str, source_id: str) -> dict[str, Any] | None
     return prefilter.summary([latest[i] for i in sorted(latest)]) if latest else None
 
 
-def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
+def materialize_ready(job_id: str, project_id: str, progress: Any = None) -> dict[str, Any]:
     """For every source whose windows ALL succeeded (across cohorts): validate each persisted result exactly like the
     interactive path (structured → full schema; quote validator inside materialize) and store the artifact once."""
     from . import findings, providers, usage
@@ -479,12 +480,14 @@ def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
     for it in db.batch_items(job_id):
         if it["status"] in ("succeeded", "materialized"):
             by_source.setdefault(it["source_id"], {})[it["window_index"]] = it
+    ready = {sid: wins for sid, wins in by_source.items()
+             if len(wins) >= next(iter(wins.values()))["windows"] and any(it["status"] == "succeeded" for it in wins.values())}
     materialized = 0
     details = []
-    for sid, wins in by_source.items():
+    if progress:
+        progress(None, f"Writing findings for {len(ready):,} ready sources")
+    for sid, wins in ready.items():
         n = next(iter(wins.values()))["windows"]
-        if len(wins) < n or all(it["status"] == "materialized" for it in wins.values()):
-            continue
         results: list[tuple[str, dict[str, Any]]] = []
         model = None
         batch_ids: set[str] = set()
@@ -504,6 +507,8 @@ def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
         r = findings.materialize(project_id, sid, results, model=model, transport="batch", batch_id=",".join(sorted(batch_ids)), prefilter=pf)
         db.batch_items_materialized(job_id, sid)
         materialized += 1
+        if progress and (materialized % 10 == 0 or materialized == len(ready)):
+            progress(None, f"Findings written for {materialized:,} of {len(ready):,} ready sources")
         details.append({"source_id": sid, "suggested": r["suggested"], "rejected_quotes": r["rejected_quotes"], "windows": n})
     return {"materialized": materialized, "details": details}
 

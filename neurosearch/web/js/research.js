@@ -897,14 +897,45 @@ globalThis.runNowJob = async function runNowJob(id) { await post(`/api/jobs/${id
 globalThis.bumpJob = async function bumpJob(id) { await post(`/api/jobs/${id}/bump`, {}).catch(e => toast(e.message || e, 'err')); toast('⏫ moved to the front of the queue'); loadJobs(); }
 globalThis.CHECK_NOW_STATES = new Set(['budget_wait', 'rate_limit_wait', 'provider_wait', 'retry_wait']);
 globalThis.checkNowJob = async function checkNowJob(id) { await post(`/api/jobs/${id}/check-now`, {}).catch(e => toast(e.message || e, 'err')); toast('🔄 checking now — this will run next'); loadJobs(); }
-// "How do I know it's actually doing anything?" (Kyle, live). A running job writes a heartbeat every time it
-// finishes a unit of work, so the age of that heartbeat is the honest liveness signal — a number that changes on
-// every poll. It is never invented: if the job has gone quiet, the tag says so instead of pretending.
+globalThis.jobProgress = function jobProgress(j) {
+  const batch = j.batch;
+  const providerTotal = batch?.phase === 'processing' ? batch.provider_total : 0;
+  const writingTotal = batch?.phase === 'materializing' ? batch.sources : 0;
+  const total = providerTotal || writingTotal;
+  const done = providerTotal ? batch.provider_done : (writingTotal ? batch.done : null);
+  const value = total ? (done || 0) / total : (Number(j.progress) || 0);
+  const percentage = Math.max(0, Math.min(100, value * 100));
+  const working = j.status === 'running' || (j.status === 'external_pending' && batch && !total);
+  if (!working && !total && (j.status !== 'queued' || percentage === 0)) return '';
+  const label = providerTotal ? `${done} of ${total} provider requests processed`
+    : writingTotal ? `${done} of ${total} sources written`
+    : working ? 'Work in progress. Fill shows the last reported stage.'
+    : 'Last checkpoint kept';
+  const numbers = total ? ` aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done || 0}"` : '';
+  const waiting = working && !total ? ' job-progress-active' : '';
+  return `<div class="bar job-progress${waiting}" role="progressbar" aria-label="${esc(label)}"${numbers} title="${esc(label)}"><i style="width:${percentage}%"></i></div>`;
+}
 globalThis.liveTag = function liveTag(j) {
-  if (j.status !== 'running' || !j.updated_at) return '';
-  const q = Math.round(Date.now() / 1000 - j.updated_at);
-  if (q > 180) return ` <span class="status-warn" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>`;
-  return ` <span class="muted" title="the worker reported progress this recently — this is what tells you it is alive" style="font-size:11px">· alive ${q < 5 ? 'just now' : q + 's ago'}</span>`;
+  if (j.status !== 'running' || !j.heartbeat_at) return '';
+  return ` <span class="job-activity muted" data-job-heartbeat="${j.heartbeat_at}" data-job-update="${j.updated_at || 0}"></span>`;
+}
+globalThis.refreshJobActivity = function refreshJobActivity() {
+  for (const el of document.querySelectorAll('[data-job-heartbeat]')) {
+    const now = Date.now() / 1000;
+    const age = ts => {
+      const seconds = Math.max(0, Math.floor(now - ts));
+      return seconds < 5 ? 'just now' : seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds / 60)}m ago`;
+    };
+    const heartbeat = Number(el.dataset.jobHeartbeat);
+    const overdue = now - heartbeat > 90;
+    el.classList.toggle('status-warn', overdue);
+    const updated = Number(el.dataset.jobUpdate);
+    el.textContent = ` · Worker check-in ${age(heartbeat)}`
+      + (updated && now - updated > 10 ? ` · Stage updated ${age(updated)}` : '');
+  }
+}
+globalThis.jobPollDelay = function jobPollDelay(active) {
+  return active ? ($('#jobsDetails')?.open ? 2000 : 3000) : 15000;
 }
 globalThis.pollFails = 0;
 globalThis.JOBSBOX = { expanded: (() => { try { return localStorage.getItem('ns_jobsbox') === 'all'; } catch (e) { return false; } })() };
@@ -939,7 +970,7 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
   const STATE_LABEL = { paused: 'paused by you', pausing: 'pausing', queued: 'queued', running: 'running', resuming: 'waiting to resume · progress kept', blocked: 'blocked', scheduled: 'scheduled', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
   const stateClass = st => ({ paused: 'queued', pausing: 'running', resuming: 'queued', blocked: 'queued', scheduled: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
-  const jobMsg = j => j.state === 'scheduled' && j.not_before ? `eligible from ${new Date(j.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · this Mac must be awake` : j.provider_wait ? j.provider_wait.message : j.batch ? j.batch.label : (j.message || '');
+  const jobMsg = j => j.state === 'scheduled' && j.not_before ? `eligible from ${new Date(j.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · this Mac must be awake` : j.provider_wait ? j.provider_wait.message : j.batch ? j.batch.label : (j.message || (j.status === 'running' ? 'Starting work…' : ''));
   const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span class="status-bad">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
@@ -948,7 +979,13 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   // The queue itself is not touched: this is what the box draws, not what the workers do.
   const isHot = j => j._budget || j.status === 'running' || j.status === 'failed' || j.status === 'cancelling' || (j.status === 'external_pending' && j.external_provider === 'browser')
     || (j.state || j.status) === 'external_pending' || j.state === 'paused' || j.bumped;   // S86: a paused job stays in view so it can be resumed
-  const st = await api('/api/stats', q); const u = await loadSpend(quiet);
+  const projectId = state.project.id;
+  const [st, usage] = await Promise.all([api('/api/stats', q).catch(() => ({})), loadSpend(quiet)]);
+  if (state.project?.id !== projectId) {
+    POLL.leave('jobs', loadJobs);
+    return;
+  }
+  const u = usage || state.usage;
   $('#jobsCard').hidden = !(show.length || st.youtube?.paused || u?.blocked);
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
   // S106: the wait now doubles on each consecutive bot-check, so say how long in hours when it is long, and — once it
@@ -984,12 +1021,13 @@ globalThis.loadJobs = async function loadJobs(quiet) {
 
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted grow">Estimated: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + subredditRecovery(recentFailed.filter(subredditJobNeedsHelp).map(j => j.payload.url)) + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._ytretry ? ` <button class="small ghost" title="Clear YouTube's wait and try the held downloads now. If YouTube still refuses, Neuro backs off again." onclick="ytRetry()">↻ Try YouTube again now</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">Re-check account</button>` : ''}</div>` : `<div class="job" data-job="${j.id || ''}" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : (j.status === 'external_pending' && j.external_provider === 'browser' ? 'needs your browser' : STATE_LABEL[j.state || j.status] || j.status)}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'Provider switch: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : (j.executed_by === 'chatgpt_plan' ? 'ChatGPT plan' : '☁ API') + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
-    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'external_pending' && j.external_provider === 'browser' && j.external_handle ? `<button class="small primary" title="Opens the page in a new tab; the Neuro Search extension captures it as soon as it loads (Reddit blocks the server, your browser is allowed)" onclick="openAndCapture('${esc(j.external_handle)}')">Open & capture in Chrome</button>` : ''}${j.id && (j.state === 'paused' || j.state === 'pausing') ? `<button class="small primary" title="${j.state === 'pausing' ? 'Never mind — keep going' : 'Continue from where it stopped — nothing is redone'}" onclick="resumeJob('${j.id}')">▶ Resume</button>` : j.id && (j.status === 'queued' || j.status === 'running') && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Hold this job until you press Resume' : 'Stop at the next safe point and hold — everything done so far is kept'}" aria-label="Pause job" onclick="pauseJob('${j.id}')">⏸</button>` : ''}${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && j.state === 'scheduled' ? `<button class="small ghost" title="Start it now instead of waiting for its scheduled time" onclick="runNowJob('${j.id}')">Run now</button>` : j.status === 'queued' && j.id && !j.bumped && j.state !== 'paused' ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="${subredditJobNeedsHelp(j) ? 'Retry after fixing Reddit API access; see the browser scan instructions above' : 'Try again'}" onclick="retryJob('${j.id}')">${subredditJobNeedsHelp(j) ? 'Retry server scan' : '↻ Retry'}</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+    ${jobProgress(j)}<span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'external_pending' && j.external_provider === 'browser' && j.external_handle ? `<button class="small primary" title="Opens the page in a new tab; the Neuro Search extension captures it as soon as it loads (Reddit blocks the server, your browser is allowed)" onclick="openAndCapture('${esc(j.external_handle)}')">Open & capture in Chrome</button>` : ''}${j.id && (j.state === 'paused' || j.state === 'pausing') ? `<button class="small primary" title="${j.state === 'pausing' ? 'Never mind — keep going' : 'Continue from where it stopped — nothing is redone'}" onclick="resumeJob('${j.id}')">▶ Resume</button>` : j.id && (j.status === 'queued' || j.status === 'running') && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Hold this job until you press Resume' : 'Stop at the next safe point and hold — everything done so far is kept'}" aria-label="Pause job" onclick="pauseJob('${j.id}')">⏸</button>` : ''}${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && j.state === 'scheduled' ? `<button class="small ghost" title="Start it now instead of waiting for its scheduled time" onclick="runNowJob('${j.id}')">Run now</button>` : j.status === 'queued' && j.id && !j.bumped && j.state !== 'paused' ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="${subredditJobNeedsHelp(j) ? 'Retry after fixing Reddit API access; see the browser scan instructions above' : 'Try again'}" onclick="retryJob('${j.id}')">${subredditJobNeedsHelp(j) ? 'Retry server scan' : '↻ Retry'}</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   restoreJobHistories();
+  refreshJobActivity();
   clearTimeout(jobsTimer);
   const analysing = (SRCG.rows || []).some(s => s.analysing || (s.job && s.job.status === 'running'));
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
-  const every = (active.length || analysing) ? 3000 : 15000;
+  const every = jobPollDelay(active.length || analysing);
   globalThis.jobsTimer = setTimeout(pollTick, every);
   POLL.leave('jobs', loadJobs);
   if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(() => loadReviews().catch(() => {}), 3500);
@@ -1000,6 +1038,7 @@ globalThis.loadJobs = async function loadJobs(quiet) {
 // fingerprint that ever missed a change self-corrects within about a minute instead of leaving a stale screen.
 globalThis.lastRev = null;
 globalThis.ticksSinceFull = 0;
+globalThis.relatedJobsRefresh = { rev: null, at: 0 };
 globalThis.RECONCILE_EVERY = 20;
 globalThis.pollTick = async function pollTick() {
   if (state.view !== 'sources' || !state.project) return;
@@ -1014,11 +1053,28 @@ globalThis.pollTick = async function pollTick() {
   const full = ++globalThis.ticksSinceFull >= RECONCILE_EVERY;
   if (full) globalThis.ticksSinceFull = 0;
   globalThis.lastRev = rev;
-  const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
-  if (full || changed('jobs')) loadJobs(true); else globalThis.jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
-  if (srcChanged || SRCG.potentialPending) loadSources(true).catch(() => {});
-  if (full || changed('jobs') || changed('sources')) loadBoot(true);
+  const srcChanged = full || changed('sources') || changed('notes') || changed('research');
+  // Coalesce job-only updates before refreshing the heavier Sources and bootstrap views.
+  const relatedChanged = relatedJobsRefresh.rev !== rev.jobs && Date.now() - relatedJobsRefresh.at >= 6000;
+  if (full || changed('jobs') || changed('job_activity')) loadJobs(true);
+  else {
+    refreshJobActivity();
+    globalThis.jobsTimer = setTimeout(pollTick, jobPollDelay(t.active));
+  }
+  if (srcChanged || relatedChanged || SRCG.potentialPending) {
+    relatedJobsRefresh.rev = rev.jobs;
+    relatedJobsRefresh.at = Date.now();
+    loadSources(true).catch(() => {});
+  }
+  if (full || !prev || relatedChanged || changed('sources')) loadBoot(true);
 }
+
+$('#jobsDetails')?.addEventListener('toggle', () => {
+  if ($('#jobsDetails').open && state.view === 'sources' && state.project && !document.hidden && !POLL.busy('jobs')) {
+    clearTimeout(jobsTimer);
+    pollTick();
+  }
+});
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.view === 'sources' && state.project) { clearTimeout(jobsTimer); pollTick(); } });
 

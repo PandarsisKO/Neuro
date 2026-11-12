@@ -289,7 +289,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
                       source_id=payload.get("source_id"), task=job["kind"])
 
     def progress(p: float | None, m: str) -> None:
-        db.update_job(jid, progress=p, message=m)          # also a heartbeat
+        db.update_job(jid, progress=p, message=m, run_id=job.get("run_id"))
 
     from . import media
     media.set_progress_hook(progress)
