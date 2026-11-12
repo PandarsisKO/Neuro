@@ -4825,3 +4825,25 @@ through the app's retry endpoint. The queue deduplicated these into
 eight active jobs, all local-preferred. One had started reading
 candidates at the first check. The Mac's automatic paid API fallback
 setting was verified off.
+
+### 2026-11-12 — ChatGPT capacity in the queue (0.64.13)
+
+Base `91bc9d7`, candidate `1598274`. The live queue held some Claims jobs
+for ChatGPT's single slot. The job API rendered their generic provider
+wait as an outage, even with no provider operation attached. Several jobs
+were repeatedly claimed and parked more than 30 times with zero failed
+attempts.
+
+The existing queue now shows “Queued for ChatGPT” for that capacity wait,
+including rows from 0.64.12. The existing worker claim skips those rows
+while the plan slot is occupied. When it opens, ordinary queue order
+applies. A real breaker wait names its provider and a usage or connection
+hold keeps the message supplied by its handler. An explicit policy change
+releases a capacity wait so Accelerate can use the selected API route.
+No paid API fallback was enabled.
+
+The full suite passed 2,676 tests across six shards, including the browser
+queue harness. Regression tests covered capacity admission and resumption,
+legacy rows, real breaker waits, plan-limit messages, and Accelerate.
+Tier 1 and release-check passed. See
+`evals/release/release-check-0.64.13-1598274-20261112-155710.{json,txt}`.
