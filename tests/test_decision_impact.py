@@ -1,5 +1,5 @@
 """Decision Impact v1 (PRODUCT-INTELLIGENCE-MISSION.md, CTO rulings §6): exactly two deterministic signals --
-disagreement (open CONTRADICTION/NOVEL tension) and plan_impact (cited via a folded Finding in the current
+disagreement (open CONTRADICTION tension) and plan_impact (cited via a folded Finding in the current
 plan's evidence). Everything else must report "unknown", never a guess. $0, read-only, no provider call."""
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def test_no_claims_returns_empty(di_db):
     assert di.decision_impact(p["id"]) == {}
 
 
-def test_disagreement_true_only_for_open_contradiction_or_novel(di_db):
+def test_disagreement_true_only_for_open_contradiction(di_db):
     p = db.create_project("DI disagreement", "brief")
     pid = p["id"]
     _claim(pid, "c1"); _claim(pid, "c2"); _claim(pid, "c3"); _claim(pid, "c4")
@@ -52,7 +52,7 @@ def test_disagreement_true_only_for_open_contradiction_or_novel(di_db):
 
     out = di.decision_impact(pid)
     assert out["c1"]["disagreement"] is True
-    assert out["c2"]["disagreement"] is True
+    assert out["c2"]["disagreement"] is False
     assert out["c3"]["disagreement"] is False
     assert out["c4"]["disagreement"] is False
 

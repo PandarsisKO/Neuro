@@ -3,8 +3,7 @@ to interrupt Kyle." Ruling §6 is explicit: no six-factor LLM score, no novelty/
 confidence guesswork. Exactly two REAL, deterministic signals for v1 -- everything else reports "unknown", never
 a fabricated number.
 
-  1. disagreement: an open CONTRADICTION/NOVEL tension in research_tensions touches this Claim (the exact query
-     `knowledge.py`'s own evidence-target satisfaction check already uses -- not a new signal, a reused one).
+  1. disagreement: an open CONTRADICTION tension in research_tensions touches this Claim.
   2. plan_impact: is this Claim cited (via its folded-in Findings) anywhere in the CURRENT plan's evidence.
 
 Read-only, $0, no provider call -- same discipline as t4.source_relevance and t1.coverage_view.
@@ -84,8 +83,8 @@ def decision_impact(project_id: str, claim_ids: list[str] | None = None) -> dict
 
     marks = ",".join("?" for _ in claim_ids)
     disagreeing = {r["claim_id"] for r in conn.execute(
-        f"SELECT DISTINCT claim_id FROM research_tensions WHERE claim_id IN ({marks}) "
-        f"AND status='open' AND kind IN ('CONTRADICTION','NOVEL')", claim_ids).fetchall()}
+        f"SELECT DISTINCT claim_id FROM research_tensions WHERE project_id=? AND claim_id IN ({marks}) "
+        f"AND status='open' AND kind='CONTRADICTION'", [project_id, *claim_ids]).fetchall()}
 
     cited_note_ids = _plan_cited_note_ids(project_id)
     if cited_note_ids is None:

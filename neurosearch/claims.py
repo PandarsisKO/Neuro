@@ -434,7 +434,9 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
             same_creator = bool(my_creator) and my_creator == _creator_of({"platform": e.get("platform"), "channel": e.get("channel"), "id": e["source_id"]}, e.get("locator"))
             if my_firsthand and not same_creator:
                 continue                                                   # another person's own experience is another line, however similar the words
-            if excerpt and e.get("excerpt") and overlap(excerpt, e["excerpt"]) >= DERIVATIVE_OVERLAP:
+            # Similar wording across opposite stances is expected and does not show copying.
+            same_stance = (relation == "CONTRADICTS") == (e["relation"] == "CONTRADICTS")
+            if same_stance and excerpt and e.get("excerpt") and overlap(excerpt, e["excerpt"]) >= DERIVATIVE_OVERLAP:
                 independent, derivative_of = 0, e["source_id"]
                 break
             if same_creator:
@@ -898,13 +900,43 @@ def stale_by_source(source_id: str) -> int:
 
 # ---------------------------------------------------------------- contradiction with scope check
 
-SCOPE_KEYS = ("jurisdiction", "product", "population", "conditions", "timeframe")
+SCOPE_KEYS = ("jurisdiction", "product", "population", "conditions", "timeframe", "imposed_by", "measurement")
+
+
+def evidence_origin(evidence: dict[str, Any], work_id: str | None = None) -> tuple[str, str]:
+    """Collapse known Work manifestations and recorded copies into the same origin."""
+    lineage = work_id or evidence.get("lineage_id")
+    if lineage:
+        return "lineage", lineage
+    return "source", evidence.get("derivative_of") or evidence["source_id"]
+
+
+def cited_evidence(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Current, located passages usable on each side of a Claim."""
+    sides = {"support": [], "contradiction": [], "qualification": []}
+    groups = {"SUPPORTS": "support", "EXPERIENTIAL": "support",
+              "CONTRADICTS": "contradiction", "QUALIFIES": "qualification"}
+    for row in rows:
+        if (row["relation"] in groups and not row.get("stale") and row.get("excerpt")
+                and (row.get("locator") or row.get("start") is not None or row.get("link"))):
+            sides[groups[row["relation"]]].append(row)
+    return sides
+
+
+def disagreement_pair(sides: dict[str, list[dict[str, Any]]]) -> tuple[dict, dict] | None:
+    return next(((support, counter) for support in sides["support"] for counter in sides["contradiction"]
+                 if support["source_id"] != counter["source_id"]
+                 and evidence_origin(support) != evidence_origin(counter)), None)
 
 
 def scope_conflict(a: dict[str, Any], b: dict[str, Any]) -> str | None:
     """Before CONTRADICTS: if the two Claims differ in any scope qualifier, it is a QUALIFIES relationship, not a conflict."""
     qa_, qb = a.get("qualifiers") or {}, b.get("qualifiers") or {}
+    if not isinstance(qa_, dict) or not isinstance(qb, dict):
+        return "unclear scope"
     for k in SCOPE_KEYS:
+        if a.get("normalized") and b.get("normalized") and bool(qa_.get(k)) != bool(qb.get(k)):
+            return f"unverified {k}"
         if qa_.get(k) and qb.get(k) and str(qa_[k]).strip().lower() != str(qb[k]).strip().lower():
             return k
     ca = {e.get("evidence_class") for e in a.get("evidence", [])}
@@ -918,8 +950,8 @@ def relate(claim_id: str, related_id: str, relation: str) -> dict[str, Any]:
     """Link two Claims through evidence: the related Claim's supporting passages become CONTRADICTS / QUALIFIES evidence
     of the first. A CONTRADICTS request is downgraded to QUALIFIES when scope differs."""
     a, b = get(claim_id), get(related_id)
-    if not a or not b:
-        raise ValueError("unknown claim")
+    if not a or not b or a["project_id"] != b["project_id"] or claim_id == related_id:
+        raise ValueError("select two different claims in the same project")
     downgraded = None
     if relation == "CONTRADICTS":
         downgraded = scope_conflict(a, b)
@@ -927,7 +959,7 @@ def relate(claim_id: str, related_id: str, relation: str) -> dict[str, Any]:
             relation = "QUALIFIES"
     added = 0
     for e in b["evidence"]:
-        if e["relation"] in ("SUPPORTS", "EXPERIENTIAL"):
+        if not e.get("stale") and e["relation"] in ("SUPPORTS", "EXPERIENTIAL"):
             add_evidence(claim_id, e["source_id"], locator=e.get("locator"), start=e.get("start"), link=e.get("link"), relation=relation,
                          excerpt=e.get("excerpt"), task="claims.relate")
             added += 1

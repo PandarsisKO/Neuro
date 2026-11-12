@@ -47,7 +47,7 @@ const researchJs = source('research');
 window.eval(researchJs.slice(researchJs.indexOf('globalThis.renderQueuePane ='), researchJs.indexOf('globalThis.queueRejectOrphans =')));
 window.stTag = () => '';
 window.RES = { queue: { queue: [{ claim_id: 'claim', text: 'The claim', status: 'proposed',
-  reasons: ['disagreement'], members: { note_ids: [] }, independent_sources: 2 }] } };
+  reasons: ['corroboration'], members: { note_ids: [] }, independent_sources: 2 }] } };
 
 const checked = () => [...document.querySelectorAll('#rv-review input:checked')].map(x => x.dataset.id).sort();
 const box = id => document.querySelector(`#rv-review input[data-id="${id}"]`);
@@ -78,6 +78,8 @@ try {
   await window.renderQueuePane();
   assert.equal(evidenceCalls, 0);
   assert.match(document.querySelector('#paneQueue').textContent, /Show evidence/);
+  assert.match(document.querySelector('#paneQueue').textContent, /needs corroboration/);
+  assert.doesNotMatch(document.querySelector('#paneQueue').textContent, /sources disagree/);
   document.querySelector('button[onclick^=showClaimEvidence]').click();
   await new Promise(setImmediate);
   const panel = document.querySelector('#dlgBody');
@@ -87,6 +89,30 @@ try {
   assert.match(panel.textContent, /Source revised/);
   assert.equal(panel.querySelector('a').getAttribute('href'), '/api/sources/counter/transcript.txt');
   assert.match(panel.querySelector('a[href^=https]').getAttribute('href'), /t=750s$/);
+  window.post = async (url, body) => {
+    assert.match(url, /claims\/claim\/challenge$/);
+    assert.equal(body.alternate, 'opposite result');
+    assert.equal(body.semantic, false);
+    return { text: 'The claim', queries: [body.q, body.alternate], method: 'keyword', searched_at: '2026-11-12T20:00:00Z',
+      passage_limit_per_scope: 8, scopes: { project: { sources_in_scope: 10, passages: [
+        { chunk_id: 12, source_id: 'other', text: 'An independent result', title: 'Test source' }
+      ] } } };
+  };
+  const challenge = panel.querySelector('[data-claim-challenge]');
+  challenge.elements.alternate.value = 'opposite result';
+  challenge.requestSubmit();
+  await new Promise(setImmediate);
+  const outcome = panel.querySelector('[data-challenge-outcome]');
+  assert.match(outcome.textContent, /insufficient/);
+  const assessment = panel.querySelector('[data-challenge-passage]');
+  for (const [choice, expected] of [
+    ['irrelevant', /insufficient/], ['qualification', /No equivalent found/], ['equivalent', /Equivalent assertion found/],
+  ]) {
+    assessment.value = choice;
+    assessment.dispatchEvent(new window.Event('change'));
+    assert.match(outcome.textContent, expected);
+  }
+
 } finally {
   window.close();
 }

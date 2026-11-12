@@ -19,6 +19,7 @@ from typing import Any
 
 from . import claims as claims_mod
 from . import db
+from .config import settings
 
 PAGE_MAX = 300
 
@@ -119,14 +120,24 @@ def review_evidence(project_id: str, claim_id: str, limit: int = 6) -> dict[str,
     claim = claims_mod.get(claim_id)
     if not claim or claim["project_id"] != project_id:
         return None
+    revised = {row["id"] for row in db.connect().execute(
+        """SELECT e.id FROM claim_evidence e JOIN sources s ON s.id=e.source_id
+           WHERE e.claim_id=? AND e.source_revision<>s.revision""", (claim_id,)
+    )}
+    for row in claim["evidence"]:
+        if row["id"] in revised:
+            row["stale"] = 1
     supporting, counter = [], []
-    for evidence in sorted(claim["evidence"], key=lambda e: (e["stale"], not e["independent"])):
+    ordered = sorted(claim["evidence"], key=lambda e: (e["stale"], not e["independent"]))
+    pair = claims_mod.disagreement_pair(claims_mod.cited_evidence(ordered))
+    keys = ("source_id", "title", "locator", "link", "relation", "excerpt", "stale", "independent")
+    for evidence in ordered:
         group = counter if evidence["relation"] in ("CONTRADICTS", "QUALIFIES") else supporting
-        group.append({key: evidence[key] for key in (
-            "source_id", "title", "locator", "link", "relation", "excerpt", "stale", "independent",
-        )})
+        group.append({key: evidence[key] for key in keys})
     return {"text": claim["text"], "supporting": supporting[:limit], "counter": counter[:limit],
-            "supporting_total": len(supporting), "counter_total": len(counter)}
+            "supporting_total": len(supporting), "counter_total": len(counter),
+            "qualifiers": claim.get("qualifiers") or {}, "semantic_available": settings.embeddings_enabled,
+            "comparison": [{key: row[key] for key in keys} for row in pair] if pair else []}
 
 
 

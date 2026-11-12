@@ -167,7 +167,7 @@ SUFFICIENCY_TEXT = {"governing": "One current authoritative source can settle th
 # ("Deal financing · Seller financing evidence may be outdated" over a chip reading "Deal financing ·
 # Seller financing") whenever a watch-out spans several Claims and subject falls back to the area string
 # itself. Titles now say only what is wrong; areaChip() is where.
-KIND_TITLE = {"STALE": "Evidence may be outdated", "WEAK_CONSENSUS": "Not enough independent evidence", "CONTRADICTION": "Sources disagree",
+KIND_TITLE = {"STALE": "Evidence may be outdated", "WEAK_CONSENSUS": "Not enough independent evidence", "CONTRADICTION": "Reported source conflict",
               "MISSING_PERSPECTIVE": "We are hearing from one side only", "NOVEL": "A lone viewpoint has little corroboration"}
 KIND_ACTION = {"STALE": ("Find current evidence", "Searches this project, your library and previously seen sources for newer evidence on these Claims. No web search."),
                "WEAK_CONSENSUS": ("Find independent confirmation", "Looks for sources that do not repeat the ones you already have. No web search."),
@@ -416,7 +416,7 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
         if stale:
             attention.append(f"{stale} Claim{'s' if stale != 1 else ''} may be outdated")
         if any(w["kind"] == "CONTRADICTION" for w in ws):
-            attention.append("sources disagree")
+            attention.append("reported source conflict")
         if any(w["kind"] == "MISSING_PERSPECTIVE" for w in ws):
             attention.append("one perspective only")
         if weak and not qs:

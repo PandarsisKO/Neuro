@@ -291,14 +291,27 @@ def _upsert_tension(project_id: str, kind: str, claim_id: str | None, descriptio
                     related_claim_id: str | None = None) -> str:
     t = time.time()
     conn = db.connect()
-    row = conn.execute("SELECT id, status, description, evidence, impact FROM research_tensions WHERE project_id=? AND kind=? AND claim_id IS ? AND COALESCE(related_claim_id,'')=?",
+    row = conn.execute("""SELECT id, status, description, evidence, impact,
+                          CASE WHEN json_valid(evidence) THEN json_extract(evidence, '$.automatically_cleared') END AS auto_clear
+                          FROM research_tensions WHERE project_id=? AND kind=? AND claim_id IS ? AND COALESCE(related_claim_id,'')=?""",
                        (project_id, kind, claim_id, related_claim_id or "")).fetchone()
     ev_json = json.dumps(evidence)
-    if row and (row["description"], row["evidence"], row["impact"]) == (description, ev_json, impact):
+    reopen = bool(row and row["status"] == "dismissed" and kind in ("NOVEL", "WEAK_CONSENSUS")
+                  and row["auto_clear"])
+    if row and not reopen and (row["description"], row["evidence"], row["impact"]) == (description, ev_json, impact):
         return row["id"]                                   # same tension, same words: no write, no revision movement (S72)
     with db.tx() as c:
         if row:
-            c.execute("UPDATE research_tensions SET description=?, evidence=?, impact=?, updated_at=? WHERE id=?", (description, ev_json, impact, t, row["id"]))
+            reopened = reopen and c.execute(
+                "UPDATE research_tensions SET status='open' WHERE id=? AND status='dismissed' AND evidence=?",
+                (row["id"], row["evidence"]),
+            ).rowcount
+            c.execute("UPDATE research_tensions SET description=?, evidence=?, impact=?, updated_at=? WHERE id=?",
+                      (description, ev_json, impact, t, row["id"]))
+            if reopened:
+                from . import ledger
+                ledger.record(c, project_id, event_type="tension_status_changed", object_type="tension", object_id=row["id"],
+                              before={"status": "dismissed"}, after={"status": "open", "reason": "condition holds again"})
             return row["id"]
         tid = db.new_id()
         c.execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, related_claim_id, description, evidence, impact, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -337,21 +350,28 @@ def set_tension_status(tension_id: str, status: str) -> None:
     claims._user_changed(pid["project_id"] if pid else None)            # 0.62.8: their own decision, not churn
 
 
-ECHO_OVERLAP = 0.3       # Jaccard
-
-
 NOVEL_MAX = 12          # the outliers worth a tension + corroboration target per pass: highest importance first, not every lone finding
 WEAK_CONSENSUS_MAX = 40 # false-consensus cases per pass (highest importance first); the Claim itself still says "1 independent"
 STALE_MIN_IMPORTANCE = 4  # a stale tension only for Claims that matter (importance ≥ 4 or accepted); every stale Claim still shows `stale`
 STALE_MAX = 60          # per pass, stale before needs-refresh, highest importance first; the Research view filters by freshness for the rest
 
 
-def _echoed(c: dict[str, Any], index: "claims.TwinIndex") -> bool:
-    """Novelty is project-relative: an idea another source in the project also states (even loosely) is not an outlier.
-    Symmetric (Jaccard) so a long normalized text cannot 'echo' every short claim that shares a few words."""
-    mine = {e["source_id"] for e in c["evidence"]}
-    o = index.twin(c["text"], threshold=ECHO_OVERLAP, exclude_id=c["id"], symmetric=True)
-    return bool(o) and bool({e["source_id"] for e in o.get("evidence", [])} - mine)
+def _echoed(c: dict[str, Any], equivalents: list[dict[str, Any]]) -> bool:
+    """Only the same recorded proposition and scope, with current independent support, can suppress the prompt."""
+    if not c["normalized"]:
+        return False
+    scope = c.get("qualifiers") or {}
+    mine = claims.cited_evidence(c["evidence"])["support"]
+    origins = {claims.evidence_origin(e) for e in mine}
+    source_ids = {e["source_id"] for e in mine}
+    for other in equivalents:
+        if (other["id"] == c["id"] or not other["normalized"] or other["claim_type"] != c["claim_type"]
+                or (other.get("qualifiers") or {}) != scope or claims.scope_conflict(c, other)):
+            continue
+        if any(e.get("independent") and e["source_id"] not in source_ids and claims.evidence_origin(e) not in origins
+               for e in claims.cited_evidence(other["evidence"])["support"]):
+            return True
+    return False
 
 
 def detect(project_id: str) -> dict[str, int]:
@@ -359,7 +379,9 @@ def detect(project_id: str) -> dict[str, int]:
     WEAK_CONSENSUS tensions so the gap is pursued, not just displayed."""
     counts = {k: 0 for k in TENSIONS}
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]
-    index = claims.TwinIndex(all_claims)
+    equivalents: dict[str, list[dict[str, Any]]] = {}
+    for c in all_claims:
+        equivalents.setdefault(" ".join(c["text"].casefold().split()), []).append(c)
     imp_of: dict[int, int] = {}
     if all_claims:
         for r in db.connect().execute("SELECT id, importance FROM project_notes WHERE project_id=?", (project_id,)).fetchall():
@@ -381,8 +403,10 @@ def detect(project_id: str) -> dict[str, int]:
                                          {"freshness_class": c["freshness_class"], "freshness_status": fs}, "high" if fs == "stale" else "medium"))
             counts["STALE"] += 1
         if con:
-            other = next((e for e in con), None)
-            selected.add(_upsert_tension(project_id, "CONTRADICTION", c["id"], f"Contradiction: {c['text'][:140]} is disputed by {other.get('title') if other else 'another source'}",
+            pair = claims.disagreement_pair(claims.cited_evidence(ev))
+            description = (f"Contradiction: {c['text'][:140]} is disputed by {pair[1].get('title') or 'another source'}"
+                           if pair else f"Reported conflict: verify both sides of {c['text'][:140]}")
+            selected.add(_upsert_tension(project_id, "CONTRADICTION", c["id"], description,
                             {"supporting": len(sup), "contradicting": len(con)}, "high"))
             counts["CONTRADICTION"] += 1
         if c["claim_type"] not in claims.GOVERNING_TYPES and len(sup) >= 1:
@@ -392,10 +416,10 @@ def detect(project_id: str) -> dict[str, int]:
                                 {"supporting": len(sup), "independent": 1}, "medium"))
                 counts["WEAK_CONSENSUS"] += 1
                 add_target(project_id, f"Independently corroborate: {c['text'][:160]}", topic=c.get("topic"), claim_id=c["id"], sufficiency="corroborative", origin="tension")
-            elif len(indep) == 1 and len(sup) == 1 and (imp >= 4 or c["claim_type"] in ("novel_tactic", "causal")) and novel_budget > 0 and not _echoed(c, index):
+            elif len(indep) == 1 and len(sup) == 1 and (imp >= 4 or c["claim_type"] in ("novel_tactic", "causal")) and novel_budget > 0 and not _echoed(c, equivalents[" ".join(c["text"].casefold().split())]):
                 novel_budget -= 1
                 e0 = sup[0]
-                selected.add(_upsert_tension(project_id, "NOVEL", c["id"], f"Potential outlier: {c['text'][:160]} — currently supported by one {e0.get('evidence_class')} source ({e0.get('title')}); additional corroboration recommended",
+                selected.add(_upsert_tension(project_id, "NOVEL", c["id"], f"Needs corroboration: {c['text'][:160]} — currently supported by one {e0.get('evidence_class')} source ({e0.get('title')}); additional corroboration recommended",
                                 {"source_id": e0["source_id"], "locator": e0.get("locator"), "importance": imp}, "high" if imp >= 4 else "medium"))
                 counts["NOVEL"] += 1
                 add_target(project_id, f"Corroborate or refute: {c['text'][:160]}", topic=c.get("topic"), claim_id=c["id"], sufficiency="corroborative", origin="tension")
@@ -420,7 +444,11 @@ def detect(project_id: str) -> dict[str, int]:
     with db.tx() as conn:
         for tsn in list_tensions(project_id, status="open"):
             if tsn["kind"] in ("NOVEL", "WEAK_CONSENSUS", "STALE", "MISSING_PERSPECTIVE") and tsn["id"] not in selected:
-                conn.execute("UPDATE research_tensions SET status='dismissed', updated_at=? WHERE id=?", (time.time(), tsn["id"]))
+                old_evidence = tsn.get("evidence")
+                ev_json = json.dumps({**(old_evidence if isinstance(old_evidence, dict) else {}),
+                                      "automatically_cleared": True})
+                conn.execute("UPDATE research_tensions SET status='dismissed', evidence=?, updated_at=? WHERE id=?",
+                             (ev_json, time.time(), tsn["id"]))
                 from . import ledger
                 ledger.record(conn, project_id, event_type="tension_status_changed", object_type="tension", object_id=tsn["id"],
                               before={"status": "open"}, after={"status": "dismissed", "reason": "condition no longer holds"})

@@ -910,7 +910,7 @@ def project_collection_policy(project: str, collection: str,
 
 
 @project_app.command("review-queue")
-def project_review_queue(project: str, limit: int = typer.Option(25, "--limit", help="Cap for plan-impact / evidence-weak items; disagreement is never capped"),
+def project_review_queue(project: str, limit: int = typer.Option(25, "--limit", help="Cap for ordinary review items; reported conflicts are never capped"),
                          as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
     """L-51 (P4 Review at Scale): the exception queue -- the few proposed Claims that actually need you, each
     saying why. $0, reads only, approves nothing."""
@@ -927,7 +927,8 @@ def project_review_queue(project: str, limit: int = typer.Option(25, "--limit", 
     c = q["counts"]
     typer.echo(f"{c['shown']} to review out of {c['proposed_total']} proposed "
                f"(evidence dismissed {c['by_reason'].get('evidence_dismissed', 0)}, "
-               f"disagreement {c['by_reason']['disagreement']}, plan impact {c['by_reason']['plan_impact']}, "
+               f"disagreement {c['by_reason']['disagreement']}, reported conflict {c['by_reason']['reported_conflict']}, "
+               f"corroboration {c['by_reason']['corroboration']}, qualified {c['by_reason']['qualification']}, plan impact {c['by_reason']['plan_impact']}, "
                f"weak evidence {c['by_reason']['evidence_weak']}; hidden by the cap: {c['hidden_total']}, of which "
                f"weak evidence {c['not_shown']['evidence_weak']}, plan impact {c['not_shown']['plan_impact']})")
     for x in q["queue"]:

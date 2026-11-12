@@ -25,7 +25,7 @@ globalThis.CW = { q: '', status: 'all', strength: '', freshness: '', needs_decis
 globalThis.CWG = { collapsed: new Set() };   // remembers which area-groups the user closed by hand (area -> closed)
 globalThis.claimCard = function claimCard(c) {
   const ev = (c.evidence || []).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank" title="${esc(e.relation)} · ${esc(e.evidence_class || '')}${e.independent ? '' : ' · repeats another source'}${e.stale ? ' · STALE (source revised)' : ''}">${e.relation === 'CONTRADICTS' ? '✗ ' : e.relation === 'QUALIFIES' ? '≈ ' : ''}${esc(trunc(e.title || 'source', 34))}${e.locator ? ' @ ' + esc(e.locator) : ''}${e.independent ? '' : ' ↩'}</a>`).join('');
-  return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}"><input type="checkbox" style="margin-top:3px" ${CW.sel.has(c.id) ? 'checked' : ''} onchange="claimSel('${c.id}',this.checked)">${stTag(c.strength)}<div class="grow min-w-0"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.area ? ` · ${esc(c.area)}` : ''}<span title="${esc(c.strength_why || '')}"> — ${esc((c.strength_why || '').slice(0, 140))}</span></div><div style="margin-top:2px">${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${c.status !== 'accepted' ? `<button class="small" title="You stand behind this: it counts as settled for its research area, and the plan and chat may lean on it. Reversible — nothing is deleted." onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" title="You do not accept this: it stops counting as evidence for its area. Nothing is deleted and it is reversible." onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`;
+  return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}"><input type="checkbox" style="margin-top:3px" ${CW.sel.has(c.id) ? 'checked' : ''} onchange="claimSel('${c.id}',this.checked)">${stTag(c.strength)}<div class="grow min-w-0"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.area ? ` · ${esc(c.area)}` : ''}<span title="${esc(c.strength_why || '')}"> — ${esc((c.strength_why || '').slice(0, 140))}</span></div><div style="margin-top:2px">${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="small ghost" onclick="showClaimEvidence('${c.id}')">Show evidence</button>${c.status !== 'accepted' ? `<button class="small" title="You stand behind this: it counts as settled for its research area, and the plan and chat may lean on it. Reversible — nothing is deleted." onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" title="You do not accept this: it stops counting as evidence for its area. Nothing is deleted and it is reversible." onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`;
 }
 globalThis.claimSel = function claimSel(id, on) { if (on) CW.sel.add(id); else CW.sel.delete(id); renderClaimsBulkBar(); }
 globalThis.renderClaimsBulkBar = function renderClaimsBulkBar() {
@@ -292,7 +292,7 @@ globalThis.renderQueuePane = async function renderQueuePane() {
   }
   const q = RES.queue, c = q.counts || {}, shown = q.queue || [];
   if (!shown.length) {
-    el.innerHTML = `<div class="empty">Nothing needs you here. Of ${c.proposed_total || 0} proposed Claim${c.proposed_total === 1 ? '' : 's'}, none show disagreement, affect the Master Plan, or rest on thin evidence.</div>`;
+    el.innerHTML = `<div class="empty">Nothing needs you here. Of ${c.proposed_total || 0} proposed Claim${c.proposed_total === 1 ? '' : 's'}, none currently need review.</div>`;
     return;
   }
   // S76: the synthesis sits ABOVE the individual claims and never replaces them -- it is a reading aid, not a
@@ -301,13 +301,14 @@ globalThis.renderQueuePane = async function renderQueuePane() {
     `<div class="kn"><span class="st developing">${t.n}</span><div><div>${esc(t.summary_text)}</div>
        <div class="why">${esc(t.topic || 'unspecified')}${t.basis && t.basis !== 'unspecified' ? ` · ${esc(t.basis)}` : ''} — a reading aid over the Claims below, which are unchanged and still listed individually</div></div></div>`).join('');
   const REASON_WORDS = { evidence_dismissed: 'every finding under it was dismissed',
-                         disagreement: 'sources disagree', plan_impact: 'the Master Plan depends on it', evidence_weak: 'thin evidence' };
+                         disagreement: 'sources disagree', reported_conflict: 'check reported conflict', qualification: 'qualified by evidence',
+                         corroboration: 'needs corroboration', plan_impact: 'the Master Plan depends on it', evidence_weak: 'thin evidence' };
   const rows = shown.map(x => {
     const why = (x.reasons || []).map(r =>
       `<span class="tag${r === 'evidence_dismissed' ? ' status-warn' : ''}">${esc(REASON_WORDS[r] || r)}</span>`).join(' ');
     const tens = (x.tensions || []).filter(t => t.impact === 'high').length;
     // the provenance warning that had no surface: this Claim rests on a finding nobody ever ruled on
-    const wasAccepted = x.status === 'accepted'
+    const wasAccepted = x.status === 'accepted' && (x.reasons || []).includes('evidence_dismissed')
       ? `<span class="tag status-warn" title="You accepted this Claim, and have since dismissed every finding it rested on. Two of your own judgements now disagree; this is here so you can settle which one stands.">you accepted this</span>` : '';
     const unreviewed = x.origin === 'finding_suggested'
       ? `<span class="tag status-warn" title="Harvested from a finding still sitting in Suggested — you have never reviewed the evidence under this Claim.">from an unreviewed finding</span>` : '';
@@ -321,10 +322,9 @@ globalThis.renderQueuePane = async function renderQueuePane() {
         <button class="small ghost" title="You do not accept this. Reversible." onclick="queueDecide('${x.claim_id}','rejected')">Reject</button>
       </span></div>`;
   }).join('');
-  // `not_shown` is the cap's own account of what it hid, by reason -- disagreement is never capped, so a
-  // non-zero number here can only be plan_impact or evidence_weak.
+  // The cap reports which ordinary review items are hidden.
   const hidden = c.hidden_total
-    ? `<div class="muted mt-2">${c.hidden_total} more below the cap (${Object.entries(c.not_shown || {}).filter(([, n]) => n).map(([r, n]) => `${n} ${REASON_WORDS[r] || r}`).join(' · ') || 'no reason recorded'}). Disagreement and rejected evidence are never capped, so nothing contested and nothing standing on findings you dismissed is hidden here.</div>`
+    ? `<div class="muted mt-2">${c.hidden_total} more below the cap (${Object.entries(c.not_shown || {}).filter(([, n]) => n).map(([r, n]) => `${n} ${REASON_WORDS[r] || r}`).join(' · ') || 'no reason recorded'}). Reported conflicts and dismissed evidence are always shown.</div>`
     : '';
   const orphans = shown.filter(x => (x.reasons || []).includes('evidence_dismissed'));
   // Not auto-rejected, ever: the Claim's text may still be true and the user may want to keep it and find new
@@ -333,10 +333,16 @@ globalThis.renderQueuePane = async function renderQueuePane() {
     ? `<div class="banner" style="display:flex;gap:8px;align-items:center;margin:8px 0"><span class="grow"><b>${orphans.length}</b> Claim${orphans.length === 1 ? '' : 's'} here rest${orphans.length === 1 ? 's' : ''} only on findings you dismissed${c.accepted_on_dismissed_evidence ? ` (${c.accepted_on_dismissed_evidence} of them you had accepted)` : ''}. Rejecting is usually right; nothing is deleted and it is reversible.</span><button class="small" onclick="queueRejectOrphans(${JSON.stringify(orphans.map(x => x.claim_id))})">Reject all ${orphans.length}</button></div>`
     : '';
   el.innerHTML =
-    `<div class="muted">The few Claims that actually need a person: sources disagree, the Master Plan depends on it, the evidence is thin — or every finding under it has been dismissed. ${c.shown} of ${c.proposed_total} proposed Claims${c.accepted_on_dismissed_evidence ? `, plus ${c.accepted_on_dismissed_evidence} accepted Claim${c.accepted_on_dismissed_evidence === 1 ? '' : 's'} whose evidence is gone` : ''}.</div>
+    `<div class="muted">Claims with conflicts, qualifications, gaps in evidence, or impact on the Master Plan. ${c.shown} of ${c.proposed_total} proposed Claims${c.accepted_on_dismissed_evidence ? `, plus ${c.accepted_on_dismissed_evidence} accepted Claim${c.accepted_on_dismissed_evidence === 1 ? '' : 's'} whose evidence is gone` : ''}.</div>
      ${orphanBar}
      ${sums ? `<div class="mt-3"><b>What the numbers say together</b><div class="muted text-xs">Grouped by topic and by what is being measured, so ranges of different things are never blended.</div><div class="mt-2">${sums}</div></div>` : ''}
      <div class="mt-3">${rows}</div>${hidden}`;
+}
+globalThis.claimEvidenceLink = function claimEvidenceLink(e) {
+  const book = /^#book\/[a-f0-9]+\/\d+$/i.test(e.link || '');
+  const link = book || /^https?:\/\//i.test(e.link || '')
+    ? e.link : `/api/sources/${encodeURIComponent(e.source_id)}/transcript.txt`;
+  return `<a href="${esc(link)}" ${book ? 'onclick="dlg.close()"' : 'target="_blank" rel="noopener"'}>${esc(e.title || 'Source')}${(e.locator || e.timestamp) ? ' · ' + esc(e.locator || e.timestamp) : ''}</a>`;
 }
 globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
   const projectId = state.project.id;
@@ -358,25 +364,117 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
   if (!panel.isConnected || !dlg.open || state.project.id !== projectId) return;
   const labels = { SUPPORTS: 'Supports', CONTRADICTS: 'Contradicts', QUALIFIES: 'Qualifies',
                    INTERPRETS: 'Interpretation', EXPERIENTIAL: 'Firsthand experience' };
-  const section = (title, rows, total) => rows.length ? `<h4 class="mt-3 mb-1">${title}</h4>` +
-    rows.map(e => {
-      const book = /^#book\/[a-f0-9]+\/\d+$/i.test(e.link || '');
-      const link = book || /^https?:\/\//i.test(e.link || '')
-        ? e.link : `/api/sources/${encodeURIComponent(e.source_id)}/transcript.txt`;
-      return `<div class="kn"><div class="grow min-w-0">
-        <div><b>${esc(labels[e.relation] || e.relation)}</b> ·
-          <a href="${esc(link)}" ${book ? 'onclick="dlg.close()"' : 'target="_blank" rel="noopener"'}>${esc(e.title || 'Source')}${e.locator ? ' · ' + esc(e.locator) : ''}</a>
-          ${e.stale ? '<span class="tag status-warn">Source revised</span>' : ''}
-          ${e.independent ? '' : '<span class="tag">Repeats another source</span>'}</div>
-        ${e.excerpt ? `<blockquote class="quote">${esc(e.excerpt)}</blockquote>` : '<div class="muted">Open the source to read the passage.</div>'}
-      </div></div>`;
-    }).join('') + (total > rows.length ? `<div class="muted">Showing ${rows.length} of ${total} passages.</div>` : '') : '';
+  const card = e => `<div class="kn"><div class="grow min-w-0">
+    <div><b>${esc(labels[e.relation] || e.relation)}</b> · ${claimEvidenceLink(e)}
+      ${e.stale ? '<span class="tag status-warn">Source revised</span>' : ''}
+      ${e.independent ? '' : '<span class="tag">Repeats another source</span>'}</div>
+    ${e.excerpt ? `<blockquote class="quote">${esc(e.excerpt)}</blockquote>` : '<div class="muted">Open the source to read the passage.</div>'}
+  </div></div>`;
+  const section = (title, rows, total) => rows.length ? `<h4 class="mt-3 mb-1">${title}</h4>` + rows.map(card).join('')
+    + (total > rows.length ? `<div class="muted">Showing ${rows.length} of ${total} passages.</div>` : '') : '';
+  const scope = Object.entries(result.qualifiers || {}).filter(([, value]) => value).map(([key, value]) =>
+    `${esc(key.replaceAll('_', ' '))}: ${esc(value)}`).join(' · ');
+  const comparison = (result.comparison || []).length ? `<h4 class="mt-3 mb-1">Recorded disagreement</h4>
+    <div class="claim-comparison">${result.comparison.map(card).join('')}</div>` : '';
 
   panel.innerHTML = `<h3>Claim evidence</h3><p>${esc(result.text)}</p>`
+    + (scope ? `<p class="muted">${scope}</p>` : '')
+    + comparison
     + section('Contradicting or qualifying evidence', result.counter, result.counter_total)
     + section('Supporting and related evidence', result.supporting, result.supporting_total)
-    + (result.supporting_total || result.counter_total ? '' : '<p class="muted">This Claim has no linked evidence.</p>');
+    + (result.supporting_total || result.counter_total ? '' : '<p class="muted">This Claim has no linked evidence.</p>')
+    + `<details class="mt-3">
+      <summary>Challenge this claim</summary>
+      <form data-claim-challenge class="mt-2">
+        <label>Search wording<input name="query" maxlength="500" value="${esc(result.text.slice(0, 500))}"></label>
+        <label>Alternative wording<input name="alternate" maxlength="500" placeholder="Try a paraphrase, exception, or opposite outcome"></label>
+        <label class="claim-search-choice"><input name="library" type="checkbox"> Include library leads</label>
+        ${result.semantic_available ? '<label class="claim-search-choice"><input name="semantic" type="checkbox"> Search for similar wording using paid embeddings</label>' : ''}
+        <button class="small primary mt-2" type="submit">Search passages</button>
+      </form>
+      <div data-challenge-results class="mt-2"></div>
+    </details>`;
+  wireClaimChallenge(panel, projectId, claimId);
 }
+globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, claimId) {
+  const form = panel.querySelector('[data-claim-challenge]');
+  const results = panel.querySelector('[data-challenge-results]');
+  const intent = { equivalent: 'Same assertion and scope', contradiction: 'Opposite result, same scope',
+    qualification: 'Exception or different scope', irrelevant: 'Unrelated', uncertain: 'Unclear' };
+  let request = 0;
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const turn = ++request;
+    const current = () => turn === request && panel.isConnected && dlg.open && state.project?.id === projectId;
+    const params = {
+      q: form.elements.query.value.trim(),
+      alternate: form.elements.alternate.value.trim(),
+      library: form.elements.library.checked,
+      semantic: !!form.elements.semantic?.checked,
+    };
+    results.innerHTML = listState('loading', { label: 'Searching for passages…' });
+    let data;
+    try {
+      data = await post(`/api/projects/${projectId}/claims/${claimId}/challenge`, params);
+    } catch (e) {
+      if (current() && !e.stale) results.textContent = 'Could not search. Try again.';
+      return;
+    }
+    if (!current()) return;
+    const checked = new Date(data.searched_at).toLocaleString();
+    const groups = Object.entries(data.scopes);
+    const leads = groups.flatMap(([, group]) => group.passages);
+    const passages = (scope, group) => `<h4 class="mt-3 mb-1">${scope === 'project' ? 'Project passages' : 'Library leads'}</h4>
+      <div class="muted">${group.passages.length} of up to ${data.passage_limit_per_scope} passages shown · ${group.sources_in_scope} ready sources in scope</div>
+      ${scope === 'library' ? '<p class="muted">These sources are outside the project. Attach a source before using it as project evidence.</p>' : ''}
+      ${group.passages.map(p => `<div class="kn"><div class="grow min-w-0">
+        ${claimEvidenceLink(p)}${p.same_origin_as_support ? ' <span class="tag">Already cited origin</span>' : ''}
+        <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote>
+        <label>Passage assessment <select class="w-auto" data-challenge-passage="${esc(p.chunk_id)}">
+          <option value="">Unreviewed</option>${Object.entries(intent).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
+        </select></label>
+      </div></div>`).join('') || '<p class="muted">No passages returned. Try different wording.</p>'}`;
+    const methods = { keyword: 'Keyword search', hybrid: 'Keyword and similar wording search', mixed: 'Similar wording search available for part of the search' };
+    results.innerHTML = `<p class="muted">${esc(checked)} · ${methods[data.method]}
+      ${data.semantic_requested && data.method !== 'hybrid' ? ' · Keyword results used where similar wording search was unavailable.' : ''}</p>
+      <p class="muted">Searched ${data.queries.map(q => `“${esc(q)}”`).join(' and ')}. Results cover the highest-ranked passages shown below.</p>
+      <p class="muted">Compare what was measured, who it applies to, the conditions and the time period. Open the source if the excerpt leaves any of that unclear.</p>
+      ${groups.map(([scope, group]) => passages(scope, group)).join('')}
+      <p data-challenge-outcome role="status"></p>
+      <label>What still needs checking <input name="gaps" maxlength="500" placeholder="A missing source, population, or time period"></label>
+      <button type="button" class="small ghost mt-2" data-challenge-download>Download assessment</button>`;
+    const selections = [...results.querySelectorAll('[data-challenge-passage]')];
+    const outcome = results.querySelector('[data-challenge-outcome]');
+    const status = () => {
+      const reviewed = selections.map((select, index) => ({ ...leads[index], assessment: select.value }));
+      const equivalents = reviewed.filter(p => p.assessment === 'equivalent');
+      let novelty;
+      if (equivalents.some(p => !p.same_origin_as_support)) novelty = 'Equivalent assertion found in another source origin.';
+      else if (equivalents.length) novelty = 'Equivalent wording found from an already cited origin.';
+      else if (!reviewed.some(p => !p.same_origin_as_support && ['contradiction', 'qualification'].includes(p.assessment))
+               || reviewed.some(p => !p.assessment || p.assessment === 'uncertain')) {
+        novelty = 'Coverage is insufficient to assess novelty.';
+      } else novelty = 'No equivalent found in the passages checked.';
+      return { novelty, reviewed };
+    };
+    const showStatus = () => { outcome.textContent = status().novelty; };
+    for (const select of selections) select.addEventListener('change', showStatus);
+    showStatus();
+    results.querySelector('[data-challenge-download]').addEventListener('click', () => {
+      const review = status();
+      const blob = new Blob([JSON.stringify({ ...data, scopes: Object.fromEntries(groups.map(([key, group]) => [
+        key, { ...group, passages: group.passages.map(p => ({ ...p, assessment: review.reviewed.find(r => r.chunk_id === p.chunk_id)?.assessment })) }
+      ])), novelty: review.novelty, remaining_gaps: results.querySelector('[name="gaps"]').value,
+      scope_limit: 'Ranked passages from the selected sources. Search and review coverage are limited to the passages shown.' }, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'claim-assessment.json';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
+  });
+}
+
 globalThis.queueRejectOrphans = async function queueRejectOrphans(ids) {
   if (!ids || !ids.length) return;
   // the same bulk door every other batch verdict goes through

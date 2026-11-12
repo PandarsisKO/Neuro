@@ -10,14 +10,17 @@ findings folded into it plus any Claims merged into it. That is P4's "representa
 inspectability" using the grouping the product already has, not a second clustering.
 
 Inclusion (P4's candidate signals, restricted -- like L-50 -- to the ones that are real today):
-  disagreement   an open CONTRADICTION/NOVEL tension touches the Claim   (decision_impact, L-50)
+  disagreement   a reported conflict with current cited passages on both sides
+  reported_conflict  an open conflict still needs both sides verified
+  qualification  current cited evidence qualifies the Claim
+  corroboration  an open NOVEL/WEAK_CONSENSUS tension touches the Claim
   plan_impact    the Claim's findings are cited in the current plan       (decision_impact, L-50)
   evidence_weak  strength is weak/unsupported                             (claims.py, deterministic)
 Novelty, irreversibility, provenance quality, freshness sensitivity: NOT used -- no defensible basis yet, and a
 made-up score here would be exactly the "intelligently minimized queue Neuro cannot rank honestly" that rulings
 section 7 forbids. They are named in `basis` as absent so the UI can say so.
 
-Cap: `limit` applies to plan_impact and evidence_weak items only. Disagreement items are NEVER dropped by the cap
+Cap: `limit` applies to ordinary review items. Reported conflicts and withdrawn evidence are never dropped by the cap
 (the gate: "without hiding consequential disagreement"); when there are more than the cap of them the queue is
 simply longer, and `counts.not_shown` reports exactly what the cap did hide, by reason.
 
@@ -41,7 +44,8 @@ WEAK = ("weak", "unsupported")
 # no indication its evidence had been rejected. `retire.py` models exactly this loss, but only for sources
 # LEAVING the project; the ordinary Dismiss button never had an equivalent. A rejected finding whose conclusion
 # quietly survives is the worst shape this can take, because the user believes they have acted.
-REASON_ORDER = ("evidence_dismissed", "disagreement", "plan_impact", "evidence_weak")
+REASON_ORDER = ("evidence_dismissed", "disagreement", "reported_conflict", "plan_impact",
+                "qualification", "corroboration", "evidence_weak")
 SIGNALS_NOT_USED = ("novelty", "irreversibility", "provenance_quality", "source_independence", "freshness_sensitivity")
 
 
@@ -51,7 +55,7 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
 
     conn = db.connect()
     proposed = [c for c in claims.list_for_project(project_id, status="proposed", with_evidence=False)]
-    # 2026-09-21: ACCEPTED Claims are checked too, for the one reason that can apply to them. An accepted Claim
+    # 2026-09-21: ACCEPTED Claims are checked for conflicts, qualification, and withdrawn evidence. An accepted Claim
     # is one the user personally stood behind; if they have since dismissed every finding under it, that is a
     # direct contradiction between two of their own judgements, and `claims.assess` will never notice -- it
     # consults source revisions, not note status, so the Claim keeps its strength forever. That makes this the
@@ -65,6 +69,18 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
         if t.get("claim_id"):
             tensions_by_claim.setdefault(t["claim_id"], []).append(
                 {"id": t["id"], "kind": t["kind"], "impact": t.get("impact"), "description": t.get("description")})
+
+    # One projection for the queue, without loading passage text. The dialog fetches the actual passages on demand.
+    cited_by_claim: dict[str, list[dict[str, Any]]] = {}
+    for row in conn.execute(
+        """SELECT e.claim_id, e.source_id, e.relation, e.lineage_id, e.derivative_of,
+                  1 AS excerpt, e.locator, e.start, e.link
+           FROM claim_evidence e JOIN project_claims c ON c.id=e.claim_id JOIN sources s ON s.id=e.source_id
+           WHERE c.project_id=? AND c.status IN ('proposed','accepted') AND e.stale=0
+             AND (s.revision IS NULL OR e.source_revision IS NULL OR s.revision=e.source_revision)
+             AND LENGTH(TRIM(e.excerpt))>0""", (project_id,)
+    ):
+        cited_by_claim.setdefault(row["claim_id"], []).append(dict(row))
 
     # Which proposed Claims rest ONLY on findings the user has dismissed. "Only" is the defensible line and it
     # mirrors retire.py's own `HAVING SUM(...) = 0`: one dismissed finding among three leaves a Claim supported,
@@ -97,19 +113,25 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
     source_ids_by_claim = claims.evidence_source_ids(project_id) if ids else {}
 
     candidates: list[dict[str, Any]] = []
-    # every proposed Claim is a candidate; an accepted one only when its evidence is gone
-    for c in proposed + [c for c in accepted if c["id"] in evidence_dismissed]:
+    # Accepted Claims surface for a conflict, qualification, or withdrawn support.
+    for c in proposed + accepted:
         cid = c["id"]
         imp = impact.get(cid, {})
         reasons = []
         if cid in evidence_dismissed:
             reasons.append("evidence_dismissed")
+        sides = claims.cited_evidence(cited_by_claim.get(cid, []))
         if imp.get("disagreement"):
-            reasons.append("disagreement")
-        if imp.get("plan_impact") is True:
-            reasons.append("plan_impact")
-        if c.get("strength") in WEAK:
-            reasons.append("evidence_weak")
+            reasons.append("disagreement" if claims.disagreement_pair(sides) else "reported_conflict")
+        if sides["qualification"]:
+            reasons.append("qualification")
+        if c["status"] == "proposed":
+            if imp.get("plan_impact") is True:
+                reasons.append("plan_impact")
+            if any(t["kind"] in ("NOVEL", "WEAK_CONSENSUS") for t in tensions_by_claim.get(cid, [])):
+                reasons.append("corroboration")
+            if c.get("strength") in WEAK:
+                reasons.append("evidence_weak")
         if not reasons:
             continue
         candidates.append({
@@ -122,7 +144,7 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
             "status": c.get("status"),        # "accepted" here means: you stood behind this, then rejected what it stood on
             "strength": c.get("strength"), "strength_why": c.get("strength_why"),
             "reasons": reasons,
-            "disagreement": bool(imp.get("disagreement")), "plan_impact": imp.get("plan_impact", "unknown"),
+            "disagreement": "disagreement" in reasons, "plan_impact": imp.get("plan_impact", "unknown"),
             "tensions": tensions_by_claim.get(cid, []),
             "members": {"note_ids": note_ids_by_claim.get(cid, []), "merged_claim_ids": merged_into.get(cid, [])},
             "independent_sources": len(source_ids_by_claim.get(cid, ())),
@@ -139,7 +161,7 @@ def build(project_id: str, limit: int = 25) -> dict[str, Any]:
 
     # Never capped, for the same reason disagreement is not: a Claim resting on rejected evidence is not a
     # "nice to get to" item, and hiding it behind a limit is how it stays invisible for another month.
-    UNCAPPED = ("disagreement", "evidence_dismissed")
+    UNCAPPED = ("disagreement", "reported_conflict", "evidence_dismissed")
     must_show = [x for x in candidates if any(r in x["reasons"] for r in UNCAPPED)]
     capped_pool = [x for x in candidates if not any(r in x["reasons"] for r in UNCAPPED)]
     room = max(0, limit - len(must_show))

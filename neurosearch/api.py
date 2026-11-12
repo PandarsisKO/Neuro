@@ -3239,6 +3239,24 @@ def api_claim_review_evidence(project_id: str, claim_id: str) -> dict[str, Any]:
     return result
 
 
+class ClaimChallengeIn(BaseModel):
+    q: str = Field("", max_length=500)
+    alternate: str = Field("", max_length=500)
+    semantic: bool = False
+    library: bool = False
+
+
+@app.post("/api/projects/{project_id}/claims/{claim_id}/challenge", dependencies=[Depends(require_auth)])
+def api_claim_challenge(project_id: str, claim_id: str, body: ClaimChallengeIn) -> dict[str, Any]:
+    """Retrieve a bounded set of passages for the user to compare with the Claim."""
+    from . import claim_challenge
+    result = claim_challenge.find(project_id, claim_id, body.q, body.alternate,
+                                  semantic=body.semantic, include_library=body.library)
+    if result is None:
+        raise HTTPException(404, "claim not found in project")
+    return result
+
+
 @app.get("/api/projects/{project_id}/research-needs", dependencies=[Depends(require_auth)])
 def api_research_needs(project_id: str, limit: int = 25) -> dict[str, Any]:
     """CR1 (P8 Continuous Research, mission §12): what could use fresh or better evidence right now. $0, read-only,

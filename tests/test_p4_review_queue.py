@@ -72,7 +72,7 @@ def test_each_reason_is_real_and_named(rq_db):
     q = review_queue.build(pid)
     by = {x["claim_id"]: x for x in q["queue"]}
     assert set(by) == {"c_disagree", "c_weak"}
-    assert by["c_disagree"]["reasons"] == ["disagreement"]
+    assert by["c_disagree"]["reasons"] == ["reported_conflict"]
     assert by["c_disagree"]["tensions"][0]["kind"] == "CONTRADICTION"
     assert by["c_weak"]["reasons"] == ["evidence_weak"]
     assert by["c_weak"]["strength"] == "unsupported"
@@ -117,9 +117,9 @@ def test_members_include_findings_folded_in_and_claims_merged_in(rq_db):
     assert m["merged_claim_ids"] == ["c_dup"]
 
 
-def test_thousands_of_proposals_yield_a_short_queue_that_never_hides_disagreement(rq_db):
-    """The gate, literally. 2,000 proposed Claims: 1,900 evidence-weak, 60 disagreeing, 40 quiet. With limit=25
-    (smaller than the 60 disagreements) every disagreement is still shown, the cap applies only to the weak
+def test_thousands_of_proposals_never_hide_reported_conflicts(rq_db):
+    """The gate, literally. 2,000 proposed Claims: 1,900 evidence-weak, 60 reported conflicts, 40 quiet. With limit=25
+    (smaller than the 60 conflicts) every conflict is still shown, the cap applies only to the weak
     ones, and the counts say exactly what was hidden."""
     p = db.create_project("thousands", "brief")
     pid = p["id"]
@@ -137,15 +137,15 @@ def test_thousands_of_proposals_yield_a_short_queue_that_never_hides_disagreemen
     ids = [x["claim_id"] for x in q["queue"]]
     assert q["counts"]["proposed_total"] == 2000
     assert q["counts"]["candidates"] == 1960
-    assert len(ids) == 60, "disagreement is never capped: all 60 shown, and the cap left no room for weak ones"
+    assert len(ids) == 60, "reported conflicts are never capped: all 60 shown, and the cap left no room for weak ones"
     assert all(i.startswith("d") for i in ids)
     assert ids[:5] == [f"d{i}" for i in range(5)], "high-impact tensions come first"
     # 2026-09-21: `evidence_dismissed` joined REASON_ORDER (a proposed Claim every one of whose supporting
     # findings has been dismissed). None of this fixture's notes are dismissed, so it is correctly 0 on both
     # sides — the counts are asserted whole on purpose, so a new reason has to be acknowledged here rather
     # than appearing silently.
-    assert q["counts"]["by_reason"] == {"evidence_dismissed": 0, "disagreement": 60, "plan_impact": 0, "evidence_weak": 0}
-    assert q["counts"]["not_shown"] == {"evidence_dismissed": 0, "disagreement": 0, "plan_impact": 0, "evidence_weak": 1900}
+    assert q["counts"]["by_reason"] == {"evidence_dismissed": 0, "disagreement": 0, "reported_conflict": 60, "plan_impact": 0, "qualification": 0, "corroboration": 0, "evidence_weak": 0}
+    assert q["counts"]["not_shown"] == {"evidence_dismissed": 0, "disagreement": 0, "reported_conflict": 0, "plan_impact": 0, "qualification": 0, "corroboration": 0, "evidence_weak": 1900}
     assert q["counts"]["hidden_total"] == 1900
 
     q2 = review_queue.build(pid, limit=100)
@@ -200,6 +200,6 @@ def test_cli_lists_the_queue_with_reasons(rq_db):
     r = CliRunner().invoke(app, ["project", "review-queue", p["id"]])
     assert r.exit_code == 0, r.output
     assert "2 to review out of 2 proposed" in r.output
-    assert "[disagreement] claim c_d" in r.output and "tension: CONTRADICTION (high)" in r.output
+    assert "[reported_conflict] claim c_d" in r.output and "tension: CONTRADICTION (high)" in r.output
     assert "[evidence_weak] claim c_w" in r.output
     assert r.output.index("c_d") < r.output.index("c_w")
