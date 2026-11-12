@@ -516,7 +516,7 @@ globalThis.openPassageSearch = function openPassageSearch(sourceId) {
         <input name="query" aria-label="Words or phrase" placeholder="Enter a phrase…" maxlength="300" required autofocus class="grow min-w-0">
         <button type="submit" class="primary">Search</button>
       </div>
-      <label class="row mt-2"><input type="checkbox" name="phrase" checked> Match consecutive words</label>
+      <label class="mt-2" style="display:inline-flex;align-items:center;gap:8px"><input type="checkbox" name="phrase" checked> Match consecutive words</label>
     </form>
     <div class="mt-3 passage-results" aria-live="polite"></div>`;
   const form = panel.querySelector('form');
@@ -539,7 +539,7 @@ globalThis.openPassageSearch = function openPassageSearch(sourceId) {
           && (hit.platform === 'community' || hit.link !== hit.url);
         const locator = esc(['manual', 'image'].includes(hit.platform) ? 'Open passage' : (hit.timestamp || 'Open passage'));
         const target = external
-          ? `<a class="chip" href="${esc(hit.link)}" target="_blank" rel="noopener">${locator} ↗</a>`
+          ? `<a class="chip fixed" href="${esc(hit.link)}" target="_blank" rel="noopener">${locator} ↗</a>`
           : `<button type="button" class="small ghost" data-passage-source="${esc(hit.source_id)}" data-passage-start="${esc(hit.start)}">${locator}</button>`;
         return `<div class="kn"><div class="grow min-w-0">
           <div class="row"><b>${esc(hit.title || 'Source')}</b>${target}</div>
