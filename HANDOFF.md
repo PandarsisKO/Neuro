@@ -4461,3 +4461,14 @@ JavaScript in headless Chrome with a synthetic review through two clicks and job
 No additional live ranking call or source mutation was used for verification. Isolated tests on
 `b9b2efc`: 2,652 full suite passed (one existing warning), 37 focused passed, fake Tier 1 and
 release-check passed. Evidence: `evals/release/release-check-0.64.5-b9b2efc-20261112-122508.{json,txt}`.
+
+### 2026-11-12 — Repair Re-rank layout on review cards
+
+The generic row styles stretched the Pick top number field and let its label, the field and the
+Re-rank button wrap separately. Candidate `6d98927` groups the controls, gives ranking status and
+warnings their own wrapping area, and clamps the displayed pick count to the available rows.
+
+Verified the rendered review card in headless Chrome at 350, 520 and 1,050 px with completed and
+active ranking and a warning. Both live assets returned HTTP 200 and matched the candidate.
+All 2,652 tests passed with one existing warning, including 25 focused tests. Isolated fake Tier 1
+and release-check passed. Evidence: `evals/release/release-check-0.64.5-6d98927-20261112-123524.{json,txt}`.
