@@ -166,7 +166,7 @@ def test_needs_me_is_off_by_default_and_on_fills_the_slot_with_reasons(p3_db, mo
     on = report.for_envelope(r["envelope_id"])
     items = on["projects"][0]["what_needs_the_user"]
     assert len(items) == 1 and items[0]["claim_id"] == "c_d" and items[0]["reasons"] == ["reported_conflict"]
-    assert items[0]["reason"].startswith("disagreement: sellers discount")
+    assert items[0]["reason"].startswith("reported conflict: sellers discount")
     text = report.render_text(on)
     assert "Needs you: disagreement: sellers discount for speed" in text
     assert "need to review" not in text.lower() and "need to review" not in json.dumps(on).lower()
