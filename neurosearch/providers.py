@@ -317,6 +317,9 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
     from . import contracts as C
     c = C.contract(task)
     r = getattr(_tl, "route", None) or {}
+    # Plan provenance belongs to the call that set it, not an unrelated artifact on this thread.
+    if r.get("executed_by") == "chatgpt_plan" and getattr(_tl, "task", None) != task:
+        r = {}
     by = r.get("executed_by", "api")
     requested = r.get("model") if by == "chatgpt_plan" else c.model_for(by)
     out = {"requested_model": requested, "actual_model": (str(actual_model) if actual_model else None) or requested, "fallback_used": bool(by == "chatgpt_plan" and r.get("fallback_reason")),

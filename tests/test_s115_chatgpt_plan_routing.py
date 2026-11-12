@@ -36,6 +36,7 @@ def calls(tmp_path, monkeypatch):
     db.init_db()
     monkeypatch.setattr(plan, "ready", lambda: True)
     monkeypatch.setattr(claude, "health", lambda **kw: {"state": "ready"})
+    monkeypatch.setattr(claude, "health_snapshot", lambda **kw: {"state": "ready"})
     monkeypatch.setattr(claude, "note_success", lambda *args, **kw: None)
     monkeypatch.setattr(claude, "note_failure", lambda *args, **kw: None)
     monkeypatch.setattr(claude, "local_is_free", lambda: True)
@@ -75,6 +76,8 @@ def test_claude_code_limit_falls_back_and_books_estimated_usage(calls, monkeypat
     route = providers.routing_for(TASK, providers.last_response().model)
     assert route["fallback_reason"] == "local_limit" and route["fallback_used"]
     assert route["requested_model"] == plan.MODEL and "model_mismatch" not in route
+    from neurosearch.contracts import contract
+    assert "model_mismatch" not in providers.routing_for("claims.extract", contract("claims.extract").model)
     rows = db.connect().execute("SELECT provider, state FROM invocations ORDER BY rowid").fetchall()
     assert [tuple(r) for r in rows] == [("claude_code", "failed"), ("chatgpt_plan", "completed")]
     row = db.connect().execute("SELECT transport, billing_basis, cost FROM usage").fetchone()
