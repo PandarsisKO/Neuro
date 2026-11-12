@@ -253,23 +253,95 @@ def test_tick_answers_did_anything_change_without_building_the_view(client):
                       headers={"Authorization": "Bearer t0k"}).status_code == 404
 
 
-def test_staleness_cache_is_invalidated_by_job_churn():
-    """`assess` reports REBUILDING from live job state, so job churn MUST move its key — otherwise a source keeps
-    claiming it is rebuilding after its job has finished, which is exactly the kind of stale-staleness bug that
-    would make caching here indefensible."""
-    p = db.create_project("Stale", "brief")
-    s = db.upsert_source(platform="youtube", external_id="stale-1", url="https://www.youtube.com/watch?v=stale-1",
-                         title="t", status="ready")
-    db.add_project_sources(p["id"], [s["id"]])
-    api.api_sources(project_id=p["id"], limit=50)
-    misses = perf.snapshot()["caches"]["staleness"]["miss"]
+def test_source_list_updates_stale_badges_without_full_assessment(monkeypatch):
+    from neurosearch import findings, staleness
 
-    api.api_sources(project_id=p["id"], limit=50)
-    assert perf.snapshot()["caches"]["staleness"]["miss"] == misses     # nothing moved → reused
+    p = db.create_project("Stale", "original brief")
+    source = db.upsert_source(platform="manual", external_id="stale-1", url="manual://stale-1",
+                              title="t", status="ready")
+    sid = source["id"]
+    db.add_project_sources(p["id"], [sid])
+    db.upsert_analysis(p["id"], sid, "summary", input_hash=findings.input_hash(p, sid),
+                       brief_revision=db.brief_revision(p), prompt_version=findings.prompt_version())
 
-    db.create_job("suggest_findings", {"project_id": p["id"], "source_ids": [s["id"]]})
-    api.api_sources(project_id=p["id"], limit=50)
-    assert perf.snapshot()["caches"]["staleness"]["miss"] == misses + 1  # a job appeared → recomputed
+    def forbidden(*args, **kwargs):
+        pytest.fail("the source list must not run full assessment or read the global job list")
+
+    monkeypatch.setattr(staleness, "assess", forbidden)
+    monkeypatch.setattr(db, "list_jobs", forbidden)
+
+    def value():
+        return api.api_sources(project_id=p["id"])[0]["value"]
+
+    assert value()["stale_status"] == staleness.CURRENT
+    db.update_project(p["id"], brief="new brief")
+    assert value()["stale_reasons"] == ["brief changed"]
+
+    other = db.create_project("Other", "other brief")
+    db.create_job("suggest_findings", {"project_id": other["id"], "source_ids": [sid]})
+    assert value()["stale_status"] == staleness.STALE
+    job = db.create_job("suggest_findings", {"project_id": p["id"], "source_ids": [sid]})
+    assert value()["stale_status"] == staleness.REBUILDING
+    db.update_job(job["id"], status="running")
+    assert db.finish_job(job["id"], None, "failed", message="fixture failure")
+    assert value()["stale_reasons"] == ["brief changed", "last rebuild failed: fixture failure"]
+
+
+def test_source_list_renders_before_cold_skipped_fit_and_refreshes(monkeypatch):
+    import threading
+    import time
+
+    from neurosearch import candidates
+
+    pid = db.create_project("Deferred fit", "a specific project brief")["id"]
+    row = db.upsert_source(platform="manual", external_id="deferred-fit", url="manual://deferred-fit",
+                           title="A specific topic", status="skipped")
+    db.add_project_sources(pid, [row["id"]])
+    started, finish = threading.Event(), threading.Event()
+
+    def blocked(project_id):
+        started.set()
+        if not finish.wait(5):
+            raise TimeoutError("fit test did not release the calculation")
+        return [], set()
+
+    monkeypatch.setattr(candidates, "_gap_terms", blocked)
+    try:
+        first = api.api_sources(project_id=pid, defer_potential=True)
+        assert first[0]["pool_potential_pending"] is True
+        assert "pool_potential" not in first[0]
+        assert started.wait(2)
+        assert api.api_sources(project_id=pid, defer_potential=True)[0]["pool_potential_pending"]
+    finally:
+        finish.set()
+        deadline = time.monotonic() + 5
+        while cache.refreshing() and time.monotonic() < deadline:
+            time.sleep(0.01)
+    final = api.api_sources(project_id=pid, defer_potential=True)
+    assert final[0]["pool_potential"]["score"] == 0
+    assert "pool_potential_pending" not in final[0]
+
+
+def test_source_list_for_browser_can_reach_ready_rows_past_2000():
+    pid = db.create_project("Large source list", "brief")["id"]
+    rows = [("paging-" + str(i), "manual://paging-" + str(i), i) for i in range(2003)]
+    with db.tx() as conn:
+        conn.executemany(
+            "INSERT INTO sources (id, platform, external_id, url, status, created_at, updated_at) "
+            "VALUES (?, 'manual', ?, ?, 'ready', ?, ?)",
+            [(sid, sid, url, i, i) for sid, url, i in rows],
+        )
+        conn.execute("UPDATE sources SET status='proposed' WHERE id='paging-2002'")
+        conn.execute("UPDATE sources SET status='failed' WHERE id='paging-0'")
+    db.add_project_sources(pid, [sid for sid, _, _ in rows])
+
+    default = api.api_sources(project_id=pid, limit=2000)
+    assert len(default) == 2000
+    assert {r["id"] for r in api.api_sources(project_id=pid, offset=2000, limit=5)} == {"paging-0", "paging-1"}
+    complete = api.api_sources(project_id=pid, all_project_rows=True)
+    assert len(complete) == 2002
+    assert {r["id"] for r in complete if r["status"] == "failed"} == {"paging-0"}
+    assert all(r["status"] != "proposed" for r in complete)
 
 
 # ---------------------------------------------------------------- R2 part 3: payload

@@ -47,9 +47,9 @@ def test_render_sources_view_is_synchronous_and_touches_no_network(sources_js: s
 
 
 def test_filter_sources_is_the_instant_path(sources_js: str):
-    m = re.search(r"globalThis\.filterSources = function filterSources\(\) \{ (.*?) \}", sources_js)
+    m = re.search(r"globalThis\.filterSources = function filterSources\(\) \{(.*?)\n\}", sources_js, re.S)
     assert m, "filterSources not found"
-    assert m.group(1).strip() == "renderSourcesView();", "filterSources must do nothing but re-render"
+    assert m.group(1).strip().splitlines() == ["SRCG.page = 0;", "  renderSourcesView();"]
 
 
 def test_status_chips_and_value_filters_call_filter_sources_not_load_sources(sources_js: str):
@@ -89,3 +89,15 @@ def test_pool_filter_still_gets_its_own_real_fetch(sources_js: str):
     must still call the real loadPool(), even though it's reached via the instant filterSources() path."""
     view = re.search(r"globalThis\.renderSourcesView = function renderSourcesView\(\) \{(.*?)\n\}\n", sources_js, re.S).group(1)
     assert "return loadPool();" in view
+
+
+def test_sources_paging_keeps_filters_and_quiet_refresh_working():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is unavailable")
+    script = UI.parents[1] / "tests" / "js" / "run-source-pages.mjs"
+    out = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stdout + out.stderr

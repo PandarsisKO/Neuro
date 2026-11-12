@@ -78,7 +78,7 @@ globalThis.createProject = async function createProject() {
 // findings page, the research state, the review-card signature and the jobs revision all carried over. One
 // reset, at the moment the project changes, and every pane starts from its loading state.
 globalThis.resetProjectState = function resetProjectState() {
-  if (globalThis.SRCG) Object.assign(SRCG, { rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [] });
+  if (globalThis.SRCG) Object.assign(SRCG, { rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [], page: 0, query: null, potentialPending: false });
   if (globalThis.POOL) POOL.total = null;
   if (globalThis.FB) Object.assign(FB, { offset: 0, source: null, loaded: false, rows: [], statusCounts: {} });
   if (globalThis.RES) Object.assign(RES, { area: null, v: null, state: null, next: [], qs: [], wos: [], open: {}, queue: null });
@@ -92,6 +92,7 @@ globalThis.resetProjectState = function resetProjectState() {
   for (const [sel, html] of [['#srcList', ''], ['#reviewWrap', ''], ['#jobs', ''], ['#backlog', ''], ['#notes', ''], ['#fbBulk', ''], ['#chat', ''], ['#chatList', ''], ['#planWrap', ''], ['#captureCard', ''], ['#srcCount', ''], ['#fbCount', ''], ['#jobsSummary', 'In progress']]) {
     const el = document.querySelector(sel); if (el) { el.innerHTML = html; }
   }
+  const pager = document.querySelector('#srcPager'); if (pager) pager.hidden = true;
   const jc = document.querySelector('#jobsCard'); if (jc) jc.hidden = true;
   const bc = document.querySelector('#bootCard'); if (bc) bc.hidden = true;
   const cc = document.querySelector('#captureCard'); if (cc) cc.hidden = true;

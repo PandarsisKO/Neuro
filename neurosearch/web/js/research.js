@@ -864,7 +864,7 @@ globalThis.pollTick = async function pollTick() {
   globalThis.lastRev = rev;
   const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
   if (full || changed('jobs')) loadJobs(true); else globalThis.jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
-  if (srcChanged) loadSources(true).catch(() => {});
+  if (srcChanged || SRCG.potentialPending) loadSources(true).catch(() => {});
   if (full || changed('jobs') || changed('sources')) loadBoot(true);
 }
 

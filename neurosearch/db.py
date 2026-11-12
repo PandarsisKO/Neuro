@@ -1897,7 +1897,7 @@ def find_source(platform: str, external_id: str) -> dict[str, Any] | None:
 
 def list_sources(
     *, status: str | None = None, collection_id: str | None = None, query: str | None = None,
-    limit: int = 500, offset: int = 0, ids: Iterable[str] | None = None,
+    limit: int | None = 500, offset: int = 0, ids: Iterable[str] | None = None,
     include_proposed: bool = True,
 ) -> list[dict[str, Any]]:
     """`ids` (P0.4, docs/SPEED-AUDIT-2026-09-17.md): restrict to these source ids IN THE QUERY. `/api/sources` used to
@@ -1926,8 +1926,8 @@ def list_sources(
     # picker, 20 for the CLI's failed list), and the cap used to fall on publish-date order: a course lesson or a
     # document carries no publish date, so the rows Kyle had just added were the first ones a full project would
     # have cut. What entered the library last is what a capped list must never drop; the page re-sorts client-side.
-    sql += " ORDER BY s.created_at DESC, COALESCE(s.published_at, '') DESC LIMIT ? OFFSET ?"
-    args += [limit, offset]
+    sql += " ORDER BY s.created_at DESC, COALESCE(s.published_at, '') DESC, s.id LIMIT ? OFFSET ?"
+    args += [-1 if limit is None else limit, offset]
     return [row_to_dict(r) for r in connect().execute(sql, args).fetchall()]  # type: ignore[misc]
 
 
@@ -2190,7 +2190,7 @@ def segments_revision(segments: list[dict[str, Any]]) -> str:
     return h.hexdigest()[:16]
 
 
-def source_revision(source_id: str) -> str | None:
+def source_revision(source_id: str, *, persist: bool = True) -> str | None:
     row = connect().execute("SELECT revision FROM sources WHERE id=?", (source_id,)).fetchone()
     if row and row["revision"]:
         return row["revision"]
@@ -2198,8 +2198,9 @@ def source_revision(source_id: str) -> str | None:
     if not segs:
         return None
     rev = segments_revision(segs)
-    with tx() as conn:
-        conn.execute("UPDATE sources SET revision=? WHERE id=?", (rev, source_id))
+    if persist:
+        with tx() as conn:
+            conn.execute("UPDATE sources SET revision=? WHERE id=?", (rev, source_id))
     return rev
 
 
@@ -3061,8 +3062,8 @@ def list_jobs(limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[
     return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
 
 
-def list_project_jobs(project_id: str, source_ids: Iterable[str], *, limit: int, statuses: tuple[str, ...] | None = None,
-                      exclude_statuses: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+def list_project_jobs(project_id: str, source_ids: Iterable[str], *, limit: int | None, statuses: tuple[str, ...] | None = None,
+                      exclude_statuses: tuple[str, ...] | None = None, kinds: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
     """R8: a project's jobs — those whose payload names the project, plus `ingest_source` jobs for its sources —
     straight from the generated-column indexes, newest first. Replaces `api_project_jobs`'s scan of every active
     job app-wide plus the 400 most recent (payload JSON decoded per row, then filtered in Python)."""
@@ -3074,14 +3075,18 @@ def list_project_jobs(project_id: str, source_ids: Iterable[str], *, limit: int,
     if exclude_statuses:
         cond += f" AND status NOT IN ({','.join('?' for _ in exclude_statuses)})"
         cargs += list(exclude_statuses)
+    if kinds:
+        cond += f" AND kind IN ({','.join('?' for _ in kinds)})"
+        cargs += list(kinds)
+    sql_limit = -1 if limit is None else limit
     # Two queries, merged here, on purpose: as one `OR` SQLite must union both index scans and re-sort the whole
     # union (MULTI-INDEX OR + temp b-tree — measured 205 ms on a copy of the 79k-row live table, no better than the
     # scan it replaces). Each half on its own walks its index in created_at order and stops at LIMIT: 26 ms.
     conn = connect()
-    rows = conn.execute(f"SELECT * FROM jobs WHERE project_id=?{cond} ORDER BY created_at DESC LIMIT ?", [project_id, *cargs, limit]).fetchall()
+    rows = conn.execute(f"SELECT * FROM jobs WHERE project_id=?{cond} ORDER BY created_at DESC LIMIT ?", [project_id, *cargs, sql_limit]).fetchall()
     if idl:
         rows += conn.execute(f"SELECT * FROM jobs WHERE kind='ingest_source' AND source_id IN (SELECT value FROM json_each(?)){cond} "
-                             "ORDER BY created_at DESC LIMIT ?", [json.dumps(idl), *cargs, limit]).fetchall()
+                             "ORDER BY created_at DESC LIMIT ?", [json.dumps(idl), *cargs, sql_limit]).fetchall()
     seen: dict[str, Any] = {}
     for r in rows:
         seen.setdefault(r["id"], r)
@@ -5062,34 +5067,39 @@ def analysed_sources(project_id: str) -> set[str]:
 def analysis_jobs_by_source(project_id: str) -> dict[str, dict[str, Any]]:
     """source_id → the queued/running findings job on it (status, message, progress, depth, lane) — the source card's live line."""
     out: dict[str, dict[str, Any]] = {}
-    for r in connect().execute("SELECT id, status, message, progress, payload, lane, updated_at FROM jobs WHERE kind='suggest_findings' AND status IN ('queued','running') ORDER BY created_at").fetchall():
+    for r in connect().execute("SELECT id, status, message, progress, payload, lane, updated_at FROM jobs WHERE project_id=? AND kind='suggest_findings' AND status IN ('queued','running') ORDER BY created_at", (project_id,)).fetchall():
         try:
             pl = json.loads(r["payload"] or "{}")
         except ValueError:
-            continue
-        if pl.get("project_id") != project_id:
             continue
         for sid in pl.get("source_ids") or []:
             out.setdefault(sid, {"id": r["id"], "status": r["status"], "message": r["message"], "progress": r["progress"], "depth": pl.get("depth"), "lane": r["lane"], "updated_at": r["updated_at"]})
     return out
 
 
+def findings_job_sources(job_id: str, kind: str, source_ids: list[str]) -> list[str]:
+    if kind != "suggest_findings_batch":
+        return source_ids
+    items = connect().execute(
+        "SELECT DISTINCT source_id, status FROM batch_items WHERE job_id=?", (job_id,),
+    ).fetchall()
+    # A source is usable when its batch result has been materialized.
+    landed = {item["source_id"] for item in items if item["status"] == "materialized"}
+    return list(dict.fromkeys(item["source_id"] for item in items if item["source_id"] not in landed)) if items else source_ids
+
+
 def sources_being_analysed(project_id: str) -> set[str]:
     out: set[str] = set()
-    for r in connect().execute("SELECT id, kind, payload FROM jobs WHERE kind IN ('suggest_findings','suggest_findings_batch') AND status IN ('queued','running','external_pending')").fetchall():
+    for row in connect().execute(
+        "SELECT id, kind, payload FROM jobs WHERE project_id=? "
+        "AND kind IN ('suggest_findings','suggest_findings_batch') "
+        "AND status IN ('queued','running','external_pending')", (project_id,),
+    ):
         try:
-            pl = json.loads(r["payload"])
+            payload = json.loads(row["payload"])
         except ValueError:
             continue
-        if pl.get("project_id") != project_id:
-            continue
-        if r["kind"] == "suggest_findings_batch":
-            # a background job: only the sources whose findings have not landed yet (completed sources are usable already)
-            planned = {x["source_id"] for x in batch_items(r["id"])}
-            landed = {x["source_id"] for x in batch_items(r["id"], status="materialized")}
-            out.update((planned or set(pl.get("source_ids") or [])) - landed)
-        else:
-            out.update(pl.get("source_ids") or [])
+        out.update(findings_job_sources(row["id"], row["kind"], payload.get("source_ids") or []))
     return out
 
 

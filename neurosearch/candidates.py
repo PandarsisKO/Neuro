@@ -558,11 +558,21 @@ def gap_terms_cached(project_id: str) -> tuple[list[tuple[str, str, set[str]]], 
     `pool` and `seen_for_query` were both calling it fresh on every request. `api_sources` had already cached it
     since 0.46.1; caching it HERE means one place serves every caller, and the index (0.63.19) is cached with the
     terms it belongs to rather than rebuilt beside them."""
+    return gap_terms_for_revision(project_id, db.project_research_revision(project_id), wait=True)
+
+
+def gap_terms_for_revision(project_id: str, revision: str, *, wait: bool):
     from . import cache
-    return cache.get_or_compute(
-        f"gap_terms_core:{project_id}", db.project_research_revision(project_id),
-        lambda: (lambda qv: (qv[0], qv[1], question_index(qv[0])))(_gap_terms(project_id)),
-        label="gap_terms_core")
+
+    def build():
+        questions, vocabulary = _gap_terms(project_id)
+        return questions, vocabulary, question_index(questions)
+
+    key = f"gap_terms_core:{project_id}"
+    if wait:
+        return cache.get_or_compute(key, revision, build, label="gap_terms_core")
+    result = cache.get_stale_ok(key, revision, build, label="gap_terms_core", warm=False, refresh_cold=True)
+    return result["value"] if result["current"] else None
 
 
 # A "fit" is a claim on screen, so it needs the same bar the SCORE uses (0.63.20). `_potential` has awarded points

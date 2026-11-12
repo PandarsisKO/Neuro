@@ -1682,7 +1682,8 @@ def api_stats() -> dict[str, Any]:
 @app.get("/api/sources", dependencies=[Depends(require_auth)])
 def api_sources(status: str | None = None, collection_id: str | None = None, q: str | None = None,
                       project_id: str | None = None, not_in_project: str | None = None,
-                      limit: int = 500, offset: int = 0, analysis: bool = False) -> list[dict[str, Any]]:
+                      limit: int = 500, offset: int = 0, analysis: bool = False,
+                all_project_rows: bool = False, defer_potential: bool = False) -> list[dict[str, Any]]:
     # R2 (SPEED-MISSION.md): this endpoint measured 2.53 s p50 on Kyle's live server against <0.1 s for every
     # other polled endpoint, while the UI polls it every 3 s. The per-stage timings below are what say WHICH
     # part costs that, so the fix lands on the measured bottleneck instead of the assumed one. They stay after
@@ -1694,8 +1695,8 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             with perf.timed("sources:membership"):
                 ids = set(db.project_source_ids(project_id, ready_only=False))
             # Pending reviews have their own pane. Exclude them before pagination so they cannot crowd out sources.
-            rows = db.list_sources(status=status, collection_id=collection_id, query=q, limit=limit, offset=offset,
-                                   ids=ids, include_proposed=False)
+            rows = db.list_sources(status=status, collection_id=collection_id, query=q, limit=None if all_project_rows else limit,
+                                   offset=offset, ids=ids, include_proposed=False)
         else:
             rows = db.list_sources(status=status, collection_id=collection_id, query=q,
                                    limit=limit if not not_in_project else 10000, offset=offset)
@@ -1715,20 +1716,9 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         with perf.timed("sources:value"):
             values = sources_value.compute(project_id)                                    # S2: what each source gave (one pass)
         with perf.timed("sources:staleness"):
-            # 0.26 s and, after R2 part 1, 75% of what the endpoint still costs. `assess` reads the project row,
-            # its analyses, every source revision AND live job state, so it is keyed on all three revisions rather
-            # than the research one alone — job churn must invalidate it, or a source would keep reporting
-            # "rebuilding" after its job finished. Cost estimates inside the result also depend on the observed
-            # spend rate, which is NOT in the key: an estimate drifting by a few cents between recomputes is
-            # cosmetic, where a wrong CURRENT/STALE verdict would not be.
-            view_rev = db.project_view_revision(project_id)
-            try:
-                stale_by = cache.get_or_compute(
-                    f"staleness:{project_id}", f"{view_rev['research']}|{view_rev['sources']}|{view_rev['jobs']}",
-                    lambda: {x["source_id"]: x for x in staleness.assess(project_id)["sources"]},
-                    label="staleness")
-            except Exception:  # noqa: BLE001
-                stale_by = {}
+            project = db.get_project(project_id) if rows else None
+            summaries = {sid: tasks["summary"] for sid, tasks in analyses.items() if "summary" in tasks}
+            stale_by = staleness.source_verdicts(project, rows, summaries, analysing) if project else {}
         # a skipped (pre-cutoff) source used to show up with no thumbnail and no hint of whether it's worth
         # ingesting anyway — the same $0 potential scan the pool already runs (candidates.pool) works row by row too.
         pot_qs = pot_vocab = pot_idx = None
@@ -1742,19 +1732,12 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 # it is now computed once per revision of that state and reused until the state actually changes.
                 from . import candidates as candidates_mod
                 research_rev = db.project_research_revision(project_id)
-                # 0.63.21 — this had its OWN `gap_terms:` cache entry, and its lambda called `_gap_terms` TWICE:
-                # once for the `*` unpack and once to build the index from it. So a cold request ran the whole
-                # research pass (questions + areas over 16,000 Claims) twice — measured at **6.18 s of a 7.72 s**
-                # `/api/sources?limit=2000`, the endpoint's largest stage by far. Same defect as 0.62.1, where
-                # `claims.ensure` called `assess_project` and then `knowledge.refresh`, which calls it again.
-                #
-                # `candidates.gap_terms_cached` is the one place that computes this, on the same revision, and it
-                # is what `pool` and `seen_for_query` already use — so there is now a single entry rather than two
-                # copies of one answer, and the background warm-up that keeps the pool warm keeps this warm too.
-                pot_qs, pot_vocab, pot_idx = candidates_mod.gap_terms_cached(project_id)
-                pot_rel = cache.get_or_compute(f"rel_analysis:{project_id}", research_rev,
-                                               lambda: db.project_analysis(project_id, "relevance"),
-                                               label="rel_analysis")
+                terms = candidates_mod.gap_terms_for_revision(project_id, research_rev, wait=not defer_potential)
+                if terms is not None:
+                    pot_qs, pot_vocab, pot_idx = terms
+                    pot_rel = cache.get_or_compute(f"rel_analysis:{project_id}", research_rev,
+                                                   lambda: db.project_analysis(project_id, "relevance"),
+                                                   label="rel_analysis")
         _rows_t0 = time.perf_counter()
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
@@ -1791,15 +1774,15 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             r["analysed"] = r["id"] in counts or r["id"] in analysed_ids
             r["under_read"] = bool(r["long"] and r.get("depth") != "deep" and r["analysed"] and (r["approved"] + r["suggested"]) <= findings_mod.CAP_BASE)
             v = values.get(r["id"]) or sources_value.empty()
-            st = stale_by.get(r["id"]) or {}
+            stale_status, stale_reasons = stale_by.get(r["id"], (None, []))
             # `claims` and `importance` are nested dicts with no reader anywhere — 40 KB of the response (0.63.21).
             # Everything else stays because the client genuinely filters and sorts on it, which the first grep for
             # `value.score` MISSED: `const v = s => s.value || {}` aliases the object, so `v(s).matters`,
             # `v(s).never_used`, `v(b).score` and `v(a).used.plan_evidence` are all real consumers. The drawer
             # (`/api/sources/{id}/digest`) is where the full value breakdown lives.
             r["value"] = {"score": v["value_score"], "label": v["label"], "matters": v["matters"], "never_used": v["never_used"], "used": v["used"],
-                          "stale": st.get("status") in ("stale", "legacy_unverified"),
-                          "stale_status": st.get("status"), "stale_reasons": st.get("reasons") or []}
+                          "stale": stale_status in (staleness.STALE, staleness.LEGACY),
+                          "stale_status": stale_status, "stale_reasons": stale_reasons}
             r["priority"] = r["id"] in prio
             if r.get("video_embeds"):
                 # 0.63.16 — a captured page's embedded players, so the row can OFFER them. The list itself is the
@@ -1826,6 +1809,8 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                         r.get("title") or "", r.get("description") or "", pot_qs, pot_vocab, rr.get("relevance"), [],
                         qindex=pot_idx))),
                     label="potential")
+            elif r.get("status") == "skipped" and defer_potential:
+                r["pool_potential_pending"] = True
             j = live.get(r["id"])
             if j:
                 r["job"] = j          # {status, message, position, updated_at}

@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import threading
+from collections.abc import Callable
 from typing import Any
 
 from . import db, providers
@@ -95,11 +96,21 @@ def schema_version() -> str | None:
 def input_hash(project: dict[str, Any] | str, source_id: str, depth: str | None = None) -> str:
     """Hash of exactly what this task reads: the transcript (source revision), the steering text (brief revision), the
     prompt, output schema, configured model contract and reading depth. Staleness compares this, not database rows."""
+    return input_hasher(project)(db.source_revision(source_id), depth)
+
+
+def input_hasher(project: dict[str, Any] | str) -> Callable[[str | None, str | None], str]:
+    """Capture the shared Findings inputs once when comparing multiple source revisions."""
     from .contracts import contract
     c = contract("findings.extract")
-    base = db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version(),
-                   schema_version() or "text", c.model, c.local_model, c.thinking, c.effort, c.max_output_tokens)
-    return db._sha(base, "deep") if depth == "deep" else base
+    inputs = (db.brief_revision(project), prompt_version(), c.schema or "text", c.model, c.local_model,
+              c.thinking, c.effort, c.max_output_tokens)
+
+    def hash_source(revision: str | None, depth: str | None) -> str:
+        base = db._sha("findings", revision, *inputs)
+        return db._sha(base, "deep") if depth == "deep" else base
+
+    return hash_source
 
 
 def work_unit_key(project: dict[str, Any], src: dict[str, Any], window: str, index: int, count: int,

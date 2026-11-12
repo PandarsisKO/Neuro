@@ -92,11 +92,12 @@ def get_or_compute(key: str, revision: str, compute: Callable[[], Any], *, label
 
 
 def get_stale_ok(key: str, revision: str, compute: Callable[[], Any], *, label: str | None = None,
-                 warm: bool = True) -> dict[str, Any]:
+                 warm: bool = True, refresh_cold: bool = False) -> dict[str, Any]:
     """The expensive-pass variant: never block on a cold recompute if there is anything to show.
 
     Returns `{"value", "revision", "current", "pending"}`. A stored value under a different revision is returned
-    immediately with `current: False`, and one background thread refreshes it. Nothing is fabricated: the value is
+    immediately with `current: False`, and one background thread refreshes it. With `warm=False, refresh_cold=True`
+    the same background refresh also starts when there is no previous value. Nothing is fabricated: the value is
     always one this app computed, and `current` says whether it still matches the state it was computed from."""
     hit = peek(key)
     if hit is not None and hit[0] == revision:
@@ -105,6 +106,8 @@ def get_stale_ok(key: str, revision: str, compute: Callable[[], Any], *, label: 
     perf.mark(label or key.split(":", 1)[0], False)
     if hit is None:
         if not warm:
+            if refresh_cold:
+                _refresh_later(key, revision, compute, label)
             return {"value": None, "revision": None, "current": False, "pending": True}
         value = get_or_compute(key, revision, compute, label=label)      # nothing to show: compute it once
         return {"value": value, "revision": revision, "current": True, "pending": False}
@@ -118,14 +121,21 @@ def _refresh_later(key: str, revision: str, compute: Callable[[], Any], label: s
             return
         _running.add(key)
 
+    from . import db
+    db_path = getattr(db._local, "db_path", db.settings.db_path)
+
     def run() -> None:
+        db._local.db_path = db_path
         try:
             get_or_compute(key, revision, compute, label=label)
         except Exception:  # noqa: BLE001 — a background refresh must never take the process down
             pass
         finally:
-            with _lock:
-                _running.discard(key)
+            try:
+                db.close_thread_connection()
+            finally:
+                with _lock:
+                    _running.discard(key)
 
     threading.Thread(target=run, name=f"cache-refresh:{key[:40]}", daemon=True).start()
 

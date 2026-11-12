@@ -10,6 +10,7 @@ Chat answers are records of what was said at the time and are never marked stale
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from . import db
@@ -34,8 +35,16 @@ def next_tonight(now_ts: float | None = None) -> float:
 LOCAL_MINUTES_PER_WINDOW = 1.2    # observed 2026-09-08: ~one findings window per minute on Claude Code (Sonnet)
 
 
-def _project_jobs(project_id: str) -> list[dict[str, Any]]:
-    return [j for j in db.list_jobs(2000) if (j.get("payload") or {}).get("project_id") == project_id]
+_FINDINGS_JOBS = ("suggest_findings", "suggest_findings_batch")
+_ACTIVE = ("queued", "running", "external_pending")
+
+
+def _failed_jobs(project_id: str, kinds: tuple[str, ...]) -> list[dict[str, Any]]:
+    return db.list_project_jobs(project_id, (), limit=2000, kinds=kinds, statuses=("failed",))
+
+
+def _job_sources(job: dict[str, Any]) -> list[str]:
+    return db.findings_job_sources(job["id"], job["kind"], (job.get("payload") or {}).get("source_ids") or [])
 
 
 def _job_note(j: dict[str, Any]) -> str:
@@ -49,87 +58,105 @@ def _job_note(j: dict[str, Any]) -> str:
     return j["status"]
 
 
+def source_verdicts(project: dict[str, Any], rows: list[dict[str, Any]],
+                    analysis: dict[str, dict[str, Any]], analysing: set[str]) -> dict[str, tuple[str, list[str]]]:
+    """Read only the inputs needed for source badges. Rebuild state comes from the current jobs."""
+    from . import findings
+
+    brief = db.brief_revision(project)
+    prompt, schema = findings.prompt_version(), findings.schema_version()
+    hash_source = findings.input_hasher(project)
+    verdicts = {}
+    stale = set()
+    for row in rows:
+        if row["status"] != "ready":
+            continue
+        sid = row["id"]
+        artifact = analysis.get(sid)
+        reasons: list[str] = []
+        if sid in analysing:
+            status = REBUILDING
+        elif not artifact:
+            status = MISSING
+        else:
+            status, reasons = _artifact_verdict(row, artifact, brief, prompt, schema, hash_source)
+        verdicts[sid] = (status, reasons)
+        if status == STALE:
+            stale.add(sid)
+
+    if stale:
+        for job in _failed_jobs(project["id"], _FINDINGS_JOBS):
+            if not stale:
+                break
+            for sid in stale.intersection(_job_sources(job)):
+                if job["created_at"] > (analysis[sid].get("updated_at") or 0):
+                    verdicts[sid][1].append("last rebuild failed: " + (job.get("message") or "")[:120])
+                stale.remove(sid)
+    return verdicts
+
+
+def _artifact_verdict(row: dict[str, Any], artifact: dict[str, Any], brief: str, prompt: str,
+                      schema: str | None, hash_source: Callable[[str | None, str | None], str]) -> tuple[str, list[str]]:
+    saved_hash = artifact.get("input_hash")
+    accepted_hash = artifact.get("accepted_hash")
+    legacy = artifact.get("status") == LEGACY
+    if legacy and not accepted_hash:
+        return LEGACY, ["preserved from Neuro Search 0.15 — its original project context cannot be verified"]
+    if not legacy and not saved_hash and not artifact.get("brief_revision"):
+        return STALE, ["analysed before revisions were recorded"]
+
+    revision = row.get("revision") or db.source_revision(row["id"], persist=False)
+    current_hash = hash_source(revision, artifact.get("depth")) if saved_hash or accepted_hash else None
+    if legacy:
+        if accepted_hash == current_hash:
+            return ACCEPTED, []
+        return LEGACY, ["preserved from Neuro Search 0.15 — its original project context cannot be verified"]
+    if saved_hash and saved_hash == current_hash:
+        return CURRENT, []
+
+    reasons = []
+    if artifact.get("brief_revision") != brief:
+        reasons.append("brief changed")
+    if artifact.get("source_revision") and revision and artifact["source_revision"] != revision:
+        reasons.append("transcript changed")
+    if saved_hash:
+        if artifact.get("prompt_version") != prompt:
+            reasons.append("analysis prompt changed")
+        if artifact.get("schema_version") and schema and artifact["schema_version"] != schema:
+            reasons.append("output schema changed")
+        if "transcript changed" not in reasons and accepted_hash and accepted_hash == current_hash:
+            return ACCEPTED, []
+        return STALE, reasons or ["inputs changed"]
+    return (STALE, reasons) if reasons else (CURRENT, [])
+
+
 def assess(project_id: str) -> dict[str, Any]:
     """Which artifacts are stale, why, and what a rebuild would cost."""
-    from . import findings, usage
+    from . import usage
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
     cur = db.project_revisions(project_id)
-    pjobs = _project_jobs(project_id)
-    live = [j for j in pjobs if j["status"] in ("queued", "running")]
+    live = db.list_project_jobs(project_id, (), limit=None, kinds=(*_FINDINGS_JOBS, "build_plan"),
+                                statuses=_ACTIVE)
     rate = usage.observed_rate_per_minute()
 
-    # ---- findings / source analysis, per source (the 'summary' artifact + its findings share the same task inputs)
     analysis = db.project_analysis(project_id, "summary")
-    live_by_source: dict[str, dict[str, Any]] = {}
-    last_failed: dict[str, dict[str, Any]] = {}
-    for j in sorted(pjobs, key=lambda j: j["created_at"]):
-        if j["kind"] not in ("suggest_findings", "suggest_findings_batch"):
-            continue
-        sids = (j.get("payload") or {}).get("source_ids") or []
-        if j["kind"] == "suggest_findings_batch":
-            # a background job covers a source until that source's findings have landed (they land one by one)
-            landed = {x["source_id"] for x in db.batch_items(j["id"], status="materialized")}
-            sids = [x for x in (sids or [x["source_id"] for x in db.batch_items(j["id"])]) if x not in landed]
-        for sid in sids:
-            if j["status"] in ("queued", "running", "external_pending"):
-                live_by_source[sid] = j
-            elif j["status"] == "failed":
-                last_failed[sid] = j
+    live_by_source = {}
+    for job in reversed(live):
+        if job["kind"] in _FINDINGS_JOBS:
+            for sid in _job_sources(job):
+                live_by_source[sid] = job
+    rows = db.list_sources(ids=db.project_source_ids(project_id), status="ready", limit=None)
+    verdicts = source_verdicts(project, rows, analysis, set(live_by_source))
     sources: list[dict[str, Any]] = []
     stale_findings_cost = 0.0
-    all_srcs = {s["id"]: s for s in db.list_sources(limit=100000)}
-    for sid in db.project_source_ids(project_id):
-        s = all_srcs.get(sid)
-        if not s:
-            continue
+    for s in rows:
+        sid = s["id"]
         a = analysis.get(sid)
-        reasons: list[str] = []
-        note = None
-        if sid in live_by_source:
-            status = REBUILDING
-            note = _job_note(live_by_source[sid])
-        elif not a:
-            status = MISSING
-        elif a.get("status") == LEGACY:
-            status = LEGACY
-            reasons.append("preserved from Neuro Search 0.15 — its original project context cannot be verified")
-            if a.get("accepted_hash") and a["accepted_hash"] == findings.input_hash(project, sid, depth=a.get("depth")):
-                # 0.45.1: a legacy row can be accepted too. accept() has always written the hash for these (they are in the
-                # accept tier), but this branch returned before reading it, so accepting a legacy source did nothing at all
-                # and the tier could never empty. The hash covers the transcript revision, so a later transcript change
-                # un-accepts the source on its own — the same guarantee the stale branch gives.
-                status, reasons, note = ACCEPTED, [], "accepted as still usable for the current brief"
-        elif a.get("input_hash"):
-            # exact-input comparison: transcript + steering + prompt, as the task saw them
-            if a["input_hash"] != findings.input_hash(project, sid, depth=a.get("depth")):
-                srev = s.get("revision") or db.source_revision(sid)
-                if a.get("brief_revision") != cur["brief_revision"]:
-                    reasons.append("brief changed")
-                if a.get("source_revision") and srev and a["source_revision"] != srev:
-                    reasons.append("transcript changed")
-                if a.get("prompt_version") != findings.prompt_version():
-                    reasons.append("analysis prompt changed")
-                if a.get("schema_version") and findings.schema_version() and a["schema_version"] != findings.schema_version():
-                    reasons.append("output schema changed")
-                reasons = reasons or ["inputs changed"]
-            status = STALE if reasons else CURRENT
-            if status == STALE and "transcript changed" not in reasons and a.get("accepted_hash") == findings.input_hash(project, sid, depth=a.get("depth")):
-                status = ACCEPTED                                        # S1: the user accepted these findings as still usable for exactly these inputs
-                note = "accepted as still usable for the current brief"
-        elif not a.get("brief_revision"):
-            status = STALE
-            reasons.append("analysed before revisions were recorded")
-        else:                                                       # 0.16.0 rows: revisions only
-            srev = s.get("revision") or db.source_revision(sid)
-            if a.get("brief_revision") != cur["brief_revision"]:
-                reasons.append("brief changed")
-            if a.get("source_revision") and srev and a["source_revision"] != srev:
-                reasons.append("transcript changed")
-            status = STALE if reasons else CURRENT
-        if status == STALE and sid in last_failed and last_failed[sid]["created_at"] > (a or {}).get("updated_at", 0):
-            reasons.append("last rebuild failed: " + (last_failed[sid].get("message") or "")[:120])
+        status, reasons = verdicts[sid]
+        note = (_job_note(live_by_source[sid]) if status == REBUILDING
+                else "accepted as still usable for the current brief" if status == ACCEPTED else None)
         est = 0.0
         if status in (STALE, MISSING, LEGACY):
             if s.get("duration"):
@@ -150,7 +177,7 @@ def assess(project_id: str) -> dict[str, Any]:
     plan_info: dict[str, Any] = {"status": MISSING, "reasons": [], "estimate": 0.0}
     if plan:
         reasons = []
-        plan_jobs = [j for j in live if j["kind"] == "build_plan"]
+        plan_jobs = [j for j in live if j["kind"] == "build_plan" and j["status"] != "external_pending"]
         if plan_jobs:
             plan_info["status"] = REBUILDING
             j = plan_jobs[0]
@@ -165,12 +192,12 @@ def assess(project_id: str) -> dict[str, Any]:
                 if plan["facts_revision"] != cur["facts_revision"]:
                     reasons.append("decisions/constraints changed")
                 if plan["source_set_revision"] != cur["source_set_revision"]:
-                    n_new = sum(1 for sid in db.project_source_ids(project_id) if (all_srcs.get(sid) or {}).get("updated_at", 0) > plan["created_at"])
+                    n_new = sum(1 for row in rows if (row.get("updated_at") or 0) > plan["created_at"])
                     reasons.append(f"{n_new} source{'s' if n_new != 1 else ''} added or changed since" if n_new else "sources changed")
             plan_info["status"] = STALE if reasons else CURRENT
-            failed = [j for j in pjobs if j["kind"] == "build_plan" and j["status"] == "failed" and j["created_at"] > plan["created_at"]]
+            failed = [j for j in _failed_jobs(project_id, ("build_plan",)) if j["created_at"] > plan["created_at"]] if reasons else []
             if reasons and failed:
-                reasons.append("last rebuild failed: " + (failed[-1].get("message") or "")[:120])
+                reasons.append("last rebuild failed: " + (failed[0].get("message") or "")[:120])
         plan_info.update({"reasons": reasons, "version": plan["version"], "plan_id": plan["id"], "built_at": plan["created_at"], "model": plan.get("model")})
         if plan_info["status"] == STALE:
             plan_info["estimate"] = round(_plan_estimate(project_id), 4)
@@ -199,7 +226,7 @@ def assess(project_id: str) -> dict[str, Any]:
 
 
 def live_findings_jobs(project_id: str) -> list[dict[str, Any]]:
-    return [j for j in _project_jobs(project_id) if j["kind"] in ("suggest_findings", "suggest_findings_batch") and j["status"] in ("queued", "running", "external_pending")]
+    return db.list_project_jobs(project_id, (), limit=None, kinds=_FINDINGS_JOBS, statuses=_ACTIVE)
 
 
 def _plan_estimate(project_id: str) -> float:

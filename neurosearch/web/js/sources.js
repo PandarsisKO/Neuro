@@ -151,7 +151,7 @@ globalThis.rvDiscard = async function rvDiscard(id) { if (!confirm('Discard this
 // R2 part 3 (SPEED-MISSION.md): `html` is the last content rendered per group and `byKey` the current rows, so a
 // refresh can patch only the groups that actually changed instead of rebuilding all 22,470 nodes — which also stops
 // every poll from throwing away scroll position and open/closed state.
-globalThis.SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [] };
+globalThis.SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [], page: 0, query: null, potentialPending: false };
 globalThis.srcGroupToggled = function srcGroupToggled(key, open) {
   if (open) SRCG.collapsed.delete(key); else SRCG.collapsed.add(key);
   if (!open) return;
@@ -187,7 +187,7 @@ globalThis.srcRowHtml = function srcRowHtml(s) {
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.created_at ? ` <span title="added ${new Date(s.created_at * 1000).toLocaleString()}">· added ${agoShort(s.created_at)}</span>` : ''}${s.r6_provisional ? ' <span class="tag" title="Fast-wave result: useful early evidence, still provisional while the warm/deep queue continues. Later evidence can revise it.">⚡ provisional</span>' : ''}${s.under_read ? ' <span class="tag status-warn" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted status-bad">${esc(s.error)}${s.error_class && !s.error_class.startsWith('browser_solvable') ? ` <span class="tag" title="${PERMANENT_FAILURES.has(s.error_class) ? 'A retry cannot help with this one — the material is gone or has no audio. Remove it from the project when you are ready.' : 'This one could work on another try.'}">${PERMANENT_FAILURES.has(s.error_class) ? 'will not work' : 'retryable'} · ${esc(s.error_class.replace(/_/g, ' '))}</span>` : ''}</div>` : ''}
-      ${s.status === 'skipped' && s.pool_potential ? `<div class="muted" style="margin-top:3px" title="${esc((s.pool_potential.why || []).join('; ') || 'no signal either way')}"><span class="tag${s.pool_potential.score >= 40 ? ' status-ok' : ''}">🔎 ${s.pool_potential.score >= 40 ? 'worth a look' : 'low potential'} — ${s.pool_potential.score}/100</span>${s.pool_potential.fits ? ` · fits: ${esc(s.pool_potential.fits)}` : ''}</div>` : ''}
+      ${s.status === 'skipped' && s.pool_potential ? `<div class="muted" style="margin-top:3px" title="${esc((s.pool_potential.why || []).join('; ') || 'no signal either way')}"><span class="tag${s.pool_potential.score >= 40 ? ' status-ok' : ''}">🔎 ${s.pool_potential.score >= 40 ? 'worth a look' : 'low potential'} — ${s.pool_potential.score}/100</span>${s.pool_potential.fits ? ` · fits: ${esc(s.pool_potential.fits)}` : ''}</div>` : s.pool_potential_pending ? '<div class="muted">Checking fit with this project…</div>' : ''}
       ${completenessLine(s)}
       ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
       ${s.summary ? `<div class="muted mt-1">${s.legacy_analysis ? `<span class="tag status-warn" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag ${s.substance >= 60 ? 'status-ok' : s.substance >= 30 ? 'status-warn' : 'status-bad'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
@@ -269,36 +269,54 @@ globalThis.toggleMenu = function toggleMenu(btn) {
   if (willOpen) setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target) && e.target !== btn) { m.hidden = true; document.removeEventListener('click', h); } }), 0);
 }
 globalThis.renderSourceList = function renderSourceList() {
-  const rows = SRCG.rows;
-  const empty = '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
-  const grouping = $('#srcGroupToggle') ? $('#srcGroupToggle').checked : true;
+  if (!SRCG.loaded || state.srcFilter === 'pool') return;
+  const grouping = $('#srcGroupToggle').checked;
+  const groups = new Map();
+  if (grouping) {
+    for (const source of SRCG.rows) {
+      const key = srcGroupKey(source);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(source);
+    }
+  }
+  // Keep an origin's rows together across pages and preserve the activity view's largest-first order.
+  const order = [...groups.keys()];
+  if ($('#srcSort').value === 'default') {
+    order.sort((a, b) => groups.get(b).length - groups.get(a).length || a.localeCompare(b));
+  }
+  const orderedRows = grouping ? order.flatMap(key => groups.get(key)) : SRCG.rows;
+  const pageSize = 150;
+  const total = orderedRows.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  SRCG.page = Math.min(SRCG.page, pages - 1);
+  const start = SRCG.page * pageSize;
+  const rows = orderedRows.slice(start, start + pageSize);
+  $('#srcPager').hidden = pages === 1;
+  $('#srcPrevious').disabled = SRCG.page === 0;
+  $('#srcNext').disabled = SRCG.page >= pages - 1;
+  $('#srcRange').textContent = `${start + 1}–${start + rows.length} of ${total}`;
+  const empty = SRCG.all.length || SRCG.query
+    ? '<div class="empty">No sources match. Try changing the search or filters.</div>'
+    : '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
   if (!rows.length) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = empty; SRCG.keys = []; return; }
   if (!grouping) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
-  const groups = {};
-  rows.forEach(s => { const k = srcGroupKey(s); (groups[k] = groups[k] || []).push(s); });
-  // Kyle, live: "the grouped items don't sort properly if I am sorting by newest — it should also move the groups".
-  // Right: a sort the user chose has to order the GROUPS too, or the newest source is buried three groups down.
-  // `rows` is already sorted, so first appearance IS the group order under whatever sort is active. The
-  // "activity" sort alone keeps the size ordering (the biggest channel first is the useful shape for a status
-  // overview); it is no longer the default, so a source added a minute ago heads the list (2026-09-18, Kyle:
-  // "Vanader keeps staying stuck at the top").
-  const sortSel = $('#srcSort') ? $('#srcSort').value : 'added';
-  const seen = [];
-  rows.forEach(s => { const k = srcGroupKey(s); if (!seen.includes(k)) seen.push(k); });
-  const keys = sortSel === 'default'
-    ? Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b))
-    : seen;
-  if (keys.length <= 1) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
-  if (SRCG.collapsed === 'all') SRCG.collapsed = new Set(keys);
+  const pageGroups = Object.create(null);
+  for (const source of rows) {
+    const key = srcGroupKey(source);
+    (pageGroups[key] ||= []).push(source);
+  }
+  const keys = order.filter(key => key in pageGroups);
+  if (order.length <= 1) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
+  if (SRCG.collapsed === 'all') SRCG.collapsed = new Set(order);
   // a search or an active chip/value filter means the user is hunting for something specific — never hide a match
-  const searching = !!($('#srcQ') && $('#srcQ').value) || Object.values(state.srcFilters || {}).some(Boolean);
+  const searching = !!SRCG.query || (state.srcFilter && state.srcFilter !== 'all') || Object.values(state.srcFilters || {}).some(Boolean);
   $('#srcGroupCtl').hidden = false;
-  SRCG.byKey = groups;
+  SRCG.byKey = pageGroups;
   const wrap = $('#srcList');
   // build each group's content once; a CLOSED group builds nothing at all (see srcGroupToggled)
   const built = keys.map(k => {
     const open = searching || !SRCG.collapsed.has(k);
-    return { k, open, n: groups[k].length, content: open ? groups[k].map(srcRowHtml).join('') : '' };
+    return { k, open, n: pageGroups[k].length, content: open ? pageGroups[k].map(srcRowHtml).join('') : '' };
   });
   const sameShape = SRCG.keys.length === keys.length && SRCG.keys.every((k, i) => k === keys[i])
                     && wrap.children.length === keys.length;
@@ -327,6 +345,10 @@ globalThis.renderSourceList = function renderSourceList() {
   SRCG.keys = keys;
   SRCG.html = new Map(built.map(b => [b.k, b.content]));
 }
+globalThis.turnSourcesPage = function turnSourcesPage(step) {
+  SRCG.page = Math.max(0, SRCG.page + step);
+  renderSourceList();
+}
 globalThis.loadSources = async function loadSources(quiet) {
   // P0.1: one list refresh in flight at a time (POLL.enter/leave in api.js). A call that arrives while one is
   // running is remembered and runs once afterwards — so a click mid-poll still refreshes, and a poll can no
@@ -334,7 +356,9 @@ globalThis.loadSources = async function loadSources(quiet) {
   if (!POLL.enter('sources', quiet)) return;
   loadReviews(quiet);
   loadCaptionRecovery(quiet);
-  const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
+  const query = $('#srcQ').value;
+  const p = new URLSearchParams({ project_id: state.project.id, all_project_rows: 'true', defer_potential: 'true' });
+  if (query) p.set('q', query);
   if (!SRCG.loaded) $('#srcList').innerHTML = listState('loading', { label: 'Loading sources…' });
   let all; try { all = await api('/api/sources?' + p, quiet ? { ack: false } : {}); }
   catch (e) {
@@ -344,23 +368,26 @@ globalThis.loadSources = async function loadSources(quiet) {
     if (quiet && SRCG.loaded) return;
     $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return;
   }
+  if ($('#srcQ').value !== query) {
+    POLL.leave('sources', loadSources);
+    return;
+  }
+  if (query !== SRCG.query) SRCG.page = 0;
+  SRCG.query = query;
   SRCG.loaded = true;
   SRCG.all = all;
+  SRCG.potentialPending = all.some(s => s.pool_potential_pending);
   const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
   loadCaptureQueue(all.filter(needsBrowser), quiet);
   if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`, quiet ? { ack: false } : {}).then(r => { POOL.total = r.total; renderPoolChipBadge(r.total); }).catch(() => {});
   POLL.leave('sources', loadSources);
   renderSourcesView();
 }
-// 0.63.92 -- Kyle: "the 'show only whats running' button on the sources page lags like crazy. shouldnt it be
-// able to hide things pretty quick?" It should, and the fix is that it never needed the network at all: every
-// status chip, every ★/⚠/📚 value-filter toggle and the length/sort selects are PURE client-side filters over
-// `SRCG.all` -- the server never sees srcFilter, F, lenBand or sortBy (only `q`, the search box, is answered
-// server-side). They used to all call loadSources() anyway, which refetches up to 2000 sources plus
-// reviews/caption-recovery/capture-queue/pool on every single click. filterSources() re-renders from the
-// already-fetched SRCG.all with zero network round trips; only a real data change (add/retry/delete/etc.) or
-// a search-box edit still goes through the real loadSources() fetch.
-globalThis.filterSources = function filterSources() { renderSourcesView(); }
+// Filters run over the project results before the browser renders a page.
+globalThis.filterSources = function filterSources() {
+  SRCG.page = 0;
+  renderSourcesView();
+}
 globalThis.renderPoolChipBadge = function renderPoolChipBadge(n) {
   const el = $('#srcPoolChip'); if (!el) return;
   el.hidden = !n;
@@ -371,7 +398,7 @@ globalThis.renderPoolChipBadge = function renderPoolChipBadge(n) {
 globalThis.renderSourcesView = function renderSourcesView() {
   const all = SRCG.all || [];
   const nReady = all.filter(r => r.status === 'ready').length;
-  $('#nSources').textContent = nReady;
+  if (!SRCG.query) $('#nSources').textContent = nReady;
   // group: what is being worked on right now floats to the top, then failures, then the rest (newest first)
   const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
   const bucket = s => needsBrowser(s) ? 1 : (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
@@ -383,7 +410,7 @@ globalThis.renderSourcesView = function renderSourcesView() {
   // highlighted with the same 'on' state when it's the active view.
   const chipHtml = list => list.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';filterSources()">${l} <b>${n}</b></span>`).join('');
   renderPoolChipBadge(POOL.total);
-  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chipHtml(chips); renderPoolChipBadge(POOL.total); return loadPool(); }
+  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chipHtml(chips); $('#srcPager').hidden = true; $('#srcGroupCtl').hidden = true; return loadPool(); }
   $('#srcChips').innerHTML = chipHtml(chips);
   const f = state.srcFilter || 'all';
   // S2: composable value filters (AND), a length band and a sort — every one a column on the row, no model calls
@@ -504,7 +531,8 @@ globalThis.POOL = { total: null, rank: 'fit', kind: 'all', state: null };
 globalThis.loadPool = async function loadPool() {
   const p = new URLSearchParams({ rank_by: POOL.rank, kind: POOL.kind, limit: 150 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
   if (POOL.state) p.set('state', POOL.state);
-  let r; try { r = await api(`/api/projects/${state.project.id}/pool?` + p); } catch (e) { $('#srcList').innerHTML = '<div class="muted">could not load the pool</div>'; return; }
+  let r; try { r = await api(`/api/projects/${state.project.id}/pool?` + p); } catch (e) { if (!e.stale && state.srcFilter === 'pool') $('#srcList').innerHTML = '<div class="muted">could not load the pool</div>'; return; }
+  if (state.srcFilter !== 'pool') return;
   POOL.total = r.total;
   const c = r.counts;
   $('#srcCount').innerHTML = `${r.total} known, not captured <span class="muted">· ${c.skipped} skipped at the date cutoff · ${c.candidates} seen while exploring · <b>${c.worth_a_look}</b> worth a look · ${c.fits_a_question} fit an open question</span>` +
