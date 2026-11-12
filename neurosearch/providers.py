@@ -604,6 +604,8 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     if reason == "local_usage_limit" or (target == "local" and
             claude_code.health_snapshot(model=claude_code.local_model_for(task)).get("state") == "usage_limit"):
         return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="local_limit")
+    if target == "api" and not anthropic_available():
+        return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="anthropic_api_not_configured")
     try:
         return _invoke_anthropic(task, **options)
     except ProviderError as exc:
@@ -656,7 +658,9 @@ def _invoke_anthropic(task: str, *, system: Any = None, messages: list[dict[str,
         from . import claude_code as CC, usage
         if not CC.local_is_free():
             usage.guard(usage.estimate_model_call(task, len(str(system or "")) + len(str(messages or ""))))
-    client = anthropic_client(**({"timeout": c.timeout} if c.timeout else {}))
+    def api_client() -> Any:
+        return anthropic_client(**({"timeout": c.timeout} if c.timeout else {}))
+
     kw: dict[str, Any] = {"model": c.model, **C.request_params(c), "extra_headers": {"x-neurosearch-task": task}, **extra}
     if max_output_tokens:
         kw["max_tokens"] = int(max_output_tokens)
@@ -673,11 +677,12 @@ def _invoke_anthropic(task: str, *, system: Any = None, messages: list[dict[str,
             _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": None}
             _accumulate_route()
             try:
-                return _stream_collect(client, task, kw, on_text)
+                return _stream_collect(api_client(), task, kw, on_text)
             except Exception as e:  # noqa: BLE001 — a broken stream must never cost the user their answer
                 log.warning("%s: streaming transport failed (%s) — answering without token streaming", task, e)
         on_text = None      # fall through to the ordinary path below (local route, or the stream failed)
     if stream:
+        client = api_client()
         _tl.route = {"executed_by": "api", "reason": "stream", "fallback_reason": None}
         return _LedgeredStream(client.messages.stream._fn if isinstance(client.messages.stream, _LedgeredStream) else client.messages.stream, "anthropic", task)(**kw)
     target, reason = route(task)
@@ -705,14 +710,14 @@ def _invoke_anthropic(task: str, *, system: Any = None, messages: list[dict[str,
             log.warning("%s: local provider unavailable (%s) — running on the API", task, fb)
             _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": fb}
             _accumulate_route()
-            return _Ledgered(client.messages.create._fn, "anthropic", task, policy=policy)(**kw)
+            return _Ledgered(api_client().messages.create._fn, "anthropic", task, policy=policy)(**kw)
         CC.note_success(model=CC.local_model_for(task))
         _tl.route = {"executed_by": "local", "reason": reason, "fallback_reason": None}
         _accumulate_route()
         return resp
     _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": None}
     _accumulate_route()
-    return _Ledgered(client.messages.create._fn, "anthropic", task, policy=policy)(**kw)
+    return _Ledgered(api_client().messages.create._fn, "anthropic", task, policy=policy)(**kw)
 
 
 # ------------------------------------------------------------------ L1: the provider router (local ⇄ API; never a model substitution)

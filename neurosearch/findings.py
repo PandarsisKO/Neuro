@@ -465,7 +465,9 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     citable = len(chosen) + len(reserve) - uncitable
     if citable > 0:
         db.kv_bump("evidence:findings_citable", citable)
-    prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
+    route = json.loads(routing) if routing else None
+    provider = "chatgpt_plan" if route and route.get("provider") == "chatgpt_plan" else "anthropic"
+    prov = {"model": model, "provider": "fake" if providers.fake() else provider, "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id, depth=depth), "transport": transport, "batch_id": batch_id, "depth": depth,
             "prefilter": json.dumps(prefilter) if prefilter else None,

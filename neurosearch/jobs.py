@@ -624,7 +624,9 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[s
     wid = _worker_id(n)
     log.info("worker %s started%s%s%s", n, f" ({', '.join(kinds)})" if kinds else "", f" [{'/'.join(policies)}]" if policies else "", f" lanes {'/'.join(lanes)}" if lanes else "")
     while not _stop.is_set():
-        alternates = ("suggest_findings",) if plan.model_for("findings.extract") and plan.ready() else ()
+        enabled = tuple(kind for kind, task in (("suggest_findings", "findings.extract"),
+                                                ("rank_proposed", "rank.relevance")) if plan.model_for(task))
+        alternates = enabled if enabled and plan.ready() else ()
         job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
                            **({"anthropic_alternates": alternates} if alternates else {}))
         parallel = False
@@ -990,8 +992,10 @@ def first_wave_lane(project_id: str, source_id: str | None = None) -> str:
 
 def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
     """After a source becomes ready: queue finding suggestions for each project it belongs to (if enabled)."""
-    from . import providers
-    if not settings.auto_suggest or not providers.anthropic_available():
+    from . import chatgpt_plan as plan, providers
+    if not settings.auto_suggest:
+        return
+    if not providers.anthropic_available() and not plan.model_for("findings.extract"):
         return
     pids = [project_id] if project_id else db.projects_for_source(source_id)
     for pid in pids:

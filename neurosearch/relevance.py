@@ -181,11 +181,13 @@ def _line(i: int, s: dict[str, Any]) -> str:
 
 def _prov(project: dict[str, Any]) -> dict[str, Any]:
     from . import contracts, providers
-    return {"model": "fake" if providers.fake() else contracts.contract("rank.relevance").model,
-            "provider": "fake" if providers.fake() else "anthropic",
+    route = providers.routing_for("rank.relevance", getattr(providers.last_response(), "model", None))
+    via_plan = route.get("provider") == "chatgpt_plan"
+    return {"model": "fake" if providers.fake() else route["actual_model"] if via_plan else contracts.contract("rank.relevance").model,
+            "provider": "fake" if providers.fake() else "chatgpt_plan" if via_plan else "anthropic",
             "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1",
             "brief_revision": db.brief_revision(project),
-            "routing": providers.routing_json("rank.relevance", getattr(providers.last_response(), "model", None))}
+            "routing": json.dumps(route)}
 
 
 def _job_started() -> float | None:
@@ -304,9 +306,10 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
             res = _call(SYSTEM, user, project_id, collection_id, head=head)
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
+            from .chatgpt_plan import PlanWait
             from .providers import LOCAL_TYPES, ProviderError
             from .usage import BudgetPaused
-            if isinstance(e, (BudgetPaused, ProviderUnavailable)):
+            if isinstance(e, (BudgetPaused, ProviderUnavailable, PlanWait)):
                 raise
             if isinstance(e, ProviderError) and e.error_type in LOCAL_TYPES:
                 # 2026-09-23 (Kyle: "stuck in a loop of starting and stopping the ranking"). The local CLI was not

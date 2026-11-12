@@ -27,6 +27,7 @@ def calls(tmp_path, monkeypatch):
     db.close_thread_connection()
     monkeypatch.setattr(settings, "data_dir", tmp_path)
     monkeypatch.setattr(settings, "fake_ai", False)
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-fixture")
     monkeypatch.setattr(settings, "ai_profile", "local")
     monkeypatch.setattr(settings, "local_api_fallback", False)
     monkeypatch.setattr(settings, "chatgpt_plan_tasks", (TASK,))
@@ -126,6 +127,69 @@ def test_paid_account_wall_admits_only_eligible_jobs(calls):
     job = db.claim_job(policies=jobs.API_POLICIES, anthropic_alternates=("suggest_findings",))
     assert job["id"] == findings["id"]
     assert db.claim_job(policies=jobs.API_POLICIES, anthropic_alternates=("suggest_findings",)) is None
+
+
+def test_source_ready_queues_findings_and_uses_plan_without_api_keys(calls, monkeypatch):
+    from neurosearch import ingest
+
+    monkeypatch.setattr(settings, "auto_suggest", True)
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.setattr(providers, "anthropic_client", lambda **kw: pytest.fail("unexpected API client"))
+
+    def limited(**kw):
+        calls.append("claude")
+        raise claude.LocalLimit("Usage limit")
+
+    monkeypatch.setattr(claude, "create", limited)
+    pid = db.create_project("Garden irrigation", brief="Keep drip emitters clear")["id"]
+    sid = db.upsert_source(platform="web", external_id="drip", url="https://example.test/drip",
+                           title="Flushing a drip line", status="ready")["id"]
+    db.add_project_sources(pid, [sid])
+    passage = {"start": 0, "end": 30, "text": "Flush the open end of the line for thirty seconds."}
+    db.replace_transcript(sid, [passage], [passage])
+    ingest._after_ready(sid)
+    claimed = db.claim_job(("suggest_findings",))
+    assert claimed
+    assert jobs.execute(claimed) == "done"
+    row = db.get_analysis(pid, sid)
+    assert row["summary"] == RESULT["summary"]
+    assert (row["provider"], row["model"]) == ("chatgpt_plan", plan.MODEL)
+    assert json.loads(row["routing"])["fallback_reason"] == "local_limit"
+    assert calls == ["claude", "chatgpt"]
+
+
+def test_rank_worker_passes_account_wall_and_persists_plan_provenance(calls, monkeypatch):
+    rank = "rank.relevance"
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", (rank,))
+    pid = db.create_project("Garden irrigation", brief="Keep drip emitters clear")["id"]
+    cid = db.upsert_collection("subreddit", "drip", "https://example.test/drip", "Drip")["id"]
+    db.kv_set(f"review:{cid}", json.dumps({"project_id": pid}))
+    sid = db.upsert_source(platform="community", external_id="flush", url="https://example.test/drip/flush",
+                           title="How to flush emitters", status="proposed")["id"]
+    db.connect().execute("INSERT INTO source_collections (source_id, collection_id) VALUES (?,?)", (sid, cid))
+    db.connect().commit()
+    job = db.create_job("rank_proposed", {"collection_id": cid, "project_id": pid}, execution_policy="api_requested")
+    db.kv_set("providers:billing_until", str(time.time() + 1800))
+    assert db.claim_job(policies=jobs.API_POLICIES) is None
+    monkeypatch.setattr(jobs, "_stop", threading.Event())
+
+    def score(**kw):
+        calls.append("chatgpt")
+        jobs._stop.set()
+        msg = response(plan.MODEL)
+        msg.content[0].text = json.dumps({"scores": [{"i": 0, "score": 92, "why": "Practical flush instructions"}]})
+        return msg
+
+    monkeypatch.setattr(plan, "create", score)
+    # Stop after one poll even on a regression that fails to admit the job.
+    monkeypatch.setattr(jobs._stop, "wait", lambda *_: jobs._stop.set())
+    jobs._worker(0, ("rank_proposed",), policies=jobs.API_POLICIES)
+    assert db.get_job(job["id"])["status"] == "done"
+    row = db.get_analysis(pid, sid, "relevance")
+    assert (row["relevance"], row["provider"], row["model"]) == (92, "chatgpt_plan", plan.MODEL)
+    assert json.loads(row["routing"])["fallback_reason"] == "anthropic_account_limit"
+    assert calls == ["chatgpt"]
 
 
 def test_two_existing_workers_overlap_distinct_jobs(calls, monkeypatch):
