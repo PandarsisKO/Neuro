@@ -4441,3 +4441,23 @@ checks with provider keys unset passed full pytest (**2,649**, one existing warn
 Fast-forwarded the Mac checkout to the validated candidate. The existing watcher reloaded the app.
 The authenticated health and report endpoints returned HTTP 200. The live 180-day report withheld
 the affected Claims ratio and gave missing normalization dates as the reason.
+
+### 2026-11-12 — Restore project source visibility and repeat ranking
+
+At base `af16df0`, the live Service Business Advertising project reported 354 ready sources,
+but its Sources endpoint returned zero. The project had 5,981 proposals across 19 review cards.
+The list query applied its 2,000-row limit before excluding proposals, so recent proposals
+displaced ingested sources. Candidate `b9b2efc` filters proposals in the query before pagination
+and keeps them in the review cards.
+
+Pending reviews now expose whether their ranking job is active. The Re-rank control stays visible,
+is disabled while the job is active, and becomes available when it finishes or fails. A stale rank
+request is rejected once there are no proposals left to review. The existing job dedupe prevents
+parallel ranking runs for the same review.
+
+Live after reload: 354 ready (281 created in the preceding 48 hours), 72 skipped and nine failed
+sources in the project list; all 5,981 proposals still available for review. Verified the live
+JavaScript in headless Chrome with a synthetic review through two clicks and job completions.
+No additional live ranking call or source mutation was used for verification. Isolated tests on
+`b9b2efc`: 2,652 full suite passed (one existing warning), 37 focused passed, fake Tier 1 and
+release-check passed. Evidence: `evals/release/release-check-0.64.5-b9b2efc-20261112-122508.{json,txt}`.
