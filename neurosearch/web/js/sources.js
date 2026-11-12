@@ -288,6 +288,7 @@ globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
   if (s.status === 'ready') {
     if (s.analysed) items.push(`<button onclick="suggestSource('${s.id}')" title="Reads this source with the model to extract findings again — uses your model budget">Suggest findings again</button>`);
     else items.push(`<button onclick="sourceDrawer('${s.id}')" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is">What this gave</button>`);
+    items.push(`<button onclick="openPassageSearch('${s.id}')">Find passages in this source</button>`);
     if (s.platform === 'image') items.push(`<button title="Read the picture again with the model instead of the free local OCR. Costs a small amount, and is worth it when the free read missed labels or small type. Text already stored is never replaced by a shorter read." onclick="readImageAgain('${s.id}')">Read again with the model</button>`);
   }
   if (!canRetry && !needsBrowser && (s.status === 'failed' || s.status === 'pending')) items.push(`<button onclick="retry('${s.id}')">Retry</button>`);
@@ -503,8 +504,71 @@ globalThis.setPriority = async function setPriority(id, flag) {
     toast(e.message || e, 'err');
   }
 }
-globalThis.viewTranscript = async function viewTranscript(id, ordinal) {
+globalThis.openPassageSearch = function openPassageSearch(sourceId) {
+  const projectId = state.project.id;
+  const source = sourceId && SRCG.all.find(row => row.id === sourceId);
+  const scope = sourceId ? (source?.title || 'Selected source') : state.project.name;
+  const panel = document.createElement('div');
+  panel.innerHTML = `<h3>Find passages</h3>
+    <p class="muted">${esc(scope)}</p>
+    <form>
+      <div class="row">
+        <input name="query" aria-label="Words or phrase" placeholder="Enter a phrase…" maxlength="300" required autofocus class="grow min-w-0">
+        <button type="submit" class="primary">Search</button>
+      </div>
+      <label class="row mt-2"><input type="checkbox" name="phrase" checked> Match consecutive words</label>
+    </form>
+    <div class="mt-3 passage-results" aria-live="polite"></div>`;
+  const form = panel.querySelector('form');
+  const results = panel.querySelector('.passage-results');
+  let request = 0;
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const query = form.elements.query.value.trim();
+    if (!query) return;
+    const turn = ++request;
+    const isCurrent = () => turn === request && panel.isConnected && dlg.open && state.project?.id === projectId;
+    const params = new URLSearchParams({ q: query, phrase: String(form.elements.phrase.checked) });
+    if (sourceId) params.set('source_id', sourceId);
+    results.innerHTML = listState('loading', { label: 'Finding passages…' });
+    try {
+      const hits = await api(`/api/projects/${projectId}/passages?${params}`);
+      if (!isCurrent()) return;
+      results.innerHTML = hits.map(hit => {
+        const external = /^https?:\/\//i.test(hit.link || '')
+          && (hit.platform === 'community' || hit.link !== hit.url);
+        const locator = esc(['manual', 'image'].includes(hit.platform) ? 'Open passage' : (hit.timestamp || 'Open passage'));
+        const target = external
+          ? `<a class="chip" href="${esc(hit.link)}" target="_blank" rel="noopener">${locator} ↗</a>`
+          : `<button type="button" class="small ghost" data-passage-source="${esc(hit.source_id)}" data-passage-start="${esc(hit.start)}">${locator}</button>`;
+        return `<div class="kn"><div class="grow min-w-0">
+          <div class="row"><b>${esc(hit.title || 'Source')}</b>${target}</div>
+          <div class="passage-excerpt">${esc(hit.text)}</div>
+        </div></div>`;
+      }).join('') || listState('empty', { message: 'No matching passages.' });
+    } catch (error) {
+      if (isCurrent() && !error.stale) {
+        results.textContent = 'Could not search passages. Try again.';
+      }
+    }
+  });
+  results.addEventListener('click', async event => {
+    const button = event.target.closest('button[data-passage-source]');
+    if (!button) return;
+    try {
+      await viewTranscript(button.dataset.passageSource, Number(button.dataset.passageStart), panel);
+    } catch (error) {
+      if (!error.stale && panel.isConnected && dlg.open) toast('Could not open the passage.', 'err');
+    }
+  });
+  $('#dlgBody').replaceChildren(panel);
+  if (!dlg.open) dlg.showModal();
+  form.elements.query.focus();
+}
+globalThis.viewTranscript = async function viewTranscript(id, ordinal, fromPanel) {
+  const projectId = state.project?.id;
   const s = await api('/api/sources/' + id);
+  if (fromPanel && (!fromPanel.isConnected || !dlg.open || state.project?.id !== projectId)) return;
   const isDoc = s.platform === 'document', isWeb = s.platform === 'web', isSheet = s.platform === 'spreadsheet';
   const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : (isWeb ? s.url : null);
   const secLabel = s.platform === 'book' ? Object.fromEntries((s.sections || []).map(x => [x.ordinal, x.label])) : null;
@@ -521,9 +585,23 @@ globalThis.viewTranscript = async function viewTranscript(id, ordinal) {
     dlg.showModal();
     return;
   }
+  const segments = s.segments || [];
+  let match = -1;
+  if (Number.isFinite(ordinal)) {
+    match = segments.findIndex(segment => segment.start === ordinal);
+    if (match < 0) match = segments.findLastIndex(segment => segment.start < ordinal);
+    if (match < 0 && segments.length) match = 0;
+  }
   $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
-    <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
-  dlg.showModal();
+    <div class="transcript">${segments.map((segment, index) => {
+      const time = segment.start;
+      const label = esc(lab(time));
+      const locator = link(time) ? `<a href="${esc(link(time))}" target="_blank"><b>[${label}]</b></a>` : `<b>[${label}]</b>`;
+      const text = `${locator} ${esc(segment.text)}`;
+      return index === match ? `<span data-passage-match style="background:var(--user)">${text}</span>` : text;
+    }).join('\n')}</div>`;
+  if (!dlg.open) dlg.showModal();
+  $('#dlgBody [data-passage-match]')?.scrollIntoView({ block: 'center' });
 }
 // ---- G6P2: the book reader — Contents tree (chapters → sections, roles) beside the text; a citation opens the book at its section
 globalThis.ROLE_LABEL = { title_page: 'title page', copyright: 'copyright', foreword: 'foreword', preface: 'preface', introduction: 'introduction', part: 'part', chapter: 'chapter', appendix: 'appendix', notes: 'notes', bibliography: 'bibliography', glossary: 'glossary', index: 'index', acknowledgements: 'acknowledgements', epilogue: 'epilogue', prologue: 'prologue', back_matter: 'back matter', front_matter: 'front matter' };
@@ -537,8 +615,8 @@ globalThis.renderBook = function renderBook(s, ordinal) {
         ${chapters.map(c => `<div style="margin:4px 0"><a href="#" onclick="bookGo(${c.secs[0].ordinal});return false"><b>${c.no ? 'Ch. ' + c.no + ' · ' : ''}${esc(c.title || '')}</b></a>${c.role && c.role !== 'body' && c.role !== 'chapter' ? ` <span class="muted">(${esc(ROLE_LABEL[c.role] || c.role)})</span>` : ''}${c.secs.length > 1 ? c.secs.slice(1).filter(x => x.section).map(x => `<div style="padding-left:12px"><a href="#" onclick="bookGo(${x.ordinal});return false">${esc(x.section)}</a></div>`).join('') : ''}</div>`).join('')}</div>
       <div id="bookText" class="transcript" style="flex:1;max-height:65vh;overflow:auto">${secs.map(x => `<div id="sec-${x.ordinal}" style="margin-bottom:14px"><b>[${esc(x.label)}]</b>${x.role && !['body', 'chapter', 'part', 'introduction'].includes(x.role) ? ` <span class="muted">${esc(ROLE_LABEL[x.role] || x.role)}</span>` : ''}<div>${esc(text[x.ordinal] || '')}</div></div>`).join('')}</div>
     </div>`;
-  dlg.showModal();
-  if (ordinal) setTimeout(() => bookGo(ordinal), 50);
+  if (!dlg.open) dlg.showModal();
+  if (Number.isFinite(ordinal)) setTimeout(() => bookGo(ordinal), 50);
 }
 globalThis.bookGo = function bookGo(ordinal) { const el = document.getElementById('sec-' + ordinal); if (!el) return; el.scrollIntoView({ block: 'start' }); el.style.background = 'var(--user)'; setTimeout(() => el.style.background = '', 1500); }
 // a citation link of the form #book/<source_id>/<ordinal> (search hits, findings, chat) opens the book at that section

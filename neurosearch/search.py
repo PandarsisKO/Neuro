@@ -211,7 +211,7 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
 
 def search_fts(query: str, limit: int = 12, source_ids: list[str] | None = None,
               per_source_cap: int | None = 4, priority_ids: set[str] | None = None,
-              reserve: int = PRIORITY_RESERVE) -> list[dict[str, Any]]:
+              reserve: int = PRIORITY_RESERVE, *, phrase: bool = False) -> list[dict[str, Any]]:
     """FTS5 keyword retrieval ONLY — no vector leg, no embed_query call, no rerank, regardless of
     settings.embeddings_enabled or settings.retrieval_rerank. Deterministic and genuinely $0: CHR1's Conversation
     Delta gate asserts zero calls to embeddings.embed_query, providers.invoke and usage.record_* when this is used
@@ -222,7 +222,8 @@ def search_fts(query: str, limit: int = 12, source_ids: list[str] | None = None,
         return []
     k = max(limit * 4, 40)
     ranked: dict[int, float] = {}
-    for rank, (cid, _score) in enumerate(db.fts_search(query, limit=k, source_ids=source_ids)):
+    matches = db.fts_search(query, limit=k, source_ids=source_ids, phrase=phrase)
+    for rank, (cid, _score) in enumerate(matches):
         ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank)
     return _hits_from_ranked(ranked, limit, source_ids, per_source_cap, priority_ids, reserve)
 

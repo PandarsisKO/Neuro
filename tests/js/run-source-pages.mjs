@@ -56,7 +56,49 @@ try {
   await window.loadSources();
   assert.equal(byId('srcList').textContent, 'source-1');
   assert.equal(byId('nSources').textContent, '2001', 'search should preserve the full project count');
-  console.log('Sources paging, filters, quiet refresh and search passed.');
+  const dlg = byId('dlg');
+  window.dlg = dlg;
+  dlg.showModal = () => { dlg.open = true; };
+  window.HTMLElement.prototype.scrollIntoView = () => {};
+  window.esc = value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  window.state.project.name = 'Passage test';
+  let resolveOlder;
+  const older = new Promise(resolve => { resolveOlder = resolve; });
+  window.api = async (url) => {
+    const target = new URL(url, 'http://localhost/');
+    if (target.pathname === '/api/sources/source-1') {
+      return { title: 'Sample document', platform: 'document', segments: [
+        { start: 1, text: 'First page' }, { start: 2, text: 'Second page' },
+      ] };
+    }
+    assert.equal(target.pathname, '/api/projects/test-project/passages');
+    assert.equal(target.searchParams.get('source_id'), 'source-1');
+    assert.equal(target.searchParams.get('phrase'), 'true');
+    if (target.searchParams.get('q') === 'earlier') return older;
+    return [
+      { source_id: 'source-1', title: 'Sample document', platform: 'document', start: 2, timestamp: 'p. 2', text: '<b>Second page</b>' },
+      { source_id: 'video', title: 'Sample video', platform: 'youtube', timestamp: '1:05', text: 'Passage from video',
+        url: 'https://www.youtube.com/watch?v=sample', link: 'https://www.youtube.com/watch?v=sample&t=65s' },
+    ];
+  };
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  window.openPassageSearch('source-1');
+  const form = dlg.querySelector('form');
+  assert.equal(window.document.activeElement, form.elements.query);
+  form.elements.query.value = 'earlier';
+  form.requestSubmit();
+  form.elements.query.value = 'second page';
+  form.requestSubmit();
+  await settle();
+  resolveOlder([]);
+  await settle();
+  assert.equal(dlg.querySelector('.passage-excerpt').textContent, '<b>Second page</b>');
+  assert.equal(dlg.querySelector('.passage-excerpt b'), null);
+  assert.match(dlg.querySelector('.passage-results a').href, /[&]t=65s$/);
+  dlg.querySelector('button[data-passage-source]').click();
+  await settle();
+  assert.equal(dlg.querySelector('[data-passage-match]').textContent, '[p. 2] Second page');
+  console.log('Sources paging, filters, quiet refresh, search and passage navigation passed.');
 } finally {
   window.close();
 }

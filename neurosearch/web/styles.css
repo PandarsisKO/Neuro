@@ -230,6 +230,7 @@
   .src .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;position:relative}
   .job{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
   .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
+  .passage-excerpt{margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere}
   .transcript{max-height:60vh;overflow:auto;font-size:13px;line-height:1.5;white-space:pre-wrap}
   .transcript b{color:var(--link);font-weight:500}
   .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}

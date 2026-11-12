@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.64.7">
+<meta name="neurosearch-ui-version" content="0.64.8">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -160,6 +160,7 @@
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
         <div id="srcChips" class="row" style="gap:4px"></div>
         <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
+        <button type="button" class="small ghost" onclick="openPassageSearch()">Find passages</button>
         <span class="muted fixed" id="srcCount"></span>
       </div>
       <!-- CL-5: search + the status-chip row above are the only things on by default now; sort, length, grouping,

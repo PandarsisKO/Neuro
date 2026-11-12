@@ -3769,6 +3769,26 @@ async def api_search(q: str, project_id: str | None = None, limit: int = 12) -> 
     return await anyio.to_thread.run_sync(lambda: search(q, limit=limit, source_ids=sids))
 
 
+@app.get("/api/projects/{project_id}/passages", dependencies=[Depends(require_auth)])
+def api_project_passages(project_id: str, q: str, source_id: str | None = None,
+                         phrase: bool = True) -> list[dict[str, Any]]:
+    """Find indexed passages in this project without a model call."""
+    from .search import search_fts
+
+    if not db.get_project(project_id):
+        raise HTTPException(404, "project not found")
+    if len(q) > 300:
+        raise HTTPException(422, "Enter up to 300 characters to search.")
+    source_ids = db.project_source_ids(project_id)
+    if source_id:
+        if source_id not in source_ids:
+            raise HTTPException(404, "source not found in project")
+        source_ids = [source_id]
+    if not source_ids or not q.strip():
+        return []
+    return search_fts(q, limit=20, source_ids=source_ids, per_source_cap=None if source_id else 4, phrase=phrase)
+
+
 class AskIn(BaseModel):
     question: str
     project_id: str | None = None

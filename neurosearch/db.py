@@ -2355,10 +2355,13 @@ def get_chunks_by_ids(ids: list[int]) -> dict[int, dict[str, Any]]:
     return {r["id"]: dict(r) for r in rows}
 
 
-def fts_search(query: str, limit: int = 40, source_ids: list[str] | None = None) -> list[tuple[int, float]]:
+def fts_search(query: str, limit: int = 40, source_ids: list[str] | None = None, *, phrase: bool = False) -> list[tuple[int, float]]:
     """Full-text search. Returns [(chunk_id, bm25_score)] with lower = better (SQLite convention), converted to positive."""
     conn = connect()
-    q = _fts_query(query)
+    if phrase:
+        q = '"' + query.replace('"', '""') + '"'
+    else:
+        q = _fts_query(query)
     if not q:
         return []
     sql = "SELECT c.id, bm25(chunks_fts) AS score FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?"
