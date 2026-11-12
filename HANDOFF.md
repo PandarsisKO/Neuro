@@ -4615,3 +4615,13 @@ Check the false novelty and false disagreement rates against a small
 hand-labeled set from multiple projects before changing default behavior.
 Include paraphrases, common-lineage copies, scope exceptions, true disputes,
 and examples of inadequate source coverage.
+
+#### Live verification
+
+Fast-forwarded the Mac checkout and GitHub main to `a466444` with zero running
+jobs. The watcher reloaded 0.64.8. The served HTML contains Find passages,
+and the served Sources script, version script and stylesheet match disk.
+The authenticated project query “quality of earnings” returned 20 passages
+across 15 sources, with a 64 ms median over three requests. Repeating the
+search within one selected source returned three located passages, all from
+that source.

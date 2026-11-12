@@ -61,3 +61,10 @@ project list. Re-ranking preserves source selections, the Master Plan download
 uses the latest saved plan when available, and the Claims review queue opens
 recorded evidence on demand. Deep-read progress counts completed passages.
 HANDOFF records the production checks, benchmark, and release evidence.
+
+## 2026-11-12 — Find passages in Sources
+
+Version **0.64.8** is live on the Mac. Find passages searches indexed source
+text in the project or within one source, and opens results at available
+source locators. It uses the existing full-text index. HANDOFF records the
+live verification, release gates, and read-only review of novelty flags.
