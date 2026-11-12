@@ -4392,3 +4392,19 @@ an invented quote is rejected. A separate test exercises the ranking worker unde
 billing hold and checks the saved score and provider. Evidence is in
 `evals/release/chatgpt-plan-source-{full,tier1}-ad841af-20261112.txt` and
 `evals/release/release-check-0.64.5-ad841af-20261112-114831.{json,txt}`.
+
+### 2026-11-12 — Activate ChatGPT plan routing on the Mac
+
+Kyle authorized activation and restart. The live checkout fast-forwarded from `47c246b` to the
+validated pilot at `894b4f5`. The Mac's private configuration enables `library.profile`,
+`findings.extract`, `rank.relevance`, and parallel dispatch. The previously authorized plan
+session moved from the isolated pilot into the live data directory with owner-only permissions.
+The prior configuration is backed up locally outside the repository.
+
+Restarted the existing `com.neurosearch.server` LaunchAgent. The first bootstrap was attempted
+while launchd was still unloading the previous instance and returned error 5. Retrying after
+confirming the old service had unloaded succeeded. The new process returned HTTP 200 on the
+authenticated health endpoint, reported v0.64.5 and the local Claude profile, and started the API
+workers. The deployed configuration resolves all three plan routes and the session reports ready.
+No dedicated model request was submitted during activation. Findings and ranking output quality
+on real plan responses remains unmeasured. Local activation is separate from publishing GitHub main.
