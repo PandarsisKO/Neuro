@@ -361,7 +361,7 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
     });
     return;
   }
-  if (!panel.isConnected || !dlg.open || state.project.id !== projectId) return;
+  if (!panel.isConnected || !dlg.open || state.project?.id !== projectId) return;
   const labels = { SUPPORTS: 'Supports', CONTRADICTS: 'Contradicts', QUALIFIES: 'Qualifies',
                    INTERPRETS: 'Interpretation', EXPERIENTIAL: 'Firsthand experience' };
   const card = e => `<div class="kn"><div class="grow min-w-0">
@@ -370,8 +370,14 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
       ${e.independent ? '' : '<span class="tag">Repeats another source</span>'}</div>
     ${e.excerpt ? `<blockquote class="quote">${esc(e.excerpt)}</blockquote>` : '<div class="muted">Open the source to read the passage.</div>'}
   </div></div>`;
-  const section = (title, rows, total) => rows.length ? `<h4 class="mt-3 mb-1">${title}</h4>` + rows.map(card).join('')
-    + (total > rows.length ? `<div class="muted">Showing ${rows.length} of ${total} passages.</div>` : '') : '';
+  const paired = new Set((result.comparison || []).map(e => e.id));
+  const section = (title, rows, total) => {
+    const extra = rows.filter(e => !paired.has(e.id));
+    const unseen = total - rows.length;
+    if (!extra.length && !unseen) return '';
+    return `<h4 class="mt-3 mb-1">${title}</h4>` + extra.map(card).join('')
+      + (unseen > 0 ? `<div class="muted">${unseen} additional passage${unseen === 1 ? '' : 's'} beyond this preview.</div>` : '');
+  };
   const scope = Object.entries(result.qualifiers || {}).filter(([, value]) => value).map(([key, value]) =>
     `${esc(key.replaceAll('_', ' '))}: ${esc(value)}`).join(' · ');
   const comparison = (result.comparison || []).length ? `<h4 class="mt-3 mb-1">Recorded disagreement</h4>
@@ -380,9 +386,6 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
   panel.innerHTML = `<h3>Claim evidence</h3><p>${esc(result.text)}</p>`
     + (scope ? `<p class="muted">${scope}</p>` : '')
     + comparison
-    + section('Contradicting or qualifying evidence', result.counter, result.counter_total)
-    + section('Supporting and related evidence', result.supporting, result.supporting_total)
-    + (result.supporting_total || result.counter_total ? '' : '<p class="muted">This Claim has no linked evidence.</p>')
     + `<details class="mt-3">
       <summary>Challenge this claim</summary>
       <form data-claim-challenge class="mt-2">
@@ -393,7 +396,10 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
         <button class="small primary mt-2" type="submit">Search passages</button>
       </form>
       <div data-challenge-results class="mt-2"></div>
-    </details>`;
+    </details>`
+    + section('Contradicting or qualifying evidence', result.counter, result.counter_total)
+    + section('Supporting and related evidence', result.supporting, result.supporting_total)
+    + (result.supporting_total || result.counter_total ? '' : '<p class="muted">This Claim has no linked evidence.</p>');
   wireClaimChallenge(panel, projectId, claimId);
 }
 globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, claimId) {
@@ -457,7 +463,15 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       } else novelty = 'No equivalent found in the passages checked.';
       return { novelty, reviewed };
     };
-    const showStatus = () => { outcome.textContent = status().novelty; };
+    const showStatus = () => {
+      const { novelty, reviewed } = status();
+      const contrary = reviewed.filter(p => p.assessment === 'contradiction').length;
+      const exceptions = reviewed.filter(p => p.assessment === 'qualification').length;
+      const observations = [];
+      if (contrary) observations.push(`${contrary} opposite result${contrary === 1 ? '' : 's'} in the same scope`);
+      if (exceptions) observations.push(`${exceptions} exception${exceptions === 1 ? '' : 's'} or scope difference${exceptions === 1 ? '' : 's'}`);
+      outcome.textContent = novelty + (observations.length ? ' ' + observations.join(' · ') + ' in your assessment.' : '');
+    };
     for (const select of selections) select.addEventListener('change', showStatus);
     showStatus();
     results.querySelector('[data-challenge-download]').addEventListener('click', () => {

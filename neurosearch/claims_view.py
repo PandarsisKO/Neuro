@@ -130,7 +130,7 @@ def review_evidence(project_id: str, claim_id: str, limit: int = 6) -> dict[str,
     supporting, counter = [], []
     ordered = sorted(claim["evidence"], key=lambda e: (e["stale"], not e["independent"]))
     pair = claims_mod.disagreement_pair(claims_mod.cited_evidence(ordered))
-    keys = ("source_id", "title", "locator", "link", "relation", "excerpt", "stale", "independent")
+    keys = ("id", "source_id", "title", "locator", "link", "relation", "excerpt", "stale", "independent")
     for evidence in ordered:
         group = counter if evidence["relation"] in ("CONTRADICTS", "QUALIFIES") else supporting
         group.append({key: evidence[key] for key in keys})
