@@ -2454,3 +2454,12 @@ explicit on the new endpoint. The scope and zero-model contract are covered
 by `tests/test_passage_search.py`, and the browser flow by
 `tests/js/run-source-pages.mjs` through the Sources gate. See HANDOFF for
 the version-bound release and browser evidence.
+
+## Claims conflict and novelty checks — 2026-11-12
+
+The review queue requires current supporting and contrary citations from
+different origins to label a recorded conflict as disagreement. Qualifications
+and corroboration have their own reasons. Claim challenges reuse project and
+library membership, full-text and optional hybrid retrieval, existing locators,
+and canonical Works. Search results are for explicit passage assessment. See
+HANDOFF and `tests/test_novelty_challenge.py` for the verification record.

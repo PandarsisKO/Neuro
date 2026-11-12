@@ -4625,3 +4625,48 @@ The authenticated project query “quality of earnings” returned 20 passages
 across 15 sources, with a 64 ms median over three requests. Repeating the
 search within one selected source returned three located passages, all from
 that source.
+
+### 2026-11-12 — Claim challenges and scoped novelty assessments (0.64.9)
+
+Runtime candidate `3a508de`, base `3d4c852`. The review queue distinguishes
+corroboration, qualification, reported conflicts, and disagreements with
+current, located passages on both sides. The Claims evidence dialog puts the
+supporting and contrary passages side by side. Differing scope, including a
+recorded scope field missing on the other normalized Claim, is a qualification.
+A lexical resemblance across opposite stances is insufficient evidence of
+copying. The existing source and Work lineage checks still apply.
+
+Challenge this claim is available from Show evidence in the Claims workbench
+and review queue. The authenticated `POST /api/projects/{project_id}/claims/{claim_id}/challenge`
+route delegates to `neurosearch/claim_challenge.py`. It searches the ready
+project sources with the existing FTS path. Users can supply alternative wording
+and include ready library sources as leads. The explicit semantic option uses
+existing hybrid retrieval when configured, checks the spending guard, and
+falls back to keywords if blocked or unavailable. Results contain up to eight
+passages per scope, with one representative per known Work or source origin.
+Library leads remain outside the project. Searching submits no verdict and
+writes no Claim or source data.
+
+Passage assessment is manual. The dated JSON download records the claim scope,
+queries, retrieval method, source coverage, linked passages, assessments and
+remaining gaps. An absence is worded only for the reviewed passages. No
+absence is asserted for irrelevant-only, unreviewed, or uncertain results.
+Automatic corroboration prompts are still consequential single-source checks.
+They are suppressed only by a current, independently supported normalized
+equivalent with the same recorded scope. An automatically cleared prompt can
+return when that evidence goes stale.
+
+The 49-test base check passed. The new hand-labeled fixtures cover turnover,
+building ventilation, and tutoring: paraphrases, a reprint, an opposite result
+under comparable conditions, a scope exception, and a revised source. The
+browser harness checks the label and manual assessment. An isolated mock probe
+checked semantic opt-in, budget blocking, and fallback. Chrome verified the
+paired passages at 1,050 px and the assessment controls at 500 px.
+Screenshots: `/private/tmp/ns-challenge-preview.fV8zQ0/`.
+
+Validation evidence is in `evals/release/claim-challenge-pytest-3a508de-20261112.txt`
+and `evals/release/release-check-0.64.9-3a508de-20261112-142539.{json,txt}`.
+Three tests asserted the old review reason or copy. The two affected modules
+passed all 30 tests after the test-only updates at `9e0ce48`. Combined results
+cover 2,663 distinct tests. Tier 1 and release-check passed at the exact
+runtime candidate.

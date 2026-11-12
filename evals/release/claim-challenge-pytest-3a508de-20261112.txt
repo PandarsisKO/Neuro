@@ -1,0 +1,16 @@
+Runtime candidate 3a508de, base 3d4c852, app 0.64.9. Test-only corrections at 9e0ce48.
+macOS, Python 3.14, provider keys unset, dotenv disabled, private data directory per process.
+Command: python -m pytest -q -p neuro_sources_shards -o cache_dir=<private-cache-dir>
+Temporary hook assigned test modules by collection order modulo 6.
+Shard 0: 452 passed, 2211 deselected, 1 warning in 74.26s (0:01:14)
+Shard 1: 1 failed, 482 passed, 2180 deselected, 1 warning in 69.84s (0:01:09)
+Shard 2: 2 failed, 441 passed, 2220 deselected, 1 warning in 115.54s (0:01:55)
+Shard 3: 387 passed, 2276 deselected, 1 warning in 51.47s
+Shard 4: 424 passed, 2239 deselected, 1 warning in 40.62s
+Shard 5: 474 passed, 2189 deselected, 1 warning in 54.27s
+
+Three failures were fixtures that required prior reason labels and queue copy.
+Test-only changes updated those assertions. Runtime files are identical to 3a508de.
+Recheck: python -m pytest -q tests/test_p3_morning_report.py tests/test_s77_exclude_and_queue_ui.py
+30 passed in 1.27s
+Combined: 2,663 distinct tests passed after targeted test-only corrections.
