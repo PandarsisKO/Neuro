@@ -119,7 +119,8 @@ def test_a_download_refusal_backfills_the_gate_and_is_permanent(fresh):
 def test_review_card_never_auto_ticks_a_gated_video_and_labels_it():
     import pathlib
     js = (pathlib.Path(__file__).resolve().parent.parent / "neurosearch" / "web" / "js" / "sources.js").read_text()
-    assert "|| s.access_gate) off.add(s.id)" in js, "a gated video must start unticked"
+    assert "new Set(c.proposed.filter(s => s.access_gate).map(s => s.id))" in js, "a gated video must start unticked"
+    assert "return !source.access_gate && source.relevance > 0" in js, "ranked picks must skip gated videos"
     assert "members only" in js and "s.access_gate ===" in js, "the review row must say why it is last"
 
 

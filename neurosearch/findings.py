@@ -628,14 +628,17 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     ordered_indexes = novelty.order_windows(windows, kept, residual)
     items = [(i, windows[i]) for i in ordered_indexes]
     for i, _ in items[:1]:
-        _say(i / max(1, len(windows)), reading, i)
+        _say(0.0, reading, i)
+
+    completed_count = 0
 
     def _completed(index: int, value: tuple[str, dict[str, Any], str, str | None, int, bool]) -> None:
-        nonlocal found
+        nonlocal found, completed_count
         _, _, _, _, count, reused = value
         found += count
+        completed_count += 1
         i = items[index][0]
-        _say((i + 1) / max(1, len(windows)), "reused" if reused else "read", i)
+        _say(completed_count / len(items), "reused" if reused else "read", i)
 
     from . import concurrency
     from .jobs import current_job

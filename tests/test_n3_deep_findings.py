@@ -197,6 +197,13 @@ def test_under_read_flag_marks_long_sources_at_the_old_cap(monkeypatch):
 
 
 def test_deep_reads_report_per_part_progress_and_ride_the_slow_lane(monkeypatch):
+    from neurosearch import novelty
+
+    def read_out_of_order(windows, kept, residual):
+        indexes = sorted(kept)
+        return indexes[:1] + indexes[:0:-1]
+
+    monkeypatch.setattr(novelty, "order_windows", read_out_of_order)
     p = db.create_project("Deep5", "hosting")
     r = ingest.ingest_text("Long hosting course", _long_transcript(3), project_id=p["id"])
     msgs = []
