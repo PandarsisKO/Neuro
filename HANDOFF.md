@@ -4361,3 +4361,34 @@ fixture, output and sanitized metrics: `evals/release/chatgpt-plan-synthetic-pro
 
 This establishes live plan access and one structured library-profile result. Live findings quality, sustained
 throughput, and real-world Claude-to-ChatGPT failover were not exercised. Main and app activation stay on hold.
+
+### 2026-11-12 — Source pipeline coverage for the ChatGPT plan pilot
+
+The candidate at `ad841af` extends the same default-off allowlist to `rank.relevance`, alongside
+`library.profile` and `findings.extract`. Collection ranking and source findings use their existing jobs
+and can run through the plan on Claude limits; the parallel option can lease either supported job on
+the idle API worker. `local_only` still excludes the plan. A plan wait parks ranking on the original
+job. The existing spending valve and single plan slot apply.
+
+When automatic suggestions are enabled, a source becoming ready now queues findings if the findings
+plan route is configured, even without an Anthropic API key. An eligible structured task whose
+selected Anthropic API route has no key can use the connected plan. Claude Code itself can run without
+initializing an Anthropic API client. Source summaries and collection scores store the plan provider
+and returned model on the artifact as well as the routing reason.
+
+Activation settings (for later review only):
+`NEUROSEARCH_CHATGPT_PLAN_TASKS=library.profile,findings.extract,rank.relevance` and optionally
+`NEUROSEARCH_CHATGPT_PLAN_PARALLEL=true`. Keep the app's ChatGPT credit fallback off. Downloading and
+chunking stay on their existing paths; transcription and embeddings do not use the plan. Claims
+extraction, streaming chat and hosted provider batches remain outside the pilot. A synthetic live test
+previously confirmed only source profiling; the findings and ranking checks here use fake providers and
+do not establish live ranking or findings quality. No activation, restart, or model call was made.
+
+Validation on `ad841af`: full suite **2,645 passed** (one existing Starlette/AnyIO warning),
+**26 focused tests passed**, fake Tier 1 passed, and `release-check --no-pytest` passed. The
+ingestion regression starts from a pasted transcript with both API keys absent, simulates
+the Claude Code usage limit, and verifies that the plan result becomes a cited finding while
+an invented quote is rejected. A separate test exercises the ranking worker under an Anthropic
+billing hold and checks the saved score and provider. Evidence is in
+`evals/release/chatgpt-plan-source-{full,tier1}-ad841af-20261112.txt` and
+`evals/release/release-check-0.64.5-ad841af-20261112-114831.{json,txt}`.
