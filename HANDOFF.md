@@ -4422,3 +4422,22 @@ served code on a fixture, including close, poll, and reopen. The LaunchAgent kep
 On the isolated candidate with provider keys unset, all 2,646 tests passed (one existing warning),
 11 focused tests passed, and deterministic Tier 1 and release-check passed. Evidence in
 `evals/release/release-check-0.64.5-261727f-20261112-120249.{json,txt}`.
+
+### 2026-11-12 — Branch audit and Claims report deployment
+
+Reviewed 15 local branch heads and 12 GitHub branch heads against the Mac checkout. Published the
+already-live ChatGPT routing and library disclosure through `d004df0` to GitHub main. Older Reddit
+extension and Claude accounting branches have no unshipped changes. The older frontend and design
+branches have their implementation in main under equivalent commits. The GitHub backup and audit
+draft are archival/review material. The five subreddit catalog branches remain parked. Their latest
+delivery candidate is `7191fdf` and approved Reddit API credentials are absent in the Mac configuration.
+
+Ported the Claims cost report repair from `151e64a` onto `d004df0` as `54e7de5`. This leaves
+uncertain legacy Claims cost ratios unavailable while retaining counts and cost. Isolated macOS
+checks with provider keys unset passed full pytest (**2,649**, one existing warning), focused pytest
+(**44**), fake Tier 1 and release-check. Evidence is in
+`evals/release/release-check-0.64.5-54e7de5-20261112-121106.{json,txt}`.
+
+Fast-forwarded the Mac checkout to the validated candidate. The existing watcher reloaded the app.
+The authenticated health and report endpoints returned HTTP 200. The live 180-day report withheld
+the affected Claims ratio and gave missing normalization dates as the reason.
