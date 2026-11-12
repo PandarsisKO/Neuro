@@ -4728,3 +4728,36 @@ On the largest project, the pre-release medians were 141.9 ms for tick and
 11.0 ms for the jobs list over five requests each. After the reload, while
 four jobs were running, the medians were 394.6 ms and 90.4 ms. The samples
 reflect different worker load.
+
+### 2026-11-12 — Claims provider fallback and Accelerate estimates (0.64.11)
+
+Base `e53e566`, candidate `88cc0ce`. The live connected ChatGPT plan ran
+two eight-candidate synthetic batches with the production Claims prompt and
+`claim-set-v1` schema in a private test database. Both calls returned
+GPT-6 Luna. All 16 candidates were present. The two expected same-scope
+duplicates merged, with zero cross-scope merges. The pilot preserved
+hedging, scope and opposite outcomes, the seller-imposed requirement,
+and the single-instance market qualifiers. Domain fixtures, results and
+measurements are in `evals/release/chatgpt-plan-synthetic-claims-20261112.json`.
+The pilot used the user's authorized connected plan with synthetic data.
+No Anthropic API call was made by the pilot.
+
+The existing task allowlist supports `claims.extract`. On Claude Code
+unavailability or a usage limit, an opted-in ready ChatGPT plan gets the
+first fallback for Claims. The existing spending checks, plan slot and
+local-only policy apply. Ordinary Claims and automatic priority Claims use
+local-preferred routing. Explicit Accelerate continues to request paid
+Anthropic execution. Accelerate now estimates remaining Claim groups,
+including unharvested findings for bulk work, and the controls stay visible
+during a Claude hold. Estimates can change as the queue advances.
+
+Focused routing and acceleration passed 50 tests. Offline queue tests cover
+a saved ChatGPT result with provenance and a parked job when the plan is
+unavailable and paid fallback is off. Chrome verified the visible quote and
+that declining confirmation submits nothing. Screenshot in
+`/private/tmp/ns-claims-accelerate-preview.OVw46T/backlog.png`.
+
+Full coverage was 2,669 tests across six shards and the serial rerun of
+the local Claude module. Tier 1 and release-check passed.
+See `evals/release/claims-provider-pytest-88cc0ce-20261112.txt` and
+`evals/release/release-check-0.64.11-88cc0ce-20261112-151241.{json,txt}`.

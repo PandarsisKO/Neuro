@@ -1,0 +1,16 @@
+Candidate 88cc0ce, base e53e566, app 0.64.11.
+macOS, Python 3.14. Provider keys and plan opt-ins unset. Dotenv disabled and separate temporary DB per shard.
+Command: python -m pytest -q -p neuro_sources_shards -o cache_dir=<private-cache-dir>
+The temporary hook assigned modules by collection order modulo 6.
+Shard 0: 493 passed, 2176 deselected, 1 warning in 151.21s (0:02:31)
+Shard 1: 415 passed, 2254 deselected, 1 warning in 154.25s (0:02:34)
+Shard 2: 466 passed, 2203 deselected, 1 warning in 133.88s (0:02:13)
+Shard 3: 2 failed, 436 passed, 2231 deselected, 1 warning in 205.22s (0:03:25)
+Shard 4: 427 passed, 2242 deselected, 1 warning in 135.53s (0:02:15)
+Shard 5: 430 passed, 2239 deselected, 1 warning in 122.92s (0:02:02)
+
+The two failures were consecutive local Claude fixture tests. The asynchronous stub probe was still
+checking after the test's fixed 3 s sleep while shards ran concurrently. That incomplete cached
+probe also affected the next test. The full module reran serially at the same SHA.
+Serial test_n2_local_ai.py: 23 passed in 9.80s. Focused routing and acceleration: 50 passed in 21.23s.
+Combined coverage: 2,669 distinct tests passed. Deterministic Tier 1 and release-check passed.
