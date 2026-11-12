@@ -29,7 +29,7 @@ from . import db
 log = logging.getLogger(__name__)
 
 OPERATIONS = ("anthropic:messages", "anthropic:batches", "openai:embeddings", "openai:transcription")
-LABELS = {"anthropic:messages": "Anthropic Messages", "anthropic:batches": "Anthropic Batches", "openai:embeddings": "OpenAI Embeddings", "openai:transcription": "OpenAI Transcription"}
+LABELS = {"anthropic:messages": "Anthropic Messages", "anthropic:batches": "Anthropic Batches", "openai:embeddings": "OpenAI Embeddings", "openai:transcription": "OpenAI Transcription", "chatgpt_plan:responses": "ChatGPT"}
 FAILURE_THRESHOLD = 3            # consecutive transient failures that open the circuit
 COOLDOWN_S = 60.0                # default wait before the first probe when the provider gave no retry window
 COOLDOWN_MAX_S = 15 * 60.0       # a reopened circuit waits longer each time, up to this

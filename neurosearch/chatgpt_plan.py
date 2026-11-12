@@ -31,7 +31,11 @@ SUPPORTED_TASKS = frozenset(("library.profile", "findings.extract", "rank.releva
 MAX_REQUEST_BYTES = 160_000
 MAX_MODEL_OUTPUT = 128_000
 OPERATION = "chatgpt_plan:responses"
-_slots = threading.BoundedSemaphore(1)
+_slot = threading.Lock()
+
+
+def busy() -> bool:
+    return _slot.locked()
 
 
 class PlanWait(RuntimeError):
@@ -39,6 +43,13 @@ class PlanWait(RuntimeError):
     def __init__(self, message: str, wait: float = 60.0) -> None:
         super().__init__(message)
         self.wait = wait
+
+
+class PlanBusy(PlanWait):
+    """The connected plan's slot is already serving another request."""
+
+    def __init__(self) -> None:
+        super().__init__("Starts when the current ChatGPT request finishes.")
 
 
 def model_for(task: str) -> str | None:

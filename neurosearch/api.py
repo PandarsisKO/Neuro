@@ -2282,7 +2282,7 @@ def _compact_job_for_list(j: dict[str, Any]) -> dict[str, Any]:
 def _decorate_job(j: dict[str, Any], titles: dict[str, str] | None = None) -> None:
     j["state"] = db.derived_status(j)
     j["bumped"] = bool(j.get("bumped_at"))
-    if j["state"] == "provider_wait":
+    if j["state"] == "provider_wait" and j.get("wait_operation"):
         from . import breakers
         j["provider_wait"] = {"operation": j.get("wait_operation"), "label": breakers.LABELS.get(j.get("wait_operation") or "", j.get("wait_operation")),
                               "until": j.get("not_before"), "message": breakers.wait_message(j.get("wait_operation") or "", j.get("not_before"))}

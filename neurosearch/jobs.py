@@ -526,10 +526,13 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             log.info("job %s requires the browser (%s/%s)", jid[:8], af.adapter, af.cls)
             return "external_pending"
         pe = e if isinstance(e, _PE) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), _PE) else None)
-        from .chatgpt_plan import PlanWait
+        from .chatgpt_plan import PlanBusy, PlanWait
         if isinstance(e, PlanWait):
             _record_execution(jid)
-            db.requeue_job(jid, delay=e.wait, wait_reason="provider", message=f"paused: {e}")
+            if isinstance(e, PlanBusy):
+                db.requeue_job(jid, wait_reason="chatgpt_slot", message=str(e))
+            else:
+                db.requeue_job(jid, delay=e.wait, wait_reason="provider", message=f"paused: {e}")
             if sid:
                 db.set_source_status(sid, "pending")
             return "queued"
@@ -629,9 +632,10 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[s
         fallback_kinds = (*enabled, "extract_claims") if plan.model_for("claims.extract") else enabled
         alternates = fallback_kinds if fallback_kinds and plan.ready() else ()
         job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
+                           chatgpt_busy=plan.busy(),
                            **({"anthropic_alternates": alternates} if alternates else {}))
         parallel = False
-        if not job and chatgpt_overflow and enabled and alternates and settings.chatgpt_plan_parallel:
+        if not job and chatgpt_overflow and enabled and alternates and settings.chatgpt_plan_parallel and not plan.busy():
             job = db.claim_job(enabled, worker_id=wid, policies=("local_preferred",), lanes=lanes)
             parallel = bool(job)
         if not job:

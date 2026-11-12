@@ -462,3 +462,54 @@ def test_claims_plan_retries_invalid_json_once_on_same_provider(calls, monkeypat
             providers.invoke_structured(task, system="Fixture", messages=MESSAGES, usage_kind="claims")
     assert calls == ["chatgpt"] * (1 if outcome == "refusal" else 2)
     assert providers.last_route()["fallback_reason"] == "local_limit"
+
+
+def test_chatgpt_slot_wait_stays_queued_until_slot_is_free(calls, monkeypatch):
+    from neurosearch.api import _decorate_job
+
+    job = db.create_job("suggest_findings", {"project_id": "waiting"})
+    monkeypatch.setattr(jobs, "run_job", lambda job: run())
+    claimed = db.claim_job(("suggest_findings",))
+    with plan._slot, providers.parallel_chatgpt():
+        assert jobs.execute(claimed) == "queued"
+        row = db.get_job(job["id"])
+        _decorate_job(row)
+        assert row["state"] == "chatgpt_wait" and "provider_wait" not in row
+        assert "current ChatGPT request" in row["message"] and row["attempts"] == 0
+        assert calls == []
+        assert db.claim_job(("suggest_findings",), chatgpt_busy=plan.busy()) is None
+
+        unrelated = db.create_job("suggest_findings", {"project_id": "unrelated"})
+        assert db.claim_job(("suggest_findings",), chatgpt_busy=plan.busy())["id"] == unrelated["id"]
+    with providers.parallel_chatgpt():
+        ready = db.claim_job(("suggest_findings",), chatgpt_busy=plan.busy())
+        assert ready["id"] == job["id"] and ready["message"] is None
+        assert jobs.execute(ready) == "done"
+    assert calls == ["chatgpt"]
+
+
+def test_job_display_distinguishes_existing_waits_and_chatgpt_outages(calls):
+    from neurosearch.api import _decorate_job
+    from neurosearch.breakers import wait_message
+
+    job_id = db.create_job("suggest_findings", {"project_id": "p"})["id"]
+    db.park_provider_wait(job_id, plan.OPERATION, time.time() + 60, wait_message(plan.OPERATION, time.time() + 60))
+    row = db.get_job(job_id)
+    _decorate_job(row)
+    assert row["state"] == "provider_wait" and row["provider_wait"]["label"] == "ChatGPT"
+
+    db.requeue_job(job_id, delay=60, wait_reason="provider", message="paused: ChatGPT plan usage limit reached.")
+    row = db.get_job(job_id)
+    _decorate_job(row)
+    assert row["state"] == "provider_wait" and "provider_wait" not in row
+    assert "usage limit" in row["message"]
+
+    db.requeue_job(job_id, wait_reason="provider", message=db.LEGACY_CHATGPT_BUSY_MESSAGE)
+    row = db.get_job(job_id)
+    _decorate_job(row)
+    assert row["state"] == "chatgpt_wait"
+    assert db.claim_job(("suggest_findings",), chatgpt_busy=True) is None
+
+    db.requeue_job(job_id, wait_reason="chatgpt_slot", message="Starts when the current ChatGPT request finishes.")
+    db.set_job_policy(job_id, "api_requested")
+    assert db.claim_job(("suggest_findings",), policies=jobs.API_POLICIES, chatgpt_busy=True)["id"] == job_id

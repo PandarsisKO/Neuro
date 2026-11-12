@@ -2881,12 +2881,16 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
 
 
 EXECUTION_POLICIES = ("local_preferred", "local_only", "api_requested", "api_only")
+LEGACY_CHATGPT_BUSY_MESSAGE = "paused: ChatGPT is working on another Neuro job."
 
 
 def set_job_policy(job_id: str, policy: str) -> dict[str, Any] | None:
     assert policy in EXECUTION_POLICIES, policy
     with tx() as conn:
-        conn.execute("UPDATE jobs SET execution_policy=?, updated_at=? WHERE id=?", (policy, now(), job_id))
+        conn.execute("UPDATE jobs SET execution_policy=?, updated_at=?, "
+                     "wait_reason=CASE WHEN wait_reason='chatgpt_slot' THEN NULL ELSE wait_reason END, "
+                     "message=CASE WHEN wait_reason='chatgpt_slot' OR message=? THEN NULL ELSE message END "
+                     "WHERE id=?", (policy, now(), LEGACY_CHATGPT_BUSY_MESSAGE, job_id))
         job_event(job_id, "policy", conn=conn, policy=policy)
     return get_job(job_id)
 
@@ -3144,7 +3148,7 @@ def set_background_paused(paused: bool) -> dict[str, Any]:
 
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
               exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None,
-              anthropic_alternates: tuple[str, ...] = ()) -> dict[str, Any] | None:
+              anthropic_alternates: tuple[str, ...] = (), chatgpt_busy: bool = False) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
     Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
     L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
@@ -3162,6 +3166,9 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             _release_source_after_cancel(conn, cancelled)
         q = "SELECT id, blocked_by, dependency_policy, cancel_requested_at FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
         args: list[Any] = [now()]
+        if chatgpt_busy:
+            q += " AND wait_reason IS NOT 'chatgpt_slot' AND message IS NOT ?"
+            args.append(LEGACY_CHATGPT_BUSY_MESSAGE)
         if kinds:
             q += f" AND kind IN ({','.join('?' for _ in kinds)})"
             args += list(kinds)
@@ -3234,11 +3241,11 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         run_id = new_id()
         t = now()
         cur = conn.execute(
-            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, updated_at=?, not_before=NULL, wait_reason=NULL, bumped_at=NULL, "
+            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, updated_at=?, not_before=NULL, wait_reason=NULL, wait_operation=NULL, bumped_at=NULL, "
                      # Kyle, live: an extract_claims job showed "paused: the account's credit balance is too low" while it was
                      # actually RUNNING and making successful calls. Claiming cleared not_before/wait_reason but left the
                      # message from when it was parked, so the panel kept showing a resolved error as if it were current.
-                     "message=CASE WHEN message LIKE 'paused:%' THEN NULL ELSE message END "
+                     "message=CASE WHEN wait_reason='chatgpt_slot' OR wait_operation IS NOT NULL OR message LIKE 'paused:%' THEN NULL ELSE message END "
             "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, t, row["id"])
         )
         if cur.rowcount != 1:
@@ -3289,6 +3296,10 @@ def derived_status(j: dict[str, Any]) -> str:
             return "paused"                                    # S86: held by the person until they press Resume
         if j.get("wait_reason") == "yield":
             return "resuming"                                  # gave its worker back at a safe point; progress kept; next in line
+        if j.get("wait_reason") == "chatgpt_slot" or (
+            j.get("wait_reason") == "provider" and j.get("message") == LEGACY_CHATGPT_BUSY_MESSAGE
+        ):
+            return "chatgpt_wait"
         if j.get("not_before") and j["not_before"] > now():
             return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait",
                     "scheduled": "scheduled"}.get(j.get("wait_reason") or "", "retry_wait")   # L-40: a caller's schedule is not a retry
@@ -4493,7 +4504,7 @@ def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_
     with tx() as conn:
         r = conn.execute("SELECT run_id FROM jobs WHERE id=?", (job_id,)).fetchone()
         conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
-                     "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?",
+                     "wait_reason=?, wait_operation=NULL, attempts=attempts+?, updated_at=? WHERE id=?",
                      (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id))
         ev = "yielded" if wait_reason == "yield" else (f"{wait_reason}_wait" if wait_reason else "requeued")
         job_event(job_id, ev, run_id=r["run_id"] if r else None, conn=conn, delay=delay, message=(message or "")[:200])

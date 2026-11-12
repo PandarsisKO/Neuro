@@ -587,8 +587,8 @@ def _invoke_chatgpt_plan(task: str, *, system: Any, messages: list[dict[str, Any
     until = float(db.kv_get("usage:rate_blocked_until") or 0)
     if until > time.time():
         raise usage.BudgetPaused("AI spending rate limit reached", until - time.time())
-    if not plan._slots.acquire(blocking=False):
-        raise plan.PlanWait("ChatGPT is working on another Neuro job.", 5)
+    if not plan._slot.acquire(blocking=False):
+        raise plan.PlanBusy()
     try:
         # The plan preview rejects an output-token limit. Reserve the documented model maximum
         # as estimated exposure and enforce the task's smaller limit on the returned result.
@@ -609,7 +609,7 @@ def _invoke_chatgpt_plan(task: str, *, system: Any, messages: list[dict[str, Any
                     raise exc.cause from exc
                 raise
     finally:
-        plan._slots.release()
+        plan._slot.release()
 
 
 def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None,
