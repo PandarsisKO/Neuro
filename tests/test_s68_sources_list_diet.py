@@ -142,3 +142,16 @@ def test_review_cards_still_carry_relevance_from_their_own_endpoint(fresh):
     """`relevance`/`relevance_why` left the list; the review card is their reader and has its own source."""
     src = _function_source(db, "proposed_sources")
     assert "relevance" in src, "db.proposed_sources no longer mentions relevance — the review card lost its source"
+
+
+def test_pending_review_rows_do_not_fill_the_project_sources_limit(fresh):
+    pid, ready = _project_with_source()
+    coll = db.upsert_collection("channel", "review", "https://example.test/channel", "Review")
+    db.add_project_collections(pid, [coll["id"]])
+    for i in range(3):
+        row = db.upsert_source(platform="youtube", external_id=f"review-{i}", url=f"https://example.test/{i}",
+                               title=f"Proposal {i}", status="proposed")
+        db.link_source_collection(row["id"], coll["id"])
+
+    assert [row["id"] for row in api.api_sources(project_id=pid, limit=1)] == [ready]
+    assert len(api.api_reviews(pid)[0]["proposed"]) == 3

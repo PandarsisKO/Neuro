@@ -1898,6 +1898,7 @@ def find_source(platform: str, external_id: str) -> dict[str, Any] | None:
 def list_sources(
     *, status: str | None = None, collection_id: str | None = None, query: str | None = None,
     limit: int = 500, offset: int = 0, ids: Iterable[str] | None = None,
+    include_proposed: bool = True,
 ) -> list[dict[str, Any]]:
     """`ids` (P0.4, docs/SPEED-AUDIT-2026-09-17.md): restrict to these source ids IN THE QUERY. `/api/sources` used to
     list the whole global library (`limit=10000`) and keep the project's rows in Python; the project-scoped set is
@@ -1915,6 +1916,8 @@ def list_sources(
         where.append("sc.collection_id=?"); args.append(collection_id)
     if status:
         where.append("s.status=?"); args.append(status)
+    if not include_proposed:
+        where.append("s.status != 'proposed'")
     if query:
         where.append("(s.title LIKE ? OR s.channel LIKE ?)"); args += [f"%{query}%", f"%{query}%"]
     if where:
@@ -3747,6 +3750,7 @@ def mark_review_ranked(collection_id: str, note: str | None = None) -> None:
 def pending_reviews(project_id: str) -> list[dict[str, Any]]:
     """Collections linked to this project that still have proposed (unapproved) sources."""
     out = []
+    active_ranks: set[str] | None = None
     for c in connect().execute(
         """SELECT c.* FROM collections c JOIN project_collections pc ON pc.collection_id=c.id WHERE pc.project_id=?""",
         (project_id,)).fetchall():
@@ -3761,6 +3765,11 @@ def pending_reviews(project_id: str) -> list[dict[str, Any]]:
             for s in props:
                 s["est"] = usage.estimate_video(s.get("duration"), rate)
             d = dict(c); d["proposed"] = props; d["meta"] = review_meta(c["id"])
+            if active_ranks is None:
+                marks = ",".join("?" for _ in JOB_ACTIVE)
+                active_ranks = {r["dedupe_key"] for r in connect().execute(
+                    f"SELECT dedupe_key FROM jobs WHERE kind='rank_proposed' AND status IN ({marks})", JOB_ACTIVE)}
+            d["meta"]["ranking"] = f"rank:{c['id']}" in active_ranks
             d["meta"]["rate_basis"] = "your usage so far" if rate is not None else "list prices"
             out.append(d)
     return out

@@ -1192,13 +1192,18 @@ class RankIn(BaseModel):
 @app.post("/api/collections/{collection_id}/rank", dependencies=[Depends(require_auth)])
 def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
     """(Re-)rank a pending review's videos by relevance to the project brief. Runs in the background."""
-    meta = db.review_meta(collection_id)
-    meta["ranked"] = False; meta.pop("rank_note", None)
-    if body.want:
-        meta["max_videos"] = body.want
-    db.kv_set(f"review:{collection_id}", json.dumps(meta))
-    job = db.create_job("rank_proposed", {"collection_id": collection_id, "project_id": body.project_id or meta.get("project_id"),
-                                          "want": body.want or meta.get("max_videos"), "only_unscored": body.only_unscored}, lane="priority")
+    with db.batch():
+        meta = db.review_meta(collection_id)
+        project_id = body.project_id or meta.get("project_id")
+        if not db.proposed_sources(collection_id, project_id):
+            raise HTTPException(409, "nothing is waiting for review on this collection")
+        meta["ranked"] = False
+        meta.pop("rank_note", None)
+        if body.want:
+            meta["max_videos"] = body.want
+        db.kv_set(f"review:{collection_id}", json.dumps(meta))
+        job = db.create_job("rank_proposed", {"collection_id": collection_id, "project_id": project_id,
+                                              "want": meta.get("max_videos"), "only_unscored": body.only_unscored}, lane="priority")
     return {"job_id": job["id"]}
 
 
@@ -1688,8 +1693,9 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             # listing the whole library (2,412 rows) to keep this project's 1,515 in Python.
             with perf.timed("sources:membership"):
                 ids = set(db.project_source_ids(project_id, ready_only=False))
-            rows = db.list_sources(status=status, collection_id=collection_id, query=q, limit=limit, offset=offset, ids=ids)
-            rows = [r for r in rows if r["status"] != "proposed"]
+            # Pending reviews have their own pane. Exclude them before pagination so they cannot crowd out sources.
+            rows = db.list_sources(status=status, collection_id=collection_id, query=q, limit=limit, offset=offset,
+                                   ids=ids, include_proposed=False)
         else:
             rows = db.list_sources(status=status, collection_id=collection_id, query=q,
                                    limit=limit if not not_in_project else 10000, offset=offset)

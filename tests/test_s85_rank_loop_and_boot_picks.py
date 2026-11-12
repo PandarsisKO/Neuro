@@ -205,3 +205,45 @@ toggle(true); context.BOOTSTATE.counts.strong = 3; render(); assert.equal(isOpen
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15,
                             cwd=Path(__file__).resolve().parents[1])
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_review_keeps_rerank_control_through_job_transitions():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node required for shipped UI behavior")
+    script = r'''const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const source = fs.readFileSync('neurosearch/web/js/sources.js', 'utf8');
+const card = {innerHTML: ''};
+const meta = {ranked: true, ranking: false};
+const reviews = [{id: 'review', title: 'Listing', meta, proposed: [{id: 'a', title: 'Video', relevance: 90}]}];
+const ctx = vm.createContext({
+  state: {project: {id: 'p'}}, $: () => card, esc: String, rvData: {}, rvEstimate: () => '',
+  api: async () => reviews, POLL: {enter: () => true, leave: () => {}},
+});
+vm.runInContext(source.slice(source.indexOf('globalThis.rvSig ='), source.indexOf('globalThis.rvData =')), ctx);
+const button = () => card.innerHTML.match(/<button[^>]*onclick="rvRerank[^>]*>Re-rank<\/button>/)?.[0];
+(async () => {
+  await ctx.loadReviews();
+  assert.ok(button());
+  assert.doesNotMatch(button(), /disabled/);
+  for (const succeeded of [true, false, true]) {
+    meta.ranked = false;
+    meta.ranking = true;
+    await ctx.loadReviews();
+    assert.match(button(), /disabled/);
+    meta.ranking = false;
+    meta.ranked = succeeded;
+    await ctx.loadReviews();
+    assert.doesNotMatch(button(), /disabled/);
+  }
+  reviews.length = 0;
+  await ctx.loadReviews();
+  assert.equal(button(), undefined);
+})().catch(e => { console.error(e); process.exitCode = 1; });
+'''
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15,
+                            cwd=pathlib.Path(__file__).resolve().parents[1])
+    assert result.returncode == 0, result.stdout + result.stderr

@@ -74,3 +74,36 @@ def test_the_rank_endpoint_and_the_job_carry_the_mode(fresh):
     sub2, pid2 = _listing("subreddit", "community", 2, name="two")
     out = api.api_rank(sub2, api.RankIn(project_id=pid2))
     assert db.get_job(out["job_id"])["payload"]["only_unscored"] is False
+
+
+def test_review_can_rerank_after_success_or_failure_until_ingestion(fresh):
+    from fastapi import HTTPException
+    from neurosearch import api, jobs
+
+    cid, pid = _listing("channel", "youtube", 2)
+    db.add_project_collections(pid, [cid])
+    request = api.RankIn(project_id=pid)
+
+    def ranking():
+        return api.api_reviews(pid)[0]["meta"]["ranking"]
+
+    first = api.api_rank(cid, request)["job_id"]
+    assert ranking()
+    assert api.api_rank(cid, request)["job_id"] == first
+    assert jobs.execute(db.claim_job(("rank_proposed",))) == "done"
+    assert not ranking()
+
+    second = api.api_rank(cid, request)["job_id"]
+    assert second != first and ranking()
+    claimed = db.claim_job(("rank_proposed",))
+    assert db.finish_job(second, claimed["run_id"], "failed")
+    assert not ranking()
+
+    third = api.api_rank(cid, request)["job_id"]
+    assert third != second and ranking()
+    sid = db.proposed_sources(cid, pid)[0]["id"]
+    assert api.api_approve(cid, api.ApproveIn(source_ids=[sid]))["started"] == 1
+    assert api.api_reviews(pid) == []
+    with pytest.raises(HTTPException) as rejected:
+        api.api_rank(cid, request)
+    assert rejected.value.status_code == 409
