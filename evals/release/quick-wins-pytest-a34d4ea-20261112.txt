@@ -1,0 +1,12 @@
+Candidate a34d4ea, base 6581f1c, app 0.64.7.
+macOS, Python 3.14, provider keys unset, dotenv disabled, private data directory per process.
+Command: python -m pytest -q -p neuro_sources_shards -o cache_dir=<private-cache-dir>
+The temporary hook enumerated test modules in collection order and assigned module i to shard i % 6.
+Full result: 2,658 passed. Focused selection: 92 passed. Existing Starlette/AnyIO warning.
+
+Shard 0: 496 passed, 2162 deselected, 1 warning in 138.24s (0:02:18)
+Shard 1: 401 passed, 2257 deselected, 1 warning in 70.77s (0:01:10)
+Shard 2: 402 passed, 2256 deselected, 1 warning in 35.01s
+Shard 3: 442 passed, 2216 deselected, 1 warning in 50.69s
+Shard 4: 422 passed, 2236 deselected, 1 warning in 62.35s (0:01:02)
+Shard 5: 495 passed, 2163 deselected, 1 warning in 61.95s (0:01:01)

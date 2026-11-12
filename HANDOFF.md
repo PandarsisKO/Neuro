@@ -4511,3 +4511,40 @@ The candidate is for review. The live API still reported 0.64.5 with one job run
 and eight queued at the delivery check. No live reload, data mutation, or paid test
 was performed. Activation is pending Kyle's direction because landing the watched
 Python files would reload the server during active work.
+
+
+### 2026-11-12 — Sources performance deployment
+
+Fast-forwarded the Mac checkout and GitHub main to the validated 0.64.6 candidate
+`6581f1c` with zero running jobs. The existing server watcher reloaded the app.
+The authenticated live Sources endpoint returned all 2,634 rows, including 1,964
+ready sources, on the largest project in 1.23 s. GitHub delivery check passed.
+
+### 2026-11-12 — Review picks, saved Master Plan, and Claim evidence
+
+Base `6581f1c`, isolated worktree `/private/tmp/neuro-quick-wins`, runtime candidate
+`a34d4ea` (0.64.7). Initial ranking and Pick top choose the requested number of
+scored, accessible sources. Deliberate selection changes survive re-ranking.
+The Pick top button can apply the same count after the order changes.
+The project Master Plan download serves the latest saved plan when one exists.
+Projects without a plan retain synthesis, and the existing URL accepts
+`?synthesize=true` for an explicitly requested synthesis.
+
+The Claims review queue opens supporting and counterevidence passages on demand.
+The authenticated detail endpoint scopes each Claim to its project and returns
+up to six passages per group. This keeps counterevidence visible even when a
+Claim has many supporting passages. The preview labels revised and repeated
+evidence and uses existing links and source transcripts.
+
+Fixed a reproduced progress regression discovered by the full suite. Deep reads
+now report completion by the number of passages read when novelty changes their
+order. The test forces a different order to cover the failure deterministically.
+
+Headless Chrome exercised the shipped card and dialog at 500 and 1,050 px with
+fixture evidence. The pick excluded the members-only row and both passages were
+visible. Visual evidence: `/private/tmp/ns-quick-preview.OZTtE4/`.
+
+All 2,658 tests passed across six module shards, with 92 passing focused checks.
+Deterministic Tier 1 and release-check also passed on the exact runtime candidate.
+Evidence in `evals/release/quick-wins-pytest-a34d4ea-20261112.txt` and
+`evals/release/release-check-0.64.7-a34d4ea-20261112-132930.{json,txt}`.
