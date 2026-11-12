@@ -68,3 +68,12 @@ Version **0.64.8** is live on the Mac. Find passages searches indexed source
 text in the project or within one source, and opens results at available
 source locators. It uses the existing full-text index. HANDOFF records the
 live verification, release gates, and read-only review of novelty flags.
+
+## 2026-11-12 — Claim challenges and novelty assessments
+
+Version **0.64.9** is live on the Mac. Claims review distinguishes corroboration,
+qualification, and cited disagreement. Show evidence opens the paired passages
+and Challenge this claim searches project passages and optional library leads
+for manual assessment. The downloadable assessment records the scope and date
+of the search, passage judgments and remaining gaps. See HANDOFF for the live
+checks and release evidence.

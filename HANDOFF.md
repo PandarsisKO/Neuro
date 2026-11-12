@@ -4670,3 +4670,12 @@ Three tests asserted the old review reason or copy. The two affected modules
 passed all 30 tests after the test-only updates at `9e0ce48`. Combined results
 cover 2,663 distinct tests. Tier 1 and release-check passed at the exact
 runtime candidate.
+
+#### Live verification
+
+Fast-forwarded the Mac checkout and GitHub main to `8a8468a` with zero running
+jobs. The watcher reloaded 0.64.9 and the served research script, version
+script and stylesheet matched disk. Authenticated checks covered all seven
+project review queues. The visible rows included 150 corroboration reasons
+and no disagreement reasons. One live keyword challenge returned eight
+located passages in 0.33 s with 1,964 ready sources in scope.
