@@ -4782,3 +4782,33 @@ With Claude Code reporting a usage limit, the live model-by-value
 endpoint recorded three GPT-6 Luna Claims calls and 16 saved normalized
 Claims by 15:26 PT. This verified the connected plan route on actual
 queue work after the synthetic pilot.
+
+### 2026-11-12 — Recover Claims after interrupted ChatGPT responses (0.64.12)
+
+Base `1c9552a`, candidate `a0a443e`. The live queue reported two
+failure modes after enabling the Claims fallback. The OpenAI SDK
+surfaced a dropped TLS stream as an HTTPX2 read error, which the
+provider ledger classified as unknown. Other completed responses
+contained invalid JSON or omitted required Claims qualifiers. A strict
+schema pilot reproduced the stream drop independently of JSON mode.
+
+The shared ledger now classifies HTTPX and HTTPX2 transport exceptions
+and allows one short transport retry on the connected plan. A failed
+retry follows the existing durable retry and circuit rules. The Claims
+request uses strict structured output on the plan, and an unexpected
+shape mismatch gets one retry on that same plan with normal validation
+and budget checks. Refusals are still surfaced without a retry. The
+existing paid API policy applies.
+
+Two live synthetic groups passed on the candidate with both API keys
+unset. All 16 candidates and their required qualifiers were present,
+and the two intended duplicate pairs merged. The two transport
+regression cases cover the HTTP clients used by the supported SDK
+versions. The focused run passed 22 tests. All 2,674 pytest cases
+passed across six shards and a focused rerun of the queue browser
+test after its pinned JS dependency was installed. The deterministic
+release check, including Tier 1, passed. See
+`evals/release/release-check-0.64.12-a0a443e-20261112-153852.{json,txt}`.
+
+References: [Sign in with ChatGPT preview requirements](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
+and [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
