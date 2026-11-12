@@ -53,3 +53,11 @@ per-call billing snapshots, separate subscription-fee context, and budget checks
 work and probes. Legacy rows are not rewritten as invoices or newly verified savings. No external account
 setting or provider credential is changed. Exact validation, publication and live activation are in HANDOFF's
 S112 entry; the older snapshot above remains historical.
+
+## 2026-11-12 — Sources and project review updates
+
+Version **0.64.7** is live on the Mac. Sources filters and pages the complete
+project list. Re-ranking preserves source selections, the Master Plan download
+uses the latest saved plan when available, and the Claims review queue opens
+recorded evidence on demand. Deep-read progress counts completed passages.
+HANDOFF records the production checks, benchmark, and release evidence.

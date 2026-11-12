@@ -4548,3 +4548,12 @@ All 2,658 tests passed across six module shards, with 92 passing focused checks.
 Deterministic Tier 1 and release-check also passed on the exact runtime candidate.
 Evidence in `evals/release/quick-wins-pytest-a34d4ea-20261112.txt` and
 `evals/release/release-check-0.64.7-a34d4ea-20261112-132930.{json,txt}`.
+
+Fast-forwarded the live Mac and GitHub main to `47b9ead` after the running job
+finished. The watcher reloaded 0.64.7. Authenticated checks confirmed the
+complete 2,634-row Sources response, the served JavaScript bytes, and a project
+Master Plan download identical to its saved Markdown. A live review row
+returned its supporting passage. The 77 live disagreement rows sampled had
+no explicit counterevidence links. The API and Chrome fixture checks covered
+display of both evidence groups when those links exist. No review verdict or
+ranking job was submitted in production during verification.
