@@ -169,3 +169,39 @@ def test_a_rerank_of_a_fully_scored_list_converges_instead_of_restarting_from_ba
         statuses.append(jobs.execute(claimed, worker_id="w"))
         if statuses[-1] == "done": break
     assert statuses == ["queued", "done"], statuses     # before: queued, queued, queued, queued, ... forever
+
+
+def test_library_disclosure_survives_changed_polls_and_is_project_scoped():
+    from pathlib import Path
+    import shutil
+    import subprocess
+    import pytest
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node required for shipped UI behavior")
+    script = r'''const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const source = fs.readFileSync('neurosearch/web/js/research.js', 'utf8');
+const card = {hidden: true, innerHTML: '', querySelectorAll: () => []};
+const context = vm.createContext({state: {project: {id: 'one'}}, $: () => card, esc: String, document: {querySelectorAll: () => []}});
+vm.runInContext(source.slice(source.indexOf('globalThis.BOOT ='), source.indexOf('globalThis.jobsTimer =')), context);
+context.BOOTSTATE = {sources: [{source_id: 'a', state: 'suggested', band: 'strong', why: []}],
+ counts: {strong: 1}, run: {}, projects: []};
+const render = () => context.renderBoot();
+const isOpen = () => /<details[^>]* open /.test(card.innerHTML);
+const toggle = open => {
+ const handler = card.innerHTML.match(/ontoggle="([^"]+)"/)[1];
+ context.detail = {open, dataset: {project: context.state.project.id}};
+ vm.runInContext('(function(){' + handler + '}).call(detail)', context);
+};
+render(); assert.equal(isOpen(), true);
+context.bootPick('a', false); toggle(false);
+context.BOOTSTATE.counts.strong = 2; render();
+assert.equal(isOpen(), false, 'a changed poll must not reopen the panel');
+assert.equal(context.bootPicked(context.BOOTSTATE.sources[0]), false, 'selection survives collapse and redraw');
+context.state.project.id = 'two'; render(); assert.equal(isOpen(), true, 'another project starts open');
+context.state.project.id = 'one'; render(); assert.equal(isOpen(), false, 'returning remembers the closed panel');
+toggle(true); context.BOOTSTATE.counts.strong = 3; render(); assert.equal(isOpen(), true);
+'''
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15,
+                            cwd=Path(__file__).resolve().parents[1])
+    assert result.returncode == 0, result.stdout + result.stderr

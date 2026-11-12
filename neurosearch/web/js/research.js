@@ -618,7 +618,7 @@ globalThis.addFromLibrary = async function addFromLibrary(id, btn) {
 // again"): the poller re-renders this card every few seconds, and innerHTML forgets every box the person ticked.
 // The person's choices live here, outside the DOM, and win over the default tick on every render; `sig` skips
 // the rebuild entirely when nothing the card shows has changed.
-globalThis.BOOT = { open: new Set(), showAll: false, showWeak: false, busy: false, pick: new Map(), sig: null };
+globalThis.BOOT = { open: new Set(), collapsed: new Set(), showAll: false, showWeak: false, busy: false, pick: new Map(), sig: null };
 globalThis.bootPicked = function bootPicked(h) {
   return BOOT.pick.has(h.source_id) ? BOOT.pick.get(h.source_id) : (h.band === 'strong' && !h.from_old_matcher);
 }
@@ -666,14 +666,15 @@ globalThis.renderBoot = function renderBoot() {
   // rebuild only when what the card shows changed (rows, bands, counts, banners, what is open) -- a poll that
   // brings the same answer must not touch a card the person is in the middle of reading or ticking
   const sig = JSON.stringify([shown.map(h => [h.source_id, h.band, !!h.from_old_matcher, !!h.weak_query_only, BOOT.open.has(h.source_id)]),
-    c, run.scope, !!b.stale, !!b.matcher_stale, b.matcher_note, projs.map(p => [p.name, p.relevant, p.total]), live.length, BOOT.showAll, BOOT.showWeak]);
+    state.project.id, c, run.scope, !!b.stale, !!b.matcher_stale, b.matcher_note, projs.map(p => [p.name, p.relevant, p.total]), live.length, BOOT.showAll, BOOT.showWeak]);
   if (sig === BOOT.sig && !el.hidden) return;
   BOOT.sig = sig;
   // any box the person has touched since the last render is theirs; keep it before innerHTML forgets it
   for (const i of el.querySelectorAll('.bootPick')) if (!BOOT.pick.has(i.value) && i.checked !== i.defaultChecked) BOOT.pick.set(i.value, i.checked);
   el.hidden = false;
-  el.innerHTML = `<b>${live.length ? 'Research in your library that may help this project' : 'No specific matches in the last library scan'}</b>
-    <div class="muted mt-1">${c.strong} strong matches${c.possible ? ` · ${c.possible} possible matches` : ''}${run.scope ? ` · searched ${run.scope} sources outside this project` : ''}. These are sources you already own.</div>
+  el.innerHTML = `<details class="jobsPanel" data-project="${esc(state.project.id)}" ${BOOT.collapsed.has(state.project.id) ? '' : 'open'} ontoggle="this.open ? BOOT.collapsed.delete(this.dataset.project) : BOOT.collapsed.add(this.dataset.project)">
+    <summary>${live.length ? 'Research in your library that may help this project' : 'No specific matches in the last library scan'}<span class="muted"> · ${c.strong} strong${c.possible ? ` · ${c.possible} possible` : ''}</span></summary>
+    <div class="muted mt-1">${run.scope ? `Searched ${run.scope} sources outside this project. ` : ''}These are sources you already own.</div>
     ${c.attached ? `<div class="muted">Already added ${c.attached} sources from your library.</div>` : ''}
     ${b.stale ? `<div class="banner" style="margin:8px 0">The project brief or open research gaps changed. Scan again for current suggestions.</div>` : ''}
     ${b.matcher_stale ? `<div class="banner" style="margin:8px 0">${esc(b.matcher_note || '')} <button class="small primary" onclick="rescanBoot()">Scan again — free</button></div>` : ''}
@@ -684,7 +685,7 @@ globalThis.renderBoot = function renderBoot() {
       ${shown.length ? `<button class="small primary" onclick="bootDecide('attach')">Add selected (<span id="bootSel">${shown.filter(bootPicked).length}</span>)</button><button class="small ghost" onclick="bootDecide('dismiss')">Not useful</button>` : ''}
       ${live.length > shown.length ? `<button class="small ghost" onclick="BOOT.showAll=true;renderBoot()">Show all ${live.length}</button>` : ''}
       <span class="grow"></span><button class="small ghost" onclick="rescanBoot()">Scan again</button>
-    </div>`;
+    </div></details>`;
 }
 
 globalThis.bootDecide = async function bootDecide(decision) {
