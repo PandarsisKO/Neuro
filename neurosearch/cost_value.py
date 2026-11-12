@@ -76,7 +76,8 @@ CAVEATS = (
     "per-project report rather than guessed at.",
     "A Claim is rewritten in place when it is normalized, so Claims are counted when the paid step ran "
     "(`normalized_at`). Rows normalized before that column existed fall back to `updated_at`, which also moves on "
-    "status and evidence changes, so a historical Claims window is approximate (see detail.claims.normalized_approximate).",
+    "status and evidence changes. Affected ratios are unavailable, including per-model comparisons and daily "
+    "trends (see detail.claims.normalized_approximate); approximate counts are not evidence of cheaper processing.",
     "Cache reads and the batch discount are already inside `cost`, so a cheaper unit cost can mean better cache "
     "layout rather than better output.",
     "Claude Code dollars are estimates, not an Anthropic invoice. New calls use the CLI's session estimate "
@@ -166,6 +167,7 @@ def _findings_counts(start: float, project_id: str | None) -> dict[str, int]:
 # which also moves on status and evidence changes, so those are approximate and reported as such).
 NORM_TS = "COALESCE(normalized_at, updated_at)"
 CLAIM_EVENT_TS = f"CASE WHEN normalized=1 THEN {NORM_TS} ELSE created_at END"
+CLAIMS_DATE_UNKNOWN = "normalization dates are missing for legacy Claims; status or evidence edits cannot date paid output"
 
 
 def _claims_counts(start: float, project_id: str | None) -> dict[str, int]:
@@ -263,6 +265,8 @@ def unit_costs(window: str = "month", project_id: str | None = None, days: int |
         claimed.update(spec["kinds"])
         count = int(n.get(unit, 0))
         per, why = _per_unit(cost, count)
+        if unit == "normalized_claim" and n["detail"]["claims"]["normalized_approximate"]:
+            per, why = None, CLAIMS_DATE_UNKNOWN
         rows.append({"unit": unit, "label": spec["label"], "what": spec["what"], "kinds": list(spec["kinds"]),
                      "cost": cost, "count": count, "per_unit": per, "per_unit_unavailable": why})
     unattributed = {k: v for k, v in by_kind.items() if k not in claimed and v}
@@ -343,7 +347,9 @@ def by_model(unit: str = "finding", window: str = "month", project_id: str | Non
     basis = price_basis(start, spec["kinds"], project_id, billed)
 
     if unit.endswith("claim"):
-        cq = f"SELECT COALESCE(model,'?') m, COUNT(*) n FROM project_claims WHERE {CLAIM_EVENT_TS}>=?"
+        cq = ("SELECT COALESCE(model,'?') m, COUNT(*) n, "
+              "SUM(CASE WHEN normalized=1 AND normalized_at IS NULL THEN 1 ELSE 0 END) approximate "
+              f"FROM project_claims WHERE {CLAIM_EVENT_TS}>=?")
         cargs: list[Any] = [start]
         if unit == "normalized_claim":
             cq += " AND normalized=1"
@@ -358,7 +364,10 @@ def by_model(unit: str = "finding", window: str = "month", project_id: str | Non
         if project_id:
             cq += " AND project_id=?"
             cargs.append(project_id)
-    count_by = {str(r["m"]): int(r["n"]) for r in db.connect().execute(cq + " GROUP BY m", cargs).fetchall()}
+    count_rows = db.connect().execute(cq + " GROUP BY m", cargs).fetchall()
+    count_by = {str(r["m"]): int(r["n"]) for r in count_rows}
+    approximate_by = ({str(r["m"]): int(r["approximate"] or 0) for r in count_rows}
+                      if unit.endswith("claim") else {})
 
     rows = []
     for model in sorted(set(basis) | set(count_by)):
@@ -368,8 +377,12 @@ def by_model(unit: str = "finding", window: str = "month", project_id: str | Non
             per, why = _per_unit(b["cost"], count)
         else:
             per, why = None, b.get("why_not_comparable")
+        approximate = approximate_by.get(model, 0)
+        if approximate:
+            per, why = None, CLAIMS_DATE_UNKNOWN
         rows.append({"model": model, "cost": b["cost"], "calls": b["calls"], "count": count, "per_unit": per,
-                     "per_unit_unavailable": why, "comparable": bool(b.get("comparable", True)),
+                     "per_unit_unavailable": why, "comparable": bool(b.get("comparable", True)) and not approximate,
+                     "normalized_approximate": approximate,
                      "price_basis": b.get("bases", {})})
     rows.sort(key=lambda r: (r["per_unit"] is None, r["per_unit"] if r["per_unit"] is not None else 0))
     comparable = [r for r in rows if r["per_unit"] is not None]
@@ -433,9 +446,15 @@ def trend(unit: str = "kept_finding", days: int = 14, project_id: str | None = N
     count_by = {r["d"]: int(r["n"]) for r in db.connect().execute(cq + " GROUP BY d", cargs).fetchall()}
 
     rows = []
+    # A legacy row's last edit cannot tell which day normalization occurred on. Suppress the whole
+    # affected trend window, rather than only the edit day (which would leave false zero-output days).
+    uncertain_claims = (unit in ("claim", "normalized_claim")
+                        and _claims_counts(start, project_id)["normalized_approximate"] > 0)
     for day in sorted(set(cost_by) | set(count_by), reverse=True):
         cost, n = cost_by.get(day, 0.0), count_by.get(day, 0)
         per, why = _per_unit(cost, n)
+        if uncertain_claims:
+            per, why = None, CLAIMS_DATE_UNKNOWN
         rows.append({"day": day, "cost": cost, "count": n, "per_unit": per, "per_unit_unavailable": why})
     return {"unit": unit, "supported": True, "label": spec["label"], "days": days, "project_id": project_id,
             "local_billed": billed, "rows": rows, "caveats": list(CAVEATS)}

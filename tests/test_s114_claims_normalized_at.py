@@ -82,3 +82,35 @@ def test_by_model_and_trend_follow_the_normalization_time(project):
     assert counts.get("claude-sonnet-5") == 4 and counts.get("?") == 5
     tr = cost_value.trend("normalized_claim", 3, project)
     assert sum(r.get("count", 0) for r in tr["rows"]) == 4
+
+
+@pytest.mark.parametrize("unit", ["claim", "normalized_claim"])
+def test_legacy_claims_cannot_publish_model_or_daily_cost_verdicts(project, unit):
+    _claim(project, normalized=1, created_ago=20 * DAY, norm_ago=60, stamp=False)
+    _claim(project, normalized=1, created_ago=10 * DAY, norm_ago=60, model="claude-haiku-4-5")
+    with db.tx() as conn:
+        for model in ("claude-sonnet-5", "claude-haiku-4-5"):
+            conn.execute("INSERT INTO usage (ts, kind, model, cost, project_id, transport, price_model) "
+                         "VALUES (?,?,?,?,?,?,?)", (time.time() - DAY, "claims", model, 1.0, project,
+                                                    "interactive", model))
+    rep = cost_value.by_model(unit, "week", project)
+    sonnet = next(r for r in rep["rows"] if r["model"] == "claude-sonnet-5")
+    assert sonnet["count"] == 1 and sonnet["cost"] == 1.0
+    assert sonnet["normalized_approximate"] == 1
+    assert sonnet["per_unit"] is None and sonnet["comparable"] is False
+    assert "normalization dates" in sonnet["per_unit_unavailable"]
+    assert rep["verdict"] is None and rep["comparable_models"] == 1
+    assert all(r["per_unit"] is None for r in cost_value.trend(unit, 7, project)["rows"])
+    row = next(r for r in cost_value.unit_costs("week", project)["rows"] if r["unit"] == "normalized_claim")
+    assert row["count"] == 2 and row["cost"] == 2.0 and row["per_unit"] is None
+
+
+def test_legacy_dates_are_scoped_to_project_and_window(project):
+    other = db.create_project("legacy elsewhere")["id"]
+    _claim(other, normalized=1, created_ago=20 * DAY, norm_ago=60, stamp=False)
+    _claim(project, normalized=1, created_ago=20 * DAY, norm_ago=10 * DAY, stamp=False)
+    _claim(project, normalized=1, created_ago=20 * DAY, norm_ago=60)
+    row = next(r for r in cost_value.unit_costs("today", project)["rows"] if r["unit"] == "normalized_claim")
+    assert row["count"] == 1 and row["per_unit"] == 0.0
+    assert cost_value.by_model("normalized_claim", "today", project)["rows"][0]["comparable"] is True
+    assert cost_value.trend("normalized_claim", 1, project)["rows"][0]["per_unit"] == 0.0

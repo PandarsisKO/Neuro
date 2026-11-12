@@ -58,10 +58,10 @@ def _note(project_id, *, status="approved", model="claude-sonnet-5", ago=60.0, s
 
 def _claim(project_id, *, normalized=1, model="claude-sonnet-4-6", ago=60.0):
     with db.tx() as conn:
-        conn.execute("INSERT INTO project_claims (id, project_id, text, normalized, model, created_at, updated_at) "
-                     "VALUES (?,?,?,?,?,?,?)",
+        conn.execute("INSERT INTO project_claims (id, project_id, text, normalized, model, created_at, updated_at, normalized_at) "
+                     "VALUES (?,?,?,?,?,?,?,?)",
                      (f"c{time.time_ns()}", project_id, "lenders allow this under conditions", normalized, model,
-                      time.time() - ago, time.time() - ago))
+                      time.time() - ago, time.time() - ago, time.time() - ago if normalized else None))
 
 
 # ------------------------------------------------------------------ the arithmetic
