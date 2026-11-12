@@ -217,7 +217,7 @@ def test_view_revision_moves_on_sources_jobs_and_findings_changes():
     changes the badges on a source row without touching any timestamp."""
     p = db.create_project("View", "brief")
     r0 = db.project_view_revision(p["id"])
-    assert set(r0) == {"sources", "jobs", "notes", "research"}
+    assert set(r0) == {"sources", "jobs", "notes", "research", "job_activity"}
     assert db.project_view_revision(p["id"]) == r0                      # stable when nothing happens
 
     s = db.upsert_source(platform="youtube", external_id="view-1", url="https://www.youtube.com/watch?v=view-1", title="t")
@@ -242,7 +242,7 @@ def test_tick_answers_did_anything_change_without_building_the_view(client):
     this module's fixture repointed the data dir; the route itself is checked over HTTP."""
     p = db.create_project("Tick", "brief")
     out = api.api_tick(p["id"])
-    assert set(out["rev"]) == {"sources", "jobs", "notes", "research"} and out["active"] == 0
+    assert set(out["rev"]) == {"sources", "jobs", "notes", "research", "job_activity"} and out["active"] == 0
 
     db.create_job("reembed", {})
     assert api.api_tick(p["id"])["active"] == 1
