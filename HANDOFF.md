@@ -4472,3 +4472,42 @@ Verified the rendered review card in headless Chrome at 350, 520 and 1,050 px wi
 active ranking and a warning. Both live assets returned HTTP 200 and matched the candidate.
 All 2,652 tests passed with one existing warning, including 25 focused tests. Isolated fake Tier 1
 and release-check passed. Evidence: `evals/release/release-check-0.64.5-6d98927-20261112-123524.{json,txt}`.
+
+
+### 2026-11-12 — Sources paging and refresh performance candidate
+
+Base `5a1ce50`; candidate `3a9fba9` (0.64.6, runtime `1bd3788`), prepared on `codex/sources-performance`
+in `/private/tmp/neuro-sources-performance`. The Sources browser opts in to the complete project
+list and renders 150 rows per page. Filters, sort, and grouping apply to the complete result before
+paging, so the old 2,000-row limit cannot hide a match. Older API consumers retain their limit
+and offset behavior. Status badges reuse the same staleness verdict as the rebuild view, using
+source revisions already read, project-specific job state, and indexed job history. A cold
+skipped-source fit calculation uses the existing derived cache in the background, with a pending
+label until the result arrives through the existing poll.
+
+Measured on private copies of the same verified 12:25 backup (seven projects, 102,003 chunks).
+Five direct Sources API-handler calls per project, inserting one unrelated queued job before
+each request to exercise job churn. Business Acquisition: 2,000 capped rows → 2,634 rows,
+cold 13.63 s → 4.22 s, median of four subsequent reads 2.50 s → 0.37 s. Advertising warm
+median 1.25 s → 0.19 s and the 23-row project 0.75 s → 0.006 s. These are handler timings
+without HTTP serialization, not a deployed production benchmark. The first fit-complete
+refresh in the large project took 2.51 s. Compared the old and new badge status, reasons,
+and analysis activity for 2,458 overlapping rows across the three projects: zero differences.
+
+Chrome checked the actual Sources markup and JavaScript with a 2,002-row fixture at desktop
+and narrow widths. Page 2 showed rows 151–300 with 150 source elements; the automated DOM
+test also covers the last page, filtering past the former cutoff, search, and refresh.
+Visual evidence: `/private/tmp/ns-source-preview.k6a9qu/{desktop,narrow}.png`.
+
+Validation at `3a9fba9`: full pytest coverage **2,655 passed** across six module shards.
+One timing-sensitive deep-read progress test passed on the complete rerun of its shard
+and in isolation. The two static failures on the first full run were corrected in
+`3a9fba9` without editing runtime files. Fake Tier 1 and `release-check --no-pytest`
+passed in separate private data directories. See
+`evals/release/sources-performance-pytest-3a9fba9-20261112.txt` and
+`evals/release/release-check-0.64.6-3a9fba9-20261112-131607.{json,txt}`.
+
+The candidate is for review. The live API still reported 0.64.5 with one job running
+and eight queued at the delivery check. No live reload, data mutation, or paid test
+was performed. Activation is pending Kyle's direction because landing the watched
+Python files would reload the server during active work.

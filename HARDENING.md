@@ -2435,3 +2435,13 @@ legacy exposure across API/budgets/value reports, pre-invocation budget holds (i
 setting changes, and the shipped Settings UI save/error workflow. S7/S9/N2 now declare included fixtures explicitly.
 S9's calendar-order test and L1's expired account-limit date fixture were corrected to express their actual
 rolling-window/future-reset contracts; both failures existed on unchanged base. Delivery evidence is in HANDOFF.
+
+
+## Sources polling and pagination — 2026-11-12
+
+Source badges use source and analysis inputs plus project job state, without running
+the rebuild estimate or loading the app-wide job history. The browser filters the
+complete project before rendering pages of 150 rows. Tests `test_p1_perf`,
+`test_s63_instant_source_filters`, `test_s68_sources_list_diet`, and
+`test_s94_project_isolation` cover the Sources contract. See the November 12
+Sources candidate in HANDOFF for the backup comparison and release evidence.

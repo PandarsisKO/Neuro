@@ -1,0 +1,17 @@
+Candidate 3a9fba9, base 5a1ce50, app 0.64.6.
+macOS, Python 3.14, provider keys unset, dotenv disabled, private data directory per process.
+Command: python -m pytest -q -p neuro_sources_shards -o cache_dir=<private-cache-dir>
+The temporary hook enumerated test modules in collection order and assigned module i to shard i % 6.
+All 2,655 collected tests were covered.
+
+Shard 0: 429 passed, 2226 deselected, 1 warning in 85.36s (0:01:25)
+Shard 1: 418 passed, 2237 deselected, 1 warning in 56.12s
+Shard 2: 435 passed, 2220 deselected, 1 warning in 47.54s
+Shard 3: 411 passed, 2244 deselected, 1 warning in 51.55s
+Shard 4: 489 passed, 2166 deselected, 1 warning in 73.11s (0:01:13)
+Shard 5: 473 passed, 2182 deselected, 1 warning in 121.19s (0:02:01)
+
+First candidate 1bd3788, ordinary full run: 2,653 passed, 2 static contract checks failed.
+3a9fba9 corrects those two assertions only. The runtime files match 1bd3788 byte for byte.
+First run of shard 4: one deep-read progress ordering assertion failed. It passed on isolated
+rerun (22 tests including the two corrected checks) and on the complete shard 4 rerun.
