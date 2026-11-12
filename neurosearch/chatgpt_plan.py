@@ -287,7 +287,7 @@ def request(*, task: str, system, messages: list[dict]) -> dict:
             "input": [{"role": "user", "content": _as_text(m["content"])} for m in messages],
             "store": False, "stream": True, "reasoning": {"effort": "none"},
             "text": {"format": {"type": "json_schema", "name": contract.schema,
-                                "strict": False, "schema": schemas.provider_schema(contract.schema)}}}
+                                "strict": task == "claims.extract", "schema": schemas.provider_schema(contract.schema)}}}
     if len(json.dumps(body, ensure_ascii=False).encode()) > MAX_REQUEST_BYTES:
         raise ValueError("Request exceeds the ChatGPT plan pilot input limit.")
     return body
@@ -303,7 +303,7 @@ def create(*, body: dict, model: str, max_tokens: int, timeout: float) -> Simple
             with client.responses.create(**body) as events:
                 for event in events:
                     if time.monotonic() > deadline:
-                        raise RuntimeError("ChatGPT plan response exceeded the task deadline.")
+                        raise httpx.ReadTimeout("ChatGPT plan response exceeded the task deadline.")
                     if event.type in ("response.completed", "response.incomplete"):
                         response = event.response
                         break
@@ -312,7 +312,7 @@ def create(*, body: dict, model: str, max_tokens: int, timeout: float) -> Simple
                     if event.type == "error":
                         _hold(getattr(event, "code", "") or "", access_token)
                 else:
-                    raise RuntimeError("ChatGPT plan response ended before completion.")
+                    raise httpx.ReadError("ChatGPT plan response ended before completion.")
     except APIStatusError as e:
         _hold(str(e.code or ""), access_token, e.status_code)
     from .contracts import same_model

@@ -9,12 +9,25 @@ from __future__ import annotations
 
 import re
 
+import httpx
+
 import json
 import logging
 import time
 from typing import Any
 
 from .config import settings
+
+# OpenAI SDK releases use either HTTPX transport. Stream reads can raise these
+# directly after the SDK has returned the response, outside its error wrapper.
+try:
+    import httpx2
+except ImportError:
+    HTTP_TIMEOUTS = (httpx.TimeoutException,)
+    HTTP_TRANSPORT_ERRORS = (httpx.TransportError,)
+else:
+    HTTP_TIMEOUTS = (httpx.TimeoutException, httpx2.TimeoutException)
+    HTTP_TRANSPORT_ERRORS = (httpx.TransportError, httpx2.TransportError)
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +115,7 @@ def _classify_error(e: BaseException) -> str:
         return SPEND_CAP                      # 2026: the Console's monthly usage limit arrives as a 400 invalid_request_error
     if status == 402 or "credit balance" in txt_all or "billing" in txt_all:
         return BILLING
-    if name in ("APITimeoutError", "DeadlineExceededError") or status == 408:
+    if isinstance(e, HTTP_TIMEOUTS) or name in ("APITimeoutError", "DeadlineExceededError") or status == 408:
         return TIMEOUT
     if name in ("OverloadedError", "ServiceUnavailableError", "InternalServerError") or (status is not None and status >= 500) or status == 529:
         return OVERLOADED
@@ -110,7 +123,7 @@ def _classify_error(e: BaseException) -> str:
         return AUTH
     if name in ("BadRequestError", "UnprocessableEntityError", "NotFoundError", "RequestTooLargeError", "ConflictError") or status in (400, 404, 413, 422, 409):
         return INVALID_REQUEST
-    if name in ("APIConnectionError",):
+    if isinstance(e, HTTP_TRANSPORT_ERRORS) or name == "APIConnectionError":
         return CONNECTION
     if name in ("ContentFilterFinishReasonError",) or "refus" in str(e).lower():
         return REFUSAL
@@ -476,12 +489,28 @@ def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]],
             exc = OutputError(OutputError.TRUNCATED, task, f"still truncated at the ceiling {bigger}")
             output_event(task, exc, project_id=project_id, source_id=source_id, budget=bigger, escalated_to=None, ceiling=c.max_output_ceiling, final=True)
             raise exc
+    if getattr(resp, "provider", None) == "chatgpt_plan":
+        try:
+            return structured(task, resp)
+        except OutputError as first:
+            output_event(task, first, project_id=project_id, source_id=source_id)
+            if task != "claims.extract" or not isinstance(first, SchemaMismatch):
+                raise
+        # Keep a shape retry on the plan that produced the response. A router
+        # recheck here could send the request to another provider.
+        usage.guard(guard_estimate)
+        reason = last_route().get("fallback_reason")
+        resp = _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason=reason)
+        _tl.resp = resp
+        usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
+        try:
+            return structured(task, resp)
+        except OutputError as second:
+            output_event(task, second, project_id=project_id, source_id=source_id)
+            raise
     try:
         return structured(task, resp)
     except SchemaMismatch as first:
-        if getattr(resp, "provider", None) == "chatgpt_plan":
-            output_event(task, first, project_id=project_id, source_id=source_id)
-            raise
         _bump_event("schema_mismatch", {"task": task, "reason": first.detail[:300], "sample": first.text[:400], "schema": c.schema, "model": str(getattr(resp, "model", "") or ""), "retried": True},
                     project_id=project_id, source_id=source_id, counter="schema_mismatches")
         log.error("%s: provider-enforced structured output did not match schema %s (%s) — retrying once; this is a bug signal, not a normal failure",
@@ -573,7 +602,7 @@ def _invoke_chatgpt_plan(task: str, *, system: Any, messages: list[dict[str, Any
             _accumulate_route()
             try:
                 call = _Ledgered(plan.create, "chatgpt_plan", task,
-                                 policy={"max_attempts": 1, "backoff": []}, operation=plan.OPERATION)
+                                 policy={"max_attempts": 2, "backoff": [1.0]}, operation=plan.OPERATION)
                 return call(body=body, model=plan.MODEL, max_tokens=c.max_output_tokens, timeout=c.timeout or 120)
             except ProviderError as exc:
                 if isinstance(exc.cause, plan.PlanWait):

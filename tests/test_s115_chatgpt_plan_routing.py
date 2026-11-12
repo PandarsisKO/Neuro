@@ -263,6 +263,8 @@ def test_plan_request_uses_public_preview_shape():
     assert body["stream"] and body["store"] is False
     assert "max_output_tokens" not in body
     assert body["text"]["format"]["name"] == "findings-v2"
+    claims_body = plan.request(task="claims.extract", system="Test instructions", messages=MESSAGES)
+    assert claims_body["text"]["format"]["strict"] is True
 
 
 def test_connect_uses_loopback_pkce_and_keeps_credentials_private(tmp_path, monkeypatch):
@@ -319,6 +321,7 @@ def test_connect_uses_loopback_pkce_and_keeps_credentials_private(tmp_path, monk
 
 def test_stream_uses_plan_token_and_requires_terminal_event(monkeypatch):
     from contextlib import nullcontext
+    import httpx
     import openai
 
     monkeypatch.setattr(plan, "_access", lambda: "fixture-plan-token")
@@ -341,7 +344,7 @@ def test_stream_uses_plan_token_and_requires_terminal_event(monkeypatch):
         return nullcontext(NS(responses=NS(create=create)))
 
     monkeypatch.setattr(openai, "OpenAI", client)
-    with pytest.raises(RuntimeError, match="before completion"):
+    with pytest.raises(httpx.ReadError, match="before completion"):
         plan.create(body=request, model=plan.MODEL, max_tokens=100, timeout=5)
     events.append(NS(type="response.completed", response=response))
     actual = plan.create(body=request, model=plan.MODEL, max_tokens=100, timeout=5)
@@ -406,3 +409,56 @@ def test_claims_waits_when_the_plan_is_unavailable_without_paid_opt_in(calls, mo
     assert db.get_job(job["id"])["wait_reason"] == "provider"
     assert db.get_job(job["id"])["execution_policy"] == "local_preferred"
     assert calls == ["claude"]
+
+
+@pytest.mark.parametrize("transport", ["httpx", "httpx2"])
+def test_plan_stream_read_error_retries_on_plan_and_keeps_ledger(calls, monkeypatch, transport):
+    http = pytest.importorskip(transport)
+
+    def interrupted(**kw):
+        calls.append("chatgpt")
+        if len(calls) == 1:
+            raise http.ReadError("[SSL: RECORD_LAYER_FAILURE] record layer failure")
+        return response(plan.MODEL)
+
+    monkeypatch.setattr(plan, "create", interrupted)
+    with providers.parallel_chatgpt():
+        assert run() == RESULT
+    assert calls == ["chatgpt", "chatgpt"]
+    attempts = db.connect().execute(
+        "SELECT state, error_type, attempt_no, logical_id FROM invocations ORDER BY rowid"
+    ).fetchall()
+    assert [tuple(row)[:3] for row in attempts] == [("failed", "CONNECTION", 1), ("completed", None, 2)]
+    assert attempts[0]["logical_id"] == attempts[1]["logical_id"]
+
+
+@pytest.mark.parametrize("outcome", ["valid", "invalid", "refusal"])
+def test_claims_plan_retries_invalid_json_once_on_same_provider(calls, monkeypatch, outcome):
+    task = "claims.extract"
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", (task,))
+    state = {"state": "usage_limit"}
+    monkeypatch.setattr(claude, "health_snapshot", lambda **kw: state)
+
+    def extract(**kw):
+        calls.append("chatgpt")
+        msg = response(plan.MODEL)
+        if len(calls) == 1:
+            state["state"] = "ready"  # A re-route here would call Claude.
+            msg.content[0].text = "" if outcome != "refusal" else "I cannot help."
+            if outcome == "refusal":
+                msg.stop_reason = "refusal"
+        else:
+            msg.content[0].text = json.dumps({"claims": [], "targets": [], "missing_areas": []}) if outcome == "valid" else "still malformed"
+        return msg
+
+    monkeypatch.setattr(plan, "create", extract)
+    if outcome == "valid":
+        assert providers.invoke_structured(task, system="Fixture", messages=MESSAGES, usage_kind="claims") == {
+            "claims": [], "targets": [], "missing_areas": [],
+        }
+    else:
+        error = providers.OutputError if outcome == "refusal" else providers.SchemaMismatch
+        with pytest.raises(error):
+            providers.invoke_structured(task, system="Fixture", messages=MESSAGES, usage_kind="claims")
+    assert calls == ["chatgpt"] * (1 if outcome == "refusal" else 2)
+    assert providers.last_route()["fallback_reason"] == "local_limit"
