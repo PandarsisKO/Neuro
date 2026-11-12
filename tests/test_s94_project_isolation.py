@@ -23,7 +23,8 @@ def test_a_project_scoped_answer_for_a_project_no_longer_open_is_dropped():
 
 def test_the_switch_resets_every_per_project_cache_and_pane():
     assert "globalThis.resetProjectState = function resetProjectState()" in HOME
-    for must in ("Object.assign(SRCG, { rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [] })", "POOL.total = null",
+    for must in ("Object.assign(SRCG, { rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [], page: 0, query: null, potentialPending: false })",
+                 "pager.hidden = true", "POOL.total = null",
                  "Object.assign(FB, { offset: 0, source: null, loaded: false, rows: [], statusCounts: {} })", "STALE.data = null", "globalThis.BOOTSTATE = null",
                  "globalThis.rvSig = null", "globalThis.CAPTURE_SEEN = null; globalThis.lastRev = null", "JOBSHIST.clear()", "['#srcList', '']", "['#chatList', '']", "['#srcCount', '']"):
         assert must in HOME, must

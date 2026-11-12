@@ -46,7 +46,7 @@ def _rendered_fields() -> set[str]:
 
 
 # fields that exist on a row only in a particular state; their presence is proven by their own feature gates
-SITUATIONAL = {"job", "analysis_job", "acquisition", "pool_potential", "video_embeds", "video_embeds_added", "completeness", "error", "error_class"}
+SITUATIONAL = {"job", "analysis_job", "acquisition", "pool_potential", "pool_potential_pending", "video_embeds", "video_embeds_added", "completeness", "error", "error_class"}
 
 
 def _project_with_source(**src):
