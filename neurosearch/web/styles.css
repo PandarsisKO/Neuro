@@ -317,6 +317,12 @@
   .rv .sc{display:inline-block;min-width:30px;text-align:center;font-size:11px;font-weight:600;padding:1px 5px;border-radius:999px;background:var(--line);color:var(--muted)}
   .rv .sc.hi{background:#dcfce7;color:#166534}.rv .sc.mid{background:#fef3c7;color:#92400e}
   [data-theme="dark"] .rv .sc.hi{background:#14532d;color:#bbf7d0}[data-theme="dark"] .rv .sc.mid{background:#78350f;color:#fde68a}
+  .rv-rank{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+  .rv-rank-status{flex:1 1 16rem;min-width:0;overflow-wrap:anywhere}
+  .rv-rank-status .status-warn{display:block}
+  .rv-rank-actions,.rv-pick-top{display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .rv-rank-actions{margin-inline-start:auto}
+  .rv-pick-top input{width:64px;padding:4px 6px}
   .rv .list{max-height:320px;overflow:auto;margin-top:6px}
   .rv.folded .list, .rv.folded .rvfoot, .rv.folded .rvctl{display:none}
   .rv .rvfold{cursor:pointer;user-select:none;color:var(--muted);font-size:12px;margin-left:6px}
