@@ -2195,9 +2195,15 @@ async def api_findings(project_id: str) -> Any:
 
 
 @app.get("/api/projects/{project_id}/masterplan.md", dependencies=[Depends(require_auth)])
-async def api_masterplan_md(project_id: str) -> Any:
+def api_masterplan_md(project_id: str, synthesize: bool = False) -> Any:
     from .export import synthesize_masterplan
-    text = await anyio.to_thread.run_sync(lambda: synthesize_masterplan(project_id))
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    plan = db.latest_plan(project_id) if not synthesize else None
+    if plan:
+        return _saved_plan_download(plan, project, filename="masterplan.md")
+    text = synthesize_masterplan(project_id)
     return StreamingResponse(iter([text]), media_type="text/markdown; charset=utf-8",
                              headers={"Content-Disposition": "attachment; filename=masterplan.md"})
 
@@ -2809,12 +2815,16 @@ def api_plan_start(plan_id: str) -> dict[str, Any]:
 
 @app.get("/api/projects/{project_id}/plan.md", dependencies=[Depends(require_auth)])
 def api_plan_md(project_id: str) -> Any:
-    from .planner import plan_markdown
-    plan, p = db.latest_plan(project_id), db.get_project(project_id)
-    if not plan or not p:
+    plan, project = db.latest_plan(project_id), db.get_project(project_id)
+    if not plan or not project:
         raise HTTPException(404, "no plan yet")
-    return StreamingResponse(iter([plan_markdown(plan, p)]), media_type="text/markdown; charset=utf-8",
-                             headers={"Content-Disposition": "attachment; filename=master_plan.md"})
+    return _saved_plan_download(plan, project, filename="master_plan.md")
+
+
+def _saved_plan_download(plan: dict[str, Any], project: dict[str, Any], *, filename: str) -> StreamingResponse:
+    from .planner import plan_markdown
+    return StreamingResponse(iter([plan_markdown(plan, project)]), media_type="text/markdown; charset=utf-8",
+                             headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 @app.get("/api/projects/{project_id}/plan.html", dependencies=[Depends(require_auth)])
@@ -3218,6 +3228,15 @@ def api_claims_review_queue(project_id: str, limit: int = 25) -> dict[str, Any]:
     if not db.get_project(project_id):
         raise HTTPException(404)
     return review_queue.build(project_id, limit=max(1, min(limit, 500)))
+
+
+@app.get("/api/projects/{project_id}/claims/{claim_id}/evidence", dependencies=[Depends(require_auth)])
+def api_claim_review_evidence(project_id: str, claim_id: str) -> dict[str, Any]:
+    from . import claims_view
+    result = claims_view.review_evidence(project_id, claim_id)
+    if result is None:
+        raise HTTPException(404, "claim not found in project")
+    return result
 
 
 @app.get("/api/projects/{project_id}/research-needs", dependencies=[Depends(require_auth)])

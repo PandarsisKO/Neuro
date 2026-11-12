@@ -316,6 +316,7 @@ globalThis.renderQueuePane = async function renderQueuePane() {
       <div class="why">${why}${wasAccepted ? ' ' + wasAccepted : ''}${unreviewed ? ' ' + unreviewed : ''} · ${x.independent_sources} independent source${x.independent_sources === 1 ? '' : 's'}${(x.members.note_ids || []).length ? ` · ${x.members.note_ids.length} finding${x.members.note_ids.length === 1 ? '' : 's'} behind it` : ''}${tens ? ` · ${tens} high-impact tension${tens === 1 ? '' : 's'}` : ''}</div>
       ${x.strength_why ? `<div class="why">${esc(x.strength_why)}</div>` : ''}</div>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="small ghost" onclick="showClaimEvidence('${x.claim_id}')">Show evidence</button>
         ${x.status === 'accepted' ? '' : `<button class="small" title="You stand behind this. Reversible — nothing is deleted." onclick="queueDecide('${x.claim_id}','accepted')">Accept</button>`}
         <button class="small ghost" title="You do not accept this. Reversible." onclick="queueDecide('${x.claim_id}','rejected')">Reject</button>
       </span></div>`;
@@ -336,6 +337,45 @@ globalThis.renderQueuePane = async function renderQueuePane() {
      ${orphanBar}
      ${sums ? `<div class="mt-3"><b>What the numbers say together</b><div class="muted text-xs">Grouped by topic and by what is being measured, so ranges of different things are never blended.</div><div class="mt-2">${sums}</div></div>` : ''}
      <div class="mt-3">${rows}</div>${hidden}`;
+}
+globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
+  const projectId = state.project.id;
+  const panel = document.createElement('div');
+  panel.innerHTML = '<h3>Claim evidence</h3>' + listState('loading', { label: 'Loading evidence…' });
+  $('#dlgBody').replaceChildren(panel);
+  if (!dlg.open) dlg.showModal();
+
+  let result;
+  try {
+    result = await api(`/api/projects/${projectId}/claims/${claimId}/evidence`);
+  } catch (e) {
+    if (e.stale || !panel.isConnected || !dlg.open) return;
+    panel.innerHTML = '<h3>Claim evidence</h3>' + listState('failed', {
+      message: 'Could not load the evidence.', retry: `showClaimEvidence('${claimId}')`,
+    });
+    return;
+  }
+  if (!panel.isConnected || !dlg.open || state.project.id !== projectId) return;
+  const labels = { SUPPORTS: 'Supports', CONTRADICTS: 'Contradicts', QUALIFIES: 'Qualifies',
+                   INTERPRETS: 'Interpretation', EXPERIENTIAL: 'Firsthand experience' };
+  const section = (title, rows, total) => rows.length ? `<h4 class="mt-3 mb-1">${title}</h4>` +
+    rows.map(e => {
+      const book = /^#book\/[a-f0-9]+\/\d+$/i.test(e.link || '');
+      const link = book || /^https?:\/\//i.test(e.link || '')
+        ? e.link : `/api/sources/${encodeURIComponent(e.source_id)}/transcript.txt`;
+      return `<div class="kn"><div class="grow min-w-0">
+        <div><b>${esc(labels[e.relation] || e.relation)}</b> ·
+          <a href="${esc(link)}" ${book ? 'onclick="dlg.close()"' : 'target="_blank" rel="noopener"'}>${esc(e.title || 'Source')}${e.locator ? ' · ' + esc(e.locator) : ''}</a>
+          ${e.stale ? '<span class="tag status-warn">Source revised</span>' : ''}
+          ${e.independent ? '' : '<span class="tag">Repeats another source</span>'}</div>
+        ${e.excerpt ? `<blockquote class="quote">${esc(e.excerpt)}</blockquote>` : '<div class="muted">Open the source to read the passage.</div>'}
+      </div></div>`;
+    }).join('') + (total > rows.length ? `<div class="muted">Showing ${rows.length} of ${total} passages.</div>` : '') : '';
+
+  panel.innerHTML = `<h3>Claim evidence</h3><p>${esc(result.text)}</p>`
+    + section('Contradicting or qualifying evidence', result.counter, result.counter_total)
+    + section('Supporting and related evidence', result.supporting, result.supporting_total)
+    + (result.supporting_total || result.counter_total ? '' : '<p class="muted">This Claim has no linked evidence.</p>');
 }
 globalThis.queueRejectOrphans = async function queueRejectOrphans(ids) {
   if (!ids || !ids.length) return;

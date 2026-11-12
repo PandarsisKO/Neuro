@@ -11,12 +11,13 @@ globalThis.rvSig = null;
 globalThis.RVFOLD = {};      // review card id -> folded? (default: everything after the first)
 globalThis.rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
 globalThis.rvFilterText = {};
-globalThis.rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
+globalThis.rvAutoApplied = {}; // collection id -> true once the initial picks are set or the user changes them
 // 2026-09-23 (Kyle): "we should not be doing the 'review one at a time' feature for bulk ingestion of sources ...
 // it should not appear at all when ingesting a source. only for findings, research, claims etc". The review card and
 // the pool are source-acquisition decisions — ranker + "pick top N" + Start / Capture. Focus review (focus.js) stays
 // for findings, research and claims. `rvFocus`/`poolFocus` are kept as functions; no source card renders them.
 globalThis.scClass = function scClass(v) { return v >= 60 ? 'hi' : v >= 30 ? 'mid' : ''; }
+globalThis.rvEligible = function rvEligible(source) { return !source.access_gate && source.relevance > 0; };
 globalThis.loadReviews = async function loadReviews(quiet) {
   if (!POLL.enter('reviews', quiet)) return;
   const rvs = await api(`/api/projects/${state.project.id}/reviews`, quiet ? { ack: false } : {}).catch(() => null);
@@ -24,7 +25,7 @@ globalThis.loadReviews = async function loadReviews(quiet) {
   if (rvs === null) return;                       // failed or abandoned: keep what is on screen
   // Only rebuild the card when the list (or its ranking) changed; the poller calls this every few seconds
   const sig = JSON.stringify(rvs.map(c => [c.id, c.meta?.ranked, c.meta?.ranking, c.meta?.rank_note, c.meta?.max_videos,
-    c.proposed.map(s => [s.id, s.relevance, s.relevance_why])]));
+    c.proposed.map(s => [s.id, s.relevance, s.relevance_why, s.access_gate])]));
   if (sig === rvSig) return;
   globalThis.rvSig = sig;
   $('#reviewWrap').innerHTML = rvs.map((c, idx) => {
@@ -32,22 +33,29 @@ globalThis.loadReviews = async function loadReviews(quiet) {
     rvData[c.id] = c.proposed;
     const ranking = !!meta.ranking;
     const scored = c.proposed.some(s => s.relevance != null);
-    const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set());
-    if (ranked && !ranking && scored && !rvAutoApplied[c.id]) {   // first time we see scores: tick the best `want`, untick the rest
-      rvAutoApplied[c.id] = true; off.clear();
-      c.proposed.forEach((s, i) => { if ((want && i >= want) || !s.relevance || s.access_gate) off.add(s.id); });
+    const eligible = c.proposed.filter(rvEligible);
+    const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set(c.proposed.filter(s => s.access_gate).map(s => s.id)));
+    if (ranked && !ranking && scored && !rvAutoApplied[c.id]) {
+      rvAutoApplied[c.id] = true;
+      const picks = new Set(eligible.slice(0, want || eligible.length).map(s => s.id));
+      c.proposed.forEach(s => { if (!picks.has(s.id)) off.add(s.id); });
     }
     const n = c.proposed.length, mins = c.proposed.reduce((a, s) => a + (s.duration || 0), 0) / 60;
-    const nSel = c.proposed.filter(s => !off.has(s.id)).length;
-    const est = rvEstimate(c.proposed.filter(s => !off.has(s.id)));
+    const selected = c.proposed.filter(s => !off.has(s.id));
+    const nSel = selected.length;
+    const est = rvEstimate(selected);
     const rankButton = `<button class="small ghost" title="Scores these by relevance to your brief (titles &amp; descriptions only) — uses your model budget" onclick="rvRerank('${c.id}', this)" ${ranking ? 'disabled' : ''}>Re-rank</button>`;
     const rankLine = ranking
       ? `<span class="muted">Ranking queued or in progress…</span>`
       : ranked && scored
-        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.</span>`
+        ? `<span class="muted">✨ Sorted by relevance to your brief.</span>`
         : `<span class="muted">${esc(meta.rank_note || (ranked ? 'Newest first. Add a goal or brief in Settings and re-rank to sort by relevance.' : 'No ranking is running. Re-rank to try again.'))}</span>`;
     const rankNote = ranked && scored && meta.rank_note ? `<span class="status-warn">${esc(meta.rank_note)}</span>` : '';
-    const pickTop = scored ? `<label class="rv-pick-top muted">Pick top <input type="number" min="1" max="${n}" value="${Math.min(want || n, n)}" onchange="rvTop('${c.id}', +this.value)"></label>` : '';
+    const pickTop = eligible.length ? `<form class="rv-pick-top muted" onsubmit="event.preventDefault();rvTop('${c.id}', this.elements.count)">
+      <button class="small ghost" type="submit">Pick top</button>
+      <input type="number" name="count" aria-label="Number of ranked sources to pick" min="1" max="${eligible.length}"
+        value="${Math.min(nSel || want || eligible.length, eligible.length)}" onchange="rvTop('${c.id}', this)">
+    </form>` : '';
     // Only the FIRST review card is open. Three of them (107 + 93 + 398 videos) stacked to a page whose queue
     // controls could not be scrolled to at all — the inner lists swallow the wheel, so "further down" was
     // unreachable. A folded card still shows what it is and how much is selected; opening it is one click.
@@ -66,7 +74,7 @@ globalThis.loadReviews = async function loadReviews(quiet) {
         <div class="rv-rank-status">${rankLine}${rankNote}</div>
         <div class="rv-rank-actions">${pickTop}${rankButton}</div>
       </div>
-      ${folded ? `<div class="row" style="margin-top:8px"><button class="small primary" onclick="RVFOLD['${c.id}']=false;globalThis.rvSig=null;loadReviews()">▾ Show the ${n} videos to review</button><span class="muted">Folded so the cards below stay reachable — nothing here is selected or started until you open it and press Start.</span></div>` : ''}
+      ${folded ? `<div class="row" style="margin-top:8px"><button class="small primary" onclick="RVFOLD['${c.id}']=false;globalThis.rvSig=null;loadReviews()">▾ Show the ${n} videos to review</button><span class="muted">Open the list to review your selections before starting.</span></div>` : ''}
       <div class="row rvctl" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
       <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' hidden' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.access_gate ? `<span class="tag status-warn" title="${s.access_gate === 'members_only' ? 'Members-only: YouTube will not let this download without your own channel membership, so it is listed last and not selected' : s.access_gate === 'premium' ? 'YouTube Premium only' : 'Needs sign-in'}">${s.access_gate === 'members_only' ? '🔒 members only' : s.access_gate === 'premium' ? '🔒 premium' : '🔒 sign-in'}</span>` : ''}${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
@@ -88,15 +96,43 @@ globalThis.rvCount = function rvCount(id) {
   const a = $(`#rvsel-${id}`), b = $(`#rvest-${id}`); if (a) a.textContent = on.size;
   if (b) b.innerHTML = rvEstimate((rvData[id] || []).filter(s => on.has(s.id)));
 }
-globalThis.rvRemember = function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); rvCount(id); }
-globalThis.rvAll = function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (!l.hidden) { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
-globalThis.rvTop = function rvTop(id, n) { document.querySelectorAll(`#rv-${id} .li`).forEach((l, i) => { const inp = l.querySelector('input'); inp.checked = i < n; rvRemember(id, inp); }); }
+globalThis.rvRemember = function rvRemember(id, input) {
+  rvAutoApplied[id] = true;
+  const off = rvUnchecked[id];
+  if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id);
+  rvCount(id);
+}
+globalThis.rvAll = function rvAll(id, on) {
+  rvAutoApplied[id] = true;
+  const gated = new Set(rvData[id].filter(s => s.access_gate).map(s => s.id));
+  const off = rvUnchecked[id];
+  document.querySelectorAll(`#rv-${id} .li`).forEach(row => {
+    if (row.hidden) return;
+    const input = row.querySelector('input');
+    if (on && gated.has(input.dataset.id)) return;
+    input.checked = on;
+    if (on) off.delete(input.dataset.id); else off.add(input.dataset.id);
+  });
+  rvCount(id);
+}
+globalThis.rvTop = function rvTop(id, input) {
+  const eligible = rvData[id].filter(rvEligible);
+  const count = Math.min(eligible.length, Math.max(1, Math.trunc(Number(input.value)) || 1));
+  input.value = count;
+  const picks = new Set(eligible.slice(0, count).map(s => s.id));
+  rvAutoApplied[id] = true;
+  const off = rvUnchecked[id];
+  document.querySelectorAll(`#rv-${id} input[type=checkbox]`).forEach(box => {
+    box.checked = picks.has(box.dataset.id);
+    if (box.checked) off.delete(box.dataset.id); else off.add(box.dataset.id);
+  });
+  rvCount(id);
+}
 globalThis.rvFilter = function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.hidden = !l.textContent.toLowerCase().includes(q)); }
 globalThis.rvRerank = async function rvRerank(id, btn) {
   if (btn) btn.disabled = true;
   try {
     await post(`/api/collections/${id}/rank`, { project_id: state.project.id });
-    delete rvAutoApplied[id];
     globalThis.rvSig = null;
     loadReviews();
     loadJobs();

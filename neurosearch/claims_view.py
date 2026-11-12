@@ -114,6 +114,22 @@ def query(project_id: str, *, q: str | None = None, status: str = "all", strengt
                        "topic": [{"topic": k, "n": v} for k, v in facets["topic"].most_common(30)], "needs_decision": facets["needs_decision"]}}
 
 
+def review_evidence(project_id: str, claim_id: str, limit: int = 6) -> dict[str, Any] | None:
+    """Return a bounded preview for one Claim, keeping counterevidence visible."""
+    claim = claims_mod.get(claim_id)
+    if not claim or claim["project_id"] != project_id:
+        return None
+    supporting, counter = [], []
+    for evidence in sorted(claim["evidence"], key=lambda e: (e["stale"], not e["independent"])):
+        group = counter if evidence["relation"] in ("CONTRADICTS", "QUALIFIES") else supporting
+        group.append({key: evidence[key] for key in (
+            "source_id", "title", "locator", "link", "relation", "excerpt", "stale", "independent",
+        )})
+    return {"text": claim["text"], "supporting": supporting[:limit], "counter": counter[:limit],
+            "supporting_total": len(supporting), "counter_total": len(counter)}
+
+
+
 def for_source(project_id: str, source_id: str, locator: str | None = None, limit: int = 5) -> dict[str, Any]:
     """RESEARCH-TAB.md §5's 'Why this answer' — the Claims a chat citation's source feeds, closest locator first. $0:
     one indexed join, never a re-derivation of `claims.evidence_map`'s full-project pass."""
