@@ -4340,3 +4340,24 @@ Evidence in `evals/release/`:
 
 Validation is complete on the review branch. Activation remains held. Live account consent, plan entitlement,
 response compatibility and output quality still need verification before enabling either ChatGPT route.
+
+
+### ChatGPT included-plan synthetic pilot — 2026-11-12
+
+Kyle authorized a small isolated test using only included allowance and held activation. The official browser
+consent succeeded. Neuro verified the issued account identity and plan permission, and the renewable session is
+stored in a protected, temporary local profile outside the repository. The running app did not use this session.
+
+Before the request, ChatGPT Settings → Usage showed Neuro Search permitted to use plan limits, connected-app
+credit fallback off, auto-reload off, and zero credits. The same credit controls and zero balance remained after
+the request, with “No credit usage recorded yet.” No API keys were available to the pilot process.
+
+Exactly one `library.profile` request ran through the pilot Responses transport on a fictional garden-volunteer
+source. GPT-6 Luna completed in **7.482 seconds**, with **644 input / 207 output tokens**. The full local
+`source-profile-v1` schema passed. The profile preserved the 30-second check and two clogs, classified the
+evidence as firsthand experience, and kept plant-health and product-comparison claims outside its scope.
+The recorded $0.000168 is an API list-price equivalent, not a charge. Evidence contains only the synthetic
+fixture, output and sanitized metrics: `evals/release/chatgpt-plan-synthetic-profile-20261112.json`.
+
+This establishes live plan access and one structured library-profile result. Live findings quality, sustained
+throughput, and real-world Claude-to-ChatGPT failover were not exercised. Main and app activation stay on hold.

@@ -1,0 +1,54 @@
+{
+  "task": "library.profile",
+  "model": "gpt-6-luna",
+  "seconds": 7.482,
+  "input_tokens": 644,
+  "output_tokens": 207,
+  "cached_input_tokens": 0,
+  "api_list_price_equivalent_usd": 0.000168,
+  "invocations": [
+    {
+      "provider": "chatgpt_plan",
+      "task": "library.profile",
+      "state": "completed",
+      "returned_model": "gpt-6-luna"
+    }
+  ],
+  "schema_pass": true,
+  "synthetic_input": "I am a volunteer at Cobalt Grove Community Garden. In a forum post I described my own weekly drip-irrigation checks: I put a measuring cup under each emitter for 30 seconds. Last week I found two clogged emitters and cleaned them with water. I did not measure plant health or compare irrigation products. This is one volunteer's observation, not an official recommendation.",
+  "profile": {
+    "summary": "A volunteer\u2019s first-person account of weekly drip-irrigation checks at Cobalt Grove Community Garden. It describes collecting water from emitters for 30 seconds, finding two clogged emitters, and cleaning them with water.",
+    "topics": [
+      "Weekly drip-irrigation checks",
+      "Checking emitter flow with a measuring cup",
+      "Finding and cleaning clogged emitters"
+    ],
+    "entities": [
+      "Cobalt Grove Community Garden"
+    ],
+    "document_type": "firsthand forum post",
+    "evidence_class": "experiential",
+    "temporal_character": "slow_changing",
+    "useful_for": [
+      "What checking routine did this volunteer use for drip-irrigation emitters?",
+      "What issue did the volunteer find, and how did they address it?"
+    ],
+    "not_useful_for": [
+      "Whether irrigation products were compared",
+      "Whether the checks improved plant health",
+      "Official irrigation recommendations"
+    ],
+    "authority_notes": "The speaker identifies as a Cobalt Grove Community Garden volunteer and reports personal observations. The account explicitly says it is not an official recommendation.",
+    "minority_topics": []
+  },
+  "candidate": "5bf906a7086a3e3b64dc298789f0f5dd34f28297",
+  "billing_verification": {
+    "source": "ChatGPT Settings \u2192 Usage",
+    "connected_app_plan_usage": true,
+    "connected_app_paid_credit_fallback": false,
+    "credit_balance_before": 0,
+    "credit_balance_after": 0,
+    "credit_usage_after": "No credit usage recorded yet",
+    "api_keys_removed": true
+  }
+}
