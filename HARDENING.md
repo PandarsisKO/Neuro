@@ -2445,3 +2445,12 @@ complete project before rendering pages of 150 rows. Tests `test_p1_perf`,
 `test_s63_instant_source_filters`, `test_s68_sources_list_diet`, and
 `test_s94_project_isolation` cover the Sources contract. See the November 12
 Sources candidate in HANDOFF for the backup comparison and release evidence.
+
+## Sources passage lookup — 2026-11-12
+
+Project and source-scoped passage search reuses the ready-source membership
+resolver, FTS index, hit locators and source readers. Phrase matching is
+explicit on the new endpoint. The scope and zero-model contract are covered
+by `tests/test_passage_search.py`, and the browser flow by
+`tests/js/run-source-pages.mjs` through the Sources gate. See HANDOFF for
+the version-bound release and browser evidence.

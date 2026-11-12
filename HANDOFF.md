@@ -4557,3 +4557,61 @@ returned its supporting passage. The 77 live disagreement rows sampled had
 no explicit counterevidence links. The API and Chrome fixture checks covered
 display of both evidence groups when those links exist. No review verdict or
 ranking job was submitted in production during verification.
+
+### 2026-11-12 — Find passages in Sources (0.64.8)
+
+Runtime candidate `f668c03`. Sources has a project-wide Find passages button
+and a scoped action in each ready source's menu. Phrase mode uses consecutive
+FTS tokens. Turning it off uses the existing keyword search. Results show the
+indexed excerpt and open the source's timestamp, page, section or comment
+locator. The project lookup returns up to 20 passages with up to four per
+source. The source-scoped lookup returns up to 20 from that source.
+
+The authenticated `GET /api/projects/{project_id}/passages` route in
+`neurosearch/api.py` owns project membership and input validation. It reuses
+the existing SQLite FTS index, search hit builder and source readers. No model
+call, ingestion, schema change or background job is involved. Scope and
+locators are gated by `tests/test_passage_search.py`. The Sources JavaScript
+harness covers late results, escaped excerpt text and reader navigation.
+Headless Chrome verified search at 500 px and the document jump at 1,050 px.
+Screenshots are in `/private/tmp/ns-passage-preview.pOnuH6/`.
+
+All 2,659 tests passed across six module shards. Deterministic Tier 1 and
+release-check passed on the exact runtime candidate. Evidence is under
+`evals/release/` in `find-passages-pytest-f668c03-20261112.txt` and
+`release-check-0.64.8-f668c03-20261112-140417.{json,txt}`.
+
+#### Counterevidence and novelty audit
+
+The Claims review queue query is read-only and keeps all disagreements even
+with a display limit of one. Across seven live projects, the 77 rows labeled
+“Sources disagree” all had NOVEL as the underlying disagreement flag. Every project had flagged rows. None
+had a CONTRADICTION flag. The sample covers the review queue, which chiefly
+contains proposed Claims.
+
+`decision_impact.decision_impact` treats open NOVEL and CONTRADICTION tensions
+as the same reason. `knowledge.detect` uses NOVEL for a consequential
+single-support Claim with no qualifying lexical twin. Its echo check looks
+at the best text match and compares source IDs. A paraphrase can be missed,
+a copy with a different source ID can count as an echo, and a related Claim
+with a different stance or scope can suppress an outlier. Synthetic probes
+confirmed a missed paraphrase and false echoes for an opposite conclusion,
+a stale passage, and a reprint.
+
+Follow-up proposal, with implementation deferred. Separate “Needs
+corroboration,” “Qualified by evidence,” and “Sources disagree.” A disagreement
+needs directly cited passages on both sides of the same scoped proposition.
+Reuse Claims relations, source lineage, Evidence Targets, and the existing
+evidence preview. An opt-in counterevidence search can look for contrary
+results, exceptions and independent replications in the project, then surface
+library candidates when project coverage is thin. Keep search suggestions
+unverified until the passages have been checked.
+
+Record novelty as a time-stamped result within the searched corpus. Retrieve
+candidate paraphrases as well as literal wording, compare meaning and scope,
+and collapse copies to their originating Work. Report “No equivalent found
+in the sources checked” alongside search coverage and remaining gaps.
+Check the false novelty and false disagreement rates against a small
+hand-labeled set from multiple projects before changing default behavior.
+Include paraphrases, common-lineage copies, scope exceptions, true disputes,
+and examples of inadequate source coverage.
