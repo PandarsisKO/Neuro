@@ -113,6 +113,11 @@ class Settings:
     ai_profile: str = field(default_factory=lambda: (_env("NEUROSEARCH_AI_PROFILE", "cloud") or "cloud").lower())
     # Foundation: local transport errors must not silently buy an API retry. Explicit opt-in only.
     local_api_fallback: bool = field(default_factory=lambda: (_env("NEUROSEARCH_LOCAL_API_FALLBACK", "false") or "false").lower() in ("1", "true", "yes"))
+    # Opt in by task only after the ChatGPT plan pilot passes its quality check.
+    chatgpt_plan_tasks: tuple[str, ...] = field(default_factory=lambda: tuple(
+        t.strip() for t in (_env("NEUROSEARCH_CHATGPT_PLAN_TASKS", "") or "").split(",") if t.strip()))
+    chatgpt_plan_parallel: bool = field(default_factory=lambda:
+        (_env("NEUROSEARCH_CHATGPT_PLAN_PARALLEL", "false") or "false").lower() in ("1", "true", "yes"))
     local_ai_workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_LOCAL_AI_WORKERS", "2") or 2))
     # 0.63.13 — the API analysis pool was ONE hard-coded thread, so work the user PAID to accelerate ran one job at
     # a time. Concurrency is not a rate limit: the spend-rate ceiling, the daily/weekly budgets and the account

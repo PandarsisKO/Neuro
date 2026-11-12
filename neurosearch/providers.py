@@ -162,7 +162,7 @@ def _request_hash(kw: dict[str, Any]) -> str:
     import hashlib
     import json
     try:
-        body = json.dumps({k: v for k, v in kw.items() if k in ("model", "system", "messages", "tools", "input", "max_tokens")}, sort_keys=True, default=str)
+        body = json.dumps({k: v for k, v in kw.items() if k in ("model", "system", "messages", "tools", "input", "max_tokens", "body")}, sort_keys=True, default=str)
     except Exception:  # noqa: BLE001
         body = repr(kw)
     return hashlib.sha256(body.encode()).hexdigest()[:16]
@@ -213,7 +213,8 @@ class _Ledgered:
             db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None,
                                  returned_model=str(getattr(res, "model", "") or "") or None)   # configured vs returned
             breakers.record_success(self._operation, worker, generation=generation)
-            db.clear_account_gates()   # a call went through: whatever the account was blocked on is provably over
+            if self._provider != "chatgpt_plan":
+                db.clear_account_gates()   # ChatGPT success says nothing about the Anthropic account
             return res
 
 
@@ -317,11 +318,13 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
     c = C.contract(task)
     r = getattr(_tl, "route", None) or {}
     by = r.get("executed_by", "api")
-    requested = c.model_for(by)          # 0.52.0: the local provider has its own declared model; None = the same one
-    out = {"requested_model": requested, "actual_model": (str(actual_model) if actual_model else None) or requested, "fallback_used": False,
+    requested = r.get("model") if by == "chatgpt_plan" else c.model_for(by)
+    out = {"requested_model": requested, "actual_model": (str(actual_model) if actual_model else None) or requested, "fallback_used": bool(by == "chatgpt_plan" and r.get("fallback_reason")),
            "fallback_reason": r.get("fallback_reason"), "fallback_policy": c.fallback, "fallback_policy_version": C.FALLBACK_POLICY_VERSION,
            "executed_by": by, "route_reason": r.get("reason")}    # L1: WHICH PROVIDER ran (model substitution is still not a thing)
-    if requested != c.model:
+    if by == "chatgpt_plan":
+        out.update(provider="chatgpt_plan", primary_model=c.model, fallback_policy="CHATGPT_PLAN_OPT_IN")
+    elif requested != c.model:
         # a declared, deliberate difference — recorded so it can never be mistaken for the contract's model
         out["local_model"] = requested
         out["api_model"] = c.model
@@ -455,7 +458,8 @@ def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]],
     usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
     if getattr(resp, "stop_reason", None) == "max_tokens":
         exc = OutputError(OutputError.TRUNCATED, task, f"max_tokens={c.max_output_tokens}")
-        if not c.max_output_ceiling or c.max_output_ceiling <= c.max_output_tokens:
+        if (getattr(resp, "provider", None) == "chatgpt_plan"
+                or not c.max_output_ceiling or c.max_output_ceiling <= c.max_output_tokens):
             output_event(task, exc, project_id=project_id, source_id=source_id, budget=c.max_output_tokens, escalated_to=None, ceiling=c.max_output_ceiling)
             raise exc
         bigger = min(int(c.max_output_tokens * 1.5), c.max_output_ceiling)
@@ -472,6 +476,9 @@ def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]],
     try:
         return structured(task, resp)
     except SchemaMismatch as first:
+        if getattr(resp, "provider", None) == "chatgpt_plan":
+            output_event(task, first, project_id=project_id, source_id=source_id)
+            raise
         _bump_event("schema_mismatch", {"task": task, "reason": first.detail[:300], "sample": first.text[:400], "schema": c.schema, "model": str(getattr(resp, "model", "") or ""), "retried": True},
                     project_id=project_id, source_id=source_id, counter="schema_mismatches")
         log.error("%s: provider-enforced structured output did not match schema %s (%s) — retrying once; this is a bug signal, not a normal failure",
@@ -539,7 +546,92 @@ def _stream_collect(client: Any, task: str, kw: dict[str, Any], on_text: Any) ->
     return final
 
 
-def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None, tools: list[dict[str, Any]] | None = None,
+def _invoke_chatgpt_plan(task: str, *, system: Any, messages: list[dict[str, Any]],
+                         fallback_reason: str | None) -> Any:
+    from . import chatgpt_plan as plan, contracts, db, usage
+
+    c = contracts.contract(task)
+    body = plan.request(task=task, system=system, messages=messages)
+    until = float(db.kv_get("usage:rate_blocked_until") or 0)
+    if until > time.time():
+        raise usage.BudgetPaused("AI spending rate limit reached", until - time.time())
+    if not plan._slots.acquire(blocking=False):
+        raise plan.PlanWait("ChatGPT is working on another Neuro job.", 5)
+    try:
+        # The plan preview rejects an output-token limit. Reserve the documented model maximum
+        # as estimated exposure and enforce the task's smaller limit on the returned result.
+        input_bound = len(json.dumps(body, ensure_ascii=False).encode()) + 2000
+        pin, pout = usage._price(plan.MODEL)
+        with usage.reserve((input_bound * pin * usage.CACHE_WRITE_MULT + plan.MAX_MODEL_OUTPUT * pout) / 1e6):
+            _tl.task = task
+            _tl.route = {"executed_by": "chatgpt_plan", "model": plan.MODEL,
+                         "reason": "claude_limit" if fallback_reason else "parallel_worker",
+                         "fallback_reason": fallback_reason}
+            _accumulate_route()
+            try:
+                call = _Ledgered(plan.create, "chatgpt_plan", task,
+                                 policy={"max_attempts": 1, "backoff": []}, operation=plan.OPERATION)
+                return call(body=body, model=plan.MODEL, max_tokens=c.max_output_tokens, timeout=c.timeout or 120)
+            except ProviderError as exc:
+                if isinstance(exc.cause, plan.PlanWait):
+                    raise exc.cause from exc
+                raise
+    finally:
+        plan._slots.release()
+
+
+def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None,
+           tools: list[dict[str, Any]] | None = None, stream: bool = False,
+           max_output_tokens: int | None = None, on_text: Any = None, **extra: Any) -> Any:
+    """Run the task's primary contract, with an explicitly enabled ChatGPT plan route for bounded text tasks."""
+    from . import chatgpt_plan as plan, contracts, db
+    from .breakers import ProviderUnavailable, get as breaker_get
+
+    options = dict(system=system, messages=messages, tools=tools, stream=stream,
+                   max_output_tokens=max_output_tokens, on_text=on_text, **extra)
+    if (not plan.model_for(task) or current_policy() == "local_only" or not plan.ready()
+            or tools or stream or on_text is not None or extra or not messages or not contracts.contract(task).schema):
+        return _invoke_anthropic(task, **options)
+    if getattr(_policy_tl, "chatgpt_parallel", False):
+        return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason=None)
+    target, reason = route(task)
+    if target == "api" and db.account_gate_active():
+        return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="anthropic_account_limit")
+    from . import claude_code
+    if reason == "local_usage_limit" or (target == "local" and
+            claude_code.health_snapshot(model=claude_code.local_model_for(task)).get("state") == "usage_limit"):
+        return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="local_limit")
+    try:
+        return _invoke_anthropic(task, **options)
+    except ProviderError as exc:
+        if exc.error_type not in ("LOCAL_LIMIT", RATE_LIMIT, SPEND_CAP, BILLING):
+            raise
+        remember_anthropic_account_limit(exc)
+        fallback = exc.error_type.lower()
+    except ProviderUnavailable as exc:
+        if exc.operation != "anthropic:messages" or breaker_get(exc.operation).get("last_error_type") != RATE_LIMIT:
+            raise
+        fallback = "anthropic_rate_limit"
+    return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason=fallback)
+
+
+def remember_anthropic_account_limit(error: ProviderError) -> float | None:
+    """Keep the existing Anthropic account gate even when an alternate provider completes the task."""
+    from . import db
+
+    if error.error_type == BILLING:
+        from .jobs import BILLING_RETRY_SECONDS
+        until = time.time() + BILLING_RETRY_SECONDS
+        db.kv_set("providers:billing_until", str(until))
+        return until
+    if error.error_type == SPEND_CAP:
+        until = spend_cap_until(error.cause) or time.time() + 6 * 3600
+        db.kv_set("providers:spend_cap_until", str(until))
+        return until
+    return None
+
+
+def _invoke_anthropic(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None, tools: list[dict[str, Any]] | None = None,
            stream: bool = False, max_output_tokens: int | None = None, on_text: Any = None, **extra: Any) -> Any:
     """Run one logical inference for `task` under its InferenceContract: the contract chooses provider, model,
     output budget, thinking policy, timeout, transport retries and (Mission F) the enforced output schema; the call
@@ -600,7 +692,9 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
                 raise
             CC.note_failure(e.cause if isinstance(e.cause, CC.LocalUnavailable) else CC.LocalUnavailable("error", str(e.cause)),
                             model=CC.local_model_for(task))
-            if current_policy() == "local_only" or not settings.local_api_fallback:
+            from . import chatgpt_plan as plan
+            if (current_policy() == "local_only" or not settings.local_api_fallback
+                    or (e.error_type == "LOCAL_LIMIT" and plan.model_for(task) and plan.ready())):
                 _tl.route = {"executed_by": "none", "reason": reason, "fallback_reason": f"{e.error_type.lower()}: {str(e.cause)[:160]}"}
                 _accumulate_route()
                 raise
@@ -640,6 +734,16 @@ def policy_context(policy: str):
         yield
     finally:
         _policy_tl.policy = before
+
+
+@_contextlib.contextmanager
+def parallel_chatgpt():
+    before = getattr(_policy_tl, "chatgpt_parallel", False)
+    _policy_tl.chatgpt_parallel = True
+    try:
+        yield
+    finally:
+        _policy_tl.chatgpt_parallel = before
 
 
 def last_route() -> dict[str, Any]:

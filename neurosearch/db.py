@@ -3130,7 +3130,8 @@ def set_background_paused(paused: bool) -> dict[str, Any]:
 
 
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
-              exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None) -> dict[str, Any] | None:
+              exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None,
+              anthropic_alternates: tuple[str, ...] = ()) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
     Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
     L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
@@ -3179,8 +3180,12 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             # The ACCOUNT is walled (no credit, or the Console's own usage limit). Nothing that must use the API can
             # succeed, so nothing that must use the API is claimed. Unlike the rate ceiling this holds `api_only`
             # too: there is no cheaper way for that work to run, and claiming it only produces another 0.4 s refusal.
-            q += f" AND execution_policy NOT IN ({','.join('?' for _ in ACCOUNT_HELD_POLICIES)})"
+            q += f" AND (execution_policy NOT IN ({','.join('?' for _ in ACCOUNT_HELD_POLICIES)})"
             args += list(ACCOUNT_HELD_POLICIES)
+            if anthropic_alternates:
+                q += f" OR kind IN ({','.join('?' for _ in anthropic_alternates)})"
+                args += list(anthropic_alternates)
+            q += ")"
         if float(kv_get("usage:rate_blocked_until") or 0) > now():
             # The spend-RATE ceiling (usage.SPEND_RATE_CEILING). Holds paid background only: jobs whose execution
             # policy forces the API, and claim extraction. Chat, ingestion, transcription and every local job are

@@ -4281,3 +4281,38 @@ Evidence: `evals/release/reddit-loaded-review-{full,tier,release}-77cebfd-202611
 Preview: `/Users/kyleowen/.codex/visualizations/2026/11/10/01a1c7e0-07e6-7383-a531-b838fe475e1c/reddit-review-popup.png`.
 Chrome must reload the unpacked extension to activate 1.11.6. Browser preview and automated tests
 do not constitute installed-worker verification. No live ranking, ingestion or app restart performed.
+
+
+## ChatGPT plan routing pilot prepared — 2026-11-12
+
+Kyle requested automatic fallback when Claude Code or the Claude API reaches a limit, plus concurrent work.
+Base `47c246b`. Isolated branch `codex/chatgpt-plan-routing` at `/private/tmp/neuro-chatgpt-plan-routing`.
+This is a pilot pending live account and task-quality verification. Its settings default off.
+
+- The existing provider router can use a ChatGPT plan session for selected structured findings or library
+  profile calls. It recognizes Claude Code's limit and Anthropic API rate, credit and spend limits. A refusal,
+  validation error, or Neuro budget hold is not a reason to switch. Explicit local-only jobs stay local.
+- With parallel enabled and findings opted in, the first existing API worker can claim one ordinary findings
+  job when its API queue has no runnable work. Claude Code workers continue claiming distinct jobs. Both use
+  the ordinary atomic claim, leases, gates and persisted work units. One ChatGPT request can run at a time.
+- The Mac-local `chatgpt-connect` command opens the official OAuth consent flow, verifies identity and plan scope,
+  and saves a private renewable session under the configured data directory. The API key used for embeddings
+  is separate. Tests mock sign-in and inference. No user session was created during development.
+- `NEUROSEARCH_CHATGPT_PLAN_TASKS` is a comma-separated allowlist (pilot tasks: `library.profile`,
+  `findings.extract`). `NEUROSEARCH_CHATGPT_PLAN_PARALLEL` adds parallel findings dispatch when true. Leave
+  these settings unset until the account, preview response shape, and task quality have been checked.
+- The pilot candidate is GPT-6 Luna. The ChatGPT plan preview omits a request-side output cap. Neuro bounds
+  inputs, reserves estimated exposure against the existing spending valve, rejects oversized outputs, and
+  records the returned model and list-price equivalent as an estimate. This is not a hard provider charge cap.
+  The connected account's ChatGPT usage settings govern plan and credit use. Provider-specific waits are
+  attached to the existing job. The path does not use OpenAI API-key text inference.
+- Coverage is limited to ordinary structured calls for those two tasks. Claims, ranking, streaming chat,
+  Anthropic hosted tools and provider batches need their own compatibility and quality checks. No production
+  throughput, plan entitlement, structured-output compatibility or billing behavior has been measured.
+- References: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+  https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+  https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+  https://developers.openai.com/api/docs/models/gpt-6-luna
+
+Tests gate the existing job and invocation owners, not a second queue or accounting system. Final validation
+results follow. No live database, paid experiment, app activation or restart was used in this interval.

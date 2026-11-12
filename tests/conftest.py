@@ -19,6 +19,8 @@ os.environ["NEUROSEARCH_AI_PROFILE"] = "cloud"
 # requires off.  Collection must begin from the production-safe defaults;
 # individual tests opt into a flag explicitly when they exercise it.
 os.environ["NEUROSEARCH_PLANNER_V3"] = "0"
+os.environ["NEUROSEARCH_CHATGPT_PLAN_TASKS"] = ""
+os.environ["NEUROSEARCH_CHATGPT_PLAN_PARALLEL"] = "0"
 os.environ["NEUROSEARCH_FINDINGS_PREFILTER"] = "0"
 os.environ["NEUROSEARCH_RETRIEVAL_RERANK"] = "0"
 os.environ["NEUROSEARCH_CHAT_TAIL_BREAKPOINT"] = "0"

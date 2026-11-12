@@ -130,6 +130,9 @@ def work_unit_key(project: dict[str, Any], src: dict[str, Any], window: str, ind
         "facts_revision": db.facts_revision(project["id"]),
         "depth": depth,
     }
+    from . import chatgpt_plan
+    if (model := chatgpt_plan.model_for(c.task)) and providers.current_policy() != "local_only":
+        request["execution"]["chatgpt_plan_model"] = model
     return db._sha("work-unit-v1", request)
 
 
@@ -721,9 +724,13 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
                 skipped += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
+            from .chatgpt_plan import PlanWait, model_for
             from .jobs import Yield
+            from .providers import ProviderError
             from .usage import BudgetPaused
-            if isinstance(e, (Yield, BudgetPaused, ProviderUnavailable)):
+            if (isinstance(e, (Yield, BudgetPaused, ProviderUnavailable, PlanWait))
+                    or (model_for("findings.extract") and isinstance(e, ProviderError)
+                        and e.error_type in ("LOCAL_LIMIT", "RATE_LIMIT", "SPEND_CAP", "BILLING"))):
                 # L-12/L-14 (EXECUTION-LADDER.md): jobs.execute() already requeues THIS SAME job on any of these
                 # three -- immediate uncounted requeue for Yield, wait_reason='budget' + not_before for
                 # BudgetPaused, a provider-wait park for ProviderUnavailable -- preserving the job's full

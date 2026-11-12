@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 # USD per million tokens (input, output) — override with NEUROSEARCH_PRICES='{"model": [in, out]}'
 PRICES: dict[str, tuple[float, float]] = {
     "claude-sonnet-5": (2.0, 10.0), "claude-sonnet-4-6": (3.0, 15.0), "claude-sonnet-4-5": (3.0, 15.0), "claude-opus": (15.0, 75.0), "claude-haiku": (1.0, 5.0),
+    "gpt-6-luna": (0.10, 0.50),  # OpenAI standard list price, used as estimated exposure
     "text-embedding-3-small": (0.02, 0.0), "text-embedding-3-large": (0.13, 0.0),
 }
 WHISPER_PER_MINUTE = 0.006
@@ -206,6 +207,16 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
         searches = int(getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0)
     except Exception:  # noqa: BLE001
         pass
+    if getattr(resp, "provider", None) == "chatgpt_plan":
+        i = int(u.input_tokens or 0)
+        cached = min(i, int(u.cache_read_input_tokens or 0))
+        o = int(u.output_tokens or 0)
+        pin, pout = _price(resp.model)
+        estimated = round(((i - cached + cached * CACHE_READ_MULT) * pin + o * pout) / 1e6, 6)
+        return record(kind, resp.model, input_tokens=i - cached, output_tokens=o, cache_read=cached,
+                      project_id=project_id, source_id=source_id, cost=estimated, ts=ts,
+                      transport="chatgpt_plan", billing_basis="unknown", billing_plan="chatgpt",
+                      api_equivalent=estimated)
     if getattr(resp, "provider", None) == "claude_code":
         from . import claude_code as cc
         context = getattr(resp, "billing_context", None) or cc.billing_context()

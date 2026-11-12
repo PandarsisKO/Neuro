@@ -526,6 +526,13 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             log.info("job %s requires the browser (%s/%s)", jid[:8], af.adapter, af.cls)
             return "external_pending"
         pe = e if isinstance(e, _PE) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), _PE) else None)
+        from .chatgpt_plan import PlanWait
+        if isinstance(e, PlanWait):
+            _record_execution(jid)
+            db.requeue_job(jid, delay=e.wait, wait_reason="provider", message=f"paused: {e}")
+            if sid:
+                db.set_source_status(sid, "pending")
+            return "queued"
         if pe is not None and pe.error_type in providers.LOCAL_TYPES:
             _record_execution(jid)
             db.requeue_job(jid, delay=60, wait_reason="provider",
@@ -537,8 +544,7 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             # the account's credit balance, not a rate/usage cap — this will not clear itself on a schedule the way
             # SPEND_CAP's stated date does, so this parks (0 attempts, $0) and retries on a fixed interval; a plain
             # banner beats a raw SDK exception as the job's message, and one banner beats N sources failing alike.
-            until = time.time() + BILLING_RETRY_SECONDS
-            db.kv_set("providers:billing_until", str(until))
+            providers.remember_anthropic_account_limit(pe)
             db.requeue_job(jid, delay=BILLING_RETRY_SECONDS, wait_reason="budget",
                            message="paused: the Anthropic account's credit balance is too low — add credits in Plans & Billing to continue. Nothing is lost; this resumes automatically once credits are added.")
             if sid:
@@ -547,10 +553,8 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         if pe is not None and pe.error_type == "SPEND_CAP":
             # the ACCOUNT's usage limit (Anthropic Console), not Neuro Search's budget: nothing retries until the date it names.
             # The job waits (0 attempts, $0) like a budget pause, and the whole app can show one banner instead of N failures.
-            from .providers import spend_cap_until
-            until = spend_cap_until(pe.cause) or (time.time() + 6 * 3600)
+            until = providers.remember_anthropic_account_limit(pe)
             when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(until))
-            db.kv_set("providers:spend_cap_until", str(until))
             db.requeue_job(jid, delay=max(60, min(until - time.time(), 30 * 24 * 3600)), wait_reason="budget",
                            message=f"paused: the Anthropic account's usage limit is reached — access returns {when}. Raise the limit in the Anthropic Console to continue sooner.")
             if sid:
@@ -614,16 +618,28 @@ API_POLICIES = ("api_requested", "api_only")
 
 
 def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None,
-            lanes: tuple[str, ...] | None = None) -> None:
+            lanes: tuple[str, ...] | None = None, chatgpt_overflow: bool = False) -> None:
+    from . import chatgpt_plan as plan
+
     wid = _worker_id(n)
     log.info("worker %s started%s%s%s", n, f" ({', '.join(kinds)})" if kinds else "", f" [{'/'.join(policies)}]" if policies else "", f" lanes {'/'.join(lanes)}" if lanes else "")
     while not _stop.is_set():
-        job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes)
+        alternates = ("suggest_findings",) if plan.model_for("findings.extract") and plan.ready() else ()
+        job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
+                           **({"anthropic_alternates": alternates} if alternates else {}))
+        parallel = False
+        if not job and chatgpt_overflow and alternates and settings.chatgpt_plan_parallel:
+            job = db.claim_job(alternates, worker_id=wid, policies=("local_preferred",), lanes=lanes)
+            parallel = bool(job)
         if not job:
             _stop.wait(1.5)
             continue
         logctx.clear()
-        st = execute(job, wid)
+        if parallel:
+            with providers.parallel_chatgpt():
+                st = execute(job, wid)
+        else:
+            st = execute(job, wid)
         if st == "queued":
             _stop.wait(2)
 
@@ -724,7 +740,7 @@ def _start_workers(n: int | None = None) -> None:
         # findings jobs ran this pool. Nothing about spend changes — the rate ceiling, budgets and account gates
         # are what bound cost, and a thread count was never the right instrument for it.
         for i in range(max(1, settings.api_ai_workers)):
-            t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (f"api-{i}", ANALYSIS_KINDS), {"policies": API_POLICIES}),
+            t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (f"api-{i}", ANALYSIS_KINDS), {"policies": API_POLICIES, **({"chatgpt_overflow": True} if i == 0 and settings.chatgpt_plan_parallel else {})}),
                                  daemon=True, name=f"ns-worker-api-ai-{i}")
             t.start()
             _threads.append(t)

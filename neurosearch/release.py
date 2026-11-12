@@ -32,6 +32,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # every experimental / rollback flag and the default the release requires — the inventory lives in HARDENING.md
 EXPERIMENTAL_FLAGS: dict[str, dict[str, Any]] = {
+    "NEUROSEARCH_CHATGPT_PLAN_TASKS": {"attr": "chatgpt_plan_tasks", "safe": False, "status": "pilot only"},
+    "NEUROSEARCH_CHATGPT_PLAN_PARALLEL": {"attr": "chatgpt_plan_parallel", "safe": False, "status": "pilot only"},
     "NEUROSEARCH_PLANNER_V3": {"attr": "planner_v3", "safe": False, "status": "not promoted"},
     "NEUROSEARCH_FINDINGS_PREFILTER": {"attr": "findings_prefilter", "safe": False, "status": "deferred (economics)"},
     "NEUROSEARCH_RETRIEVAL_RERANK": {"attr": "retrieval_rerank", "safe": False, "status": "killed (measured live)"},

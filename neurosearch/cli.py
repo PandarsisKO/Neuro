@@ -56,6 +56,16 @@ def start(port: int = 8000) -> None:
     serve(port=port, reload=True)
 
 
+@app.command("chatgpt-connect")
+def chatgpt_connect() -> None:
+    """Connect the Mac's ChatGPT plan with browser consent. Does not start model work."""
+    from . import chatgpt_plan
+    if settings.fake_ai:
+        raise typer.BadParameter("Use a real local profile to connect ChatGPT.")
+    chatgpt_plan.connect()
+    typer.echo("ChatGPT plan connected. Manage usage in ChatGPT Settings → Usage.")
+
+
 @app.command()
 def ingest(
     urls: list[str] = typer.Argument(..., help="Video / playlist / channel / podcast / Instagram / audio URLs"),

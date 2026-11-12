@@ -120,7 +120,7 @@ def estimated_share(start: float, project_id: str | None = None, billed: bool | 
     """How much of the window's charge is a token-priced estimate (the local path) rather than a metered API call.
     A ratio built on estimates is still worth having — it is what caught the missing $200 — but it must say so."""
     q = (f"SELECT COALESCE(SUM({charged_expr(billed)}),0) total, "
-         f"COALESCE(SUM(CASE WHEN transport='local' THEN {charged_expr(billed)} ELSE 0 END),0) local "
+         f"COALESCE(SUM(CASE WHEN transport IN ('local','chatgpt_plan') THEN {charged_expr(billed)} ELSE 0 END),0) local "
          "FROM usage WHERE ts>=?")
     args: list[Any] = [start]
     if project_id:
