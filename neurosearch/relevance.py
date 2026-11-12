@@ -306,12 +306,13 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
             res = _call(SYSTEM, user, project_id, collection_id, head=head)
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
-            from .chatgpt_plan import PlanWait
-            from .providers import LOCAL_TYPES, ProviderError
+            from .chatgpt_plan import PlanWait, model_for
+            from .providers import BILLING, LOCAL_TYPES, RATE_LIMIT, SPEND_CAP, ProviderError
             from .usage import BudgetPaused
             if isinstance(e, (BudgetPaused, ProviderUnavailable, PlanWait)):
                 raise
-            if isinstance(e, ProviderError) and e.error_type in LOCAL_TYPES:
+            if isinstance(e, ProviderError) and (e.error_type in LOCAL_TYPES or (model_for("rank.relevance")
+                    and e.error_type in (BILLING, RATE_LIMIT, SPEND_CAP))):
                 # 2026-09-23 (Kyle: "stuck in a loop of starting and stopping the ranking"). The local CLI was not
                 # reachable at all (`claude` not on the LaunchAgent's PATH), so every batch failed in milliseconds,
                 # nothing was persisted, and the run reached the yield below with zero progress -- requeued at once,
