@@ -230,7 +230,9 @@
   .src .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;position:relative}
   .job{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
   .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
-  .job-progress{position:relative;flex:1;min-width:60px}
+  .job-progress-detail{flex:2;min-width:210px;display:grid;gap:4px;overflow-wrap:anywhere}
+  .job-progress{position:relative}
+  @media (max-width:720px){.job-progress-detail{order:1;flex:1 0 100%;min-width:0}}
   .job-progress-active::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.45;animation:job-progress-sweep 1.8s linear infinite}
   @keyframes job-progress-sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
   @media (prefers-reduced-motion:reduce){.job-progress-active::after{animation:none;opacity:.25}}
