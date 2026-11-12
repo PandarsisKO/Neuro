@@ -137,3 +137,26 @@ def test_accelerating_gives_the_api_worker_something_to_claim(queued, monkeypatc
     p = jobs.backlog(None)["pools"]
     assert p["api_queued"] == 30 and p["local_queued"] == 0
     assert p["api_idle_by_construction"] is False
+
+
+def test_accelerate_prices_remaining_claim_groups_without_source_ids(queued):
+    from neurosearch import claims
+
+    pid = db.create_project("Claims pricing", "Estimate this research backlog")["id"]
+    rows = [claims.add_claim(pid, f"Candidate {i} for a financial forecasting method")
+            for i in range(claims.EXTRACT_GROUP * 2 + 1)]
+    done = claims.add_claim(pid, "Already processed", normalized=True)
+    db.add_project_note(pid, "One pending finding with no Claims link yet", status="approved")
+    db.add_project_note(pid, "Gap: no evidence", status="approved")
+    priority = db.create_job("extract_claims", {"project_id": pid, "claim_ids": [rows[0]["id"], done["id"]]},
+                             lane="priority")
+    bulk = db.create_job("extract_claims", {"project_id": pid}, lane="slow")
+    backlog = jobs.backlog(pid)
+    by_id = {row["id"]: row for row in backlog["jobs"]}
+    assert by_id[priority["id"]]["windows"] == 1
+    assert by_id[bulk["id"]]["windows"] == 3
+    assert by_id[bulk["id"]]["api_cost"] > by_id[priority["id"]]["api_cost"] > 0
+    quote = next(o for o in backlog["options"] if o["key"] == "all")
+    assert db.get_job(priority["id"])["execution_policy"] == "local_preferred"
+    assert jobs.accelerate(pid, option="all")["api_cost"] == quote["api_cost"]
+    assert db.get_job(bulk["id"])["execution_policy"] == "api_requested"

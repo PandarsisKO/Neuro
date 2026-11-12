@@ -868,8 +868,7 @@ globalThis.jobLabel = function jobLabel(j) {
   if (j.kind === 'ingest_source') return 'transcript · ' + what;
   if (j.kind === 'refresh_skipped_metadata') return 'refreshing skipped info · ' + what;
   if (j.kind === 'bootstrap_scan') return 'searching research you already have';
-  // Two extract passes can legitimately run side by side (a paid fast pass over a few important claims, and the
-  // bulk pass); with one label they looked like a duplicate (Kyle's screenshot, 2026-09-29), so each says which it is.
+  // Identify the bounded priority Claims pass and the bulk pass separately.
   if (j.kind === 'extract_claims') return j.payload?.evaluation ? 'checking claim quality' : j.payload?.claim_ids ? 'finding claims to track · the important few first' : 'finding claims to track · the rest';
   if (j.kind === 'harvest_claims') return 'collecting claims from new findings ($0)';
   if (j.kind === 'refresh_research') return 'bringing the research state up to date';

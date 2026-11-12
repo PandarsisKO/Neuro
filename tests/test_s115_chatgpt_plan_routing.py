@@ -347,3 +347,62 @@ def test_stream_uses_plan_token_and_requires_terminal_event(monkeypatch):
     actual = plan.create(body=request, model=plan.MODEL, max_tokens=100, timeout=5)
     assert actual.model == plan.MODEL and actual.usage.cache_read_input_tokens == 5
     assert providers.structured(TASK, actual) == RESULT
+
+
+def test_claims_uses_chatgpt_first_on_local_failure_and_saves_provenance(calls, monkeypatch):
+    from neurosearch import claims
+
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", ("claims.extract",))
+    # Even an installation that has enabled paid fallback should try its opted-in plan first.
+    monkeypatch.setattr(settings, "local_api_fallback", True)
+    pid = db.create_project("Warehouse study", "Check trial conditions")["id"]
+    claim = claims.add_claim(pid, "One 2025 trial may apply to dry warehouses only.")
+
+    def local_unavailable(**kw):
+        calls.append("claude")
+        raise claude.LocalUnavailable("not_signed_in", "Fixture Claude session is unavailable")
+
+    def extract(**kw):
+        calls.append("chatgpt")
+        request = json.loads(kw["body"]["input"][0]["content"])
+        assert request["candidates"][0]["id"] == claim["id"]
+        msg = response(plan.MODEL)
+        msg.content[0].text = json.dumps({"claims": [{
+            "id": claim["id"], "text": claim["text"], "claim_type": "causal",
+            "qualifiers": {"jurisdiction": "", "product": "", "population": "warehouses",
+                           "conditions": "dry", "timeframe": "2025", "source_language": "may",
+                           "imposed_by": "", "specific_instance": False},
+            "topic": "warehouse trials", "freshness_class": "historical", "merge_into": None,
+        }], "targets": [], "missing_areas": []})
+        return msg
+
+    monkeypatch.setattr(claude, "create", local_unavailable)
+    monkeypatch.setattr(plan, "create", extract)
+    job = db.create_job("extract_claims", {"project_id": pid, "claim_ids": [claim["id"]]})
+    assert jobs.execute(db.claim_job(("extract_claims",))) == "done"
+    stored = claims.get(claim["id"])
+    assert stored["normalized"] and stored["status"] == "proposed"
+    assert stored["qualifiers"]["conditions"] == "dry"
+    assert stored["routing"]["provider"] == "chatgpt_plan"
+    assert db.get_job(job["id"])["execution_policy"] == "local_preferred"
+    assert calls == ["claude", "chatgpt"]
+
+
+def test_claims_waits_when_the_plan_is_unavailable_without_paid_opt_in(calls, monkeypatch):
+    from neurosearch import claims
+
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", ("claims.extract",))
+    monkeypatch.setattr(plan, "ready", lambda: False)
+    pid = db.create_project("Awaiting claims")["id"]
+    claim = claims.add_claim(pid, "One test case in one warehouse")
+
+    def local_limit(**kw):
+        calls.append("claude")
+        raise claude.LocalLimit("Usage limit")
+
+    monkeypatch.setattr(claude, "create", local_limit)
+    job = db.create_job("extract_claims", {"project_id": pid, "claim_ids": [claim["id"]]})
+    assert jobs.execute(db.claim_job(("extract_claims",))) == "queued"
+    assert db.get_job(job["id"])["wait_reason"] == "provider"
+    assert db.get_job(job["id"])["execution_policy"] == "local_preferred"
+    assert calls == ["claude"]

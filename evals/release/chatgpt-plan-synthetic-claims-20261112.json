@@ -1,0 +1,706 @@
+{
+  "task": "claims.extract",
+  "schema": "claim-set-v1",
+  "fixture": "synthetic",
+  "status": "pass",
+  "groups": [
+    {
+      "domain": "Business acquisition",
+      "input": [
+        {
+          "id": "a1",
+          "text": "A 2025 listing for a California bookkeeping practice says the seller requires a CPA buyer.",
+          "guessed_type": "practice",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "A 2025 listing for a California bookkeeping practice says the seller requires a CPA buyer."
+            }
+          ]
+        },
+        {
+          "id": "a2",
+          "text": "The seller of a California bookkeeping practice listed in 2025 requires a buyer who is a CPA.",
+          "guessed_type": "practice",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "The seller of a California bookkeeping practice listed in 2025 requires a buyer who is a CPA."
+            }
+          ]
+        },
+        {
+          "id": "a3",
+          "text": "In Nevada, one bookkeeping practice seller preferred a CPA buyer in a 2025 listing but considered non-CPAs.",
+          "guessed_type": "practice",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "In Nevada, one bookkeeping practice seller preferred a CPA buyer in a 2025 listing but considered non-CPAs."
+            }
+          ]
+        },
+        {
+          "id": "a4",
+          "text": "Some lenders may accept partial seller-note standby on an acquisition loan when their credit committee approves an exception.",
+          "guessed_type": "practice",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "Some lenders may accept partial seller-note standby on an acquisition loan when their credit committee approves an exception."
+            }
+          ]
+        },
+        {
+          "id": "a5",
+          "text": "In its January 2025 policy, Lender A required full seller-note standby for acquisition loans under $500,000.",
+          "guessed_type": "practice",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "In its January 2025 policy, Lender A required full seller-note standby for acquisition loans under $500,000."
+            }
+          ]
+        },
+        {
+          "id": "a6",
+          "text": "In January 2025, Lender A allowed partial seller-note standby for acquisition loans above $500,000.",
+          "guessed_type": "practice",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "In January 2025, Lender A allowed partial seller-note standby for acquisition loans above $500,000."
+            }
+          ]
+        },
+        {
+          "id": "a7",
+          "text": "One buyer reported retaining 90 percent of clients after a six-month seller transition at a single tax practice in Ohio in 2024.",
+          "guessed_type": "experiential",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "One buyer reported retaining 90 percent of clients after a six-month seller transition at a single tax practice in Ohio in 2024."
+            }
+          ]
+        },
+        {
+          "id": "a8",
+          "text": "A March 2025 listing asked 2.2 times seller discretionary earnings for a single bookkeeping practice in Texas.",
+          "guessed_type": "market",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "A March 2025 listing asked 2.2 times seller discretionary earnings for a single bookkeeping practice in Texas."
+            }
+          ]
+        }
+      ],
+      "expected_twins": [
+        "a1",
+        "a2"
+      ],
+      "required_terms": {
+        "a1": [
+          "2025",
+          "california",
+          "seller",
+          "cpa"
+        ],
+        "a2": [
+          "2025",
+          "california",
+          "seller",
+          "cpa"
+        ],
+        "a3": [
+          "nevada",
+          "2025",
+          "non",
+          "preferred"
+        ],
+        "a4": [
+          "partial",
+          "credit committee",
+          "may|some|can"
+        ],
+        "a5": [
+          "january 2025",
+          "500,?000",
+          "full",
+          "lender a"
+        ],
+        "a6": [
+          "january 2025",
+          "500,?000",
+          "partial",
+          "above|over"
+        ],
+        "a7": [
+          "90",
+          "six.month|6.month",
+          "ohio",
+          "2024"
+        ],
+        "a8": [
+          "march 2025",
+          "2.2",
+          "texas",
+          "seller discretionary earnings"
+        ]
+      },
+      "model": "gpt-6-luna",
+      "input_tokens": 1872,
+      "output_tokens": 1373,
+      "seconds": 30.5,
+      "failures": [],
+      "result": {
+        "claims": [
+          {
+            "id": "a1",
+            "text": "A 2025 listing for a bookkeeping practice in California stated that the seller required a CPA buyer; this is a seller/listing requirement in that specific instance, not evidence of a general legal or professional-licensing requirement.",
+            "claim_type": "historical",
+            "qualifiers": {
+              "jurisdiction": "California",
+              "product": "bookkeeping practice",
+              "population": "buyers of the listed practice",
+              "conditions": "The listing stated the seller required a CPA buyer; scope beyond this listing is not established.",
+              "timeframe": "2025 listing",
+              "source_language": "English",
+              "imposed_by": "seller_or_listing",
+              "specific_instance": true
+            },
+            "topic": "Buyer Requirements",
+            "freshness_class": "historical",
+            "merge_into": null
+          },
+          {
+            "id": "a2",
+            "text": "The seller of a bookkeeping practice listed in California in 2025 required the buyer to be a CPA; this describes that seller's requirement, not a general legal or professional-licensing rule.",
+            "claim_type": "historical",
+            "qualifiers": {
+              "jurisdiction": "California",
+              "product": "bookkeeping practice",
+              "population": "buyer of the listed practice",
+              "conditions": "Requirement attributed to the seller; scope beyond this listing is not established.",
+              "timeframe": "2025 listing",
+              "source_language": "English",
+              "imposed_by": "seller_or_listing",
+              "specific_instance": true
+            },
+            "topic": "Buyer Requirements",
+            "freshness_class": "historical",
+            "merge_into": "a1"
+          },
+          {
+            "id": "a3",
+            "text": "In a 2025 listing for one bookkeeping practice in Nevada, the seller preferred a CPA buyer but would consider non-CPAs; this is a seller preference in that instance, not evidence of a general requirement.",
+            "claim_type": "historical",
+            "qualifiers": {
+              "jurisdiction": "Nevada",
+              "product": "bookkeeping practice",
+              "population": "prospective buyers of one listed practice",
+              "conditions": "Seller preferred a CPA buyer but considered non-CPAs.",
+              "timeframe": "2025 listing",
+              "source_language": "English",
+              "imposed_by": "seller_or_listing",
+              "specific_instance": true
+            },
+            "topic": "Buyer Requirements",
+            "freshness_class": "historical",
+            "merge_into": null
+          },
+          {
+            "id": "a4",
+            "text": "Some lenders may accept partial seller-note standby on an acquisition loan when their credit committee approves an exception; the claim does not establish how common this is or that all lenders permit it.",
+            "claim_type": "practice",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "acquisition loan with seller-note standby",
+              "population": "some lenders",
+              "conditions": "Possible acceptance of partial standby depends on credit committee approval of an exception.",
+              "timeframe": "",
+              "source_language": "English",
+              "imposed_by": "lender_policy",
+              "specific_instance": false
+            },
+            "topic": "Acquisition Financing",
+            "freshness_class": "underwriting_practice",
+            "merge_into": null
+          },
+          {
+            "id": "a5",
+            "text": "Under its January 2025 policy, Lender A required full seller-note standby for acquisition loans under $500,000.",
+            "claim_type": "historical",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "acquisition loans under $500,000",
+              "population": "Lender A",
+              "conditions": "Requirement under the cited policy; no broader lender practice is established.",
+              "timeframe": "January 2025 policy",
+              "source_language": "English",
+              "imposed_by": "lender_policy",
+              "specific_instance": true
+            },
+            "topic": "Acquisition Financing",
+            "freshness_class": "underwriting_practice",
+            "merge_into": null
+          },
+          {
+            "id": "a6",
+            "text": "In January 2025, Lender A allowed partial seller-note standby for acquisition loans above $500,000.",
+            "claim_type": "historical",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "acquisition loans above $500,000",
+              "population": "Lender A",
+              "conditions": "The policy's stated allowance; no broader lender practice is established.",
+              "timeframe": "January 2025",
+              "source_language": "English",
+              "imposed_by": "lender_policy",
+              "specific_instance": true
+            },
+            "topic": "Acquisition Financing",
+            "freshness_class": "underwriting_practice",
+            "merge_into": null
+          },
+          {
+            "id": "a7",
+            "text": "One buyer reported retaining 90 percent of clients after a six-month seller transition at a single tax practice in Ohio in 2024; this is a single reported experience and does not establish typical retention.",
+            "claim_type": "experiential",
+            "qualifiers": {
+              "jurisdiction": "Ohio",
+              "product": "tax practice",
+              "population": "clients of a single acquired practice",
+              "conditions": "One buyer's report following a six-month seller transition; retention measure and verification are not further specified.",
+              "timeframe": "2024; six-month seller transition",
+              "source_language": "English",
+              "imposed_by": "",
+              "specific_instance": true
+            },
+            "topic": "Client Retention",
+            "freshness_class": "experiential",
+            "merge_into": null
+          },
+          {
+            "id": "a8",
+            "text": "A March 2025 listing for one bookkeeping practice in Texas asked 2.2 times seller discretionary earnings; this is an asking multiple for a specific listing, not evidence of a sale price or market-wide multiple.",
+            "claim_type": "market",
+            "qualifiers": {
+              "jurisdiction": "Texas",
+              "product": "bookkeeping practice",
+              "population": "one listed practice",
+              "conditions": "Asking multiple; completed transaction price is not stated.",
+              "timeframe": "March 2025 listing",
+              "source_language": "English",
+              "imposed_by": "",
+              "specific_instance": true
+            },
+            "topic": "Business Valuation",
+            "freshness_class": "rates_pricing",
+            "merge_into": null
+          }
+        ],
+        "targets": [
+          {
+            "question": "For acquisition of bookkeeping or tax practices, what requirements or restrictions may govern buyer eligibility, and which arise from seller/listing preferences, legal ownership rules, professional licensing rules, or rules governing specific services?",
+            "topic": "Buyer Requirements",
+            "sufficiency": "corroborative",
+            "preferred_classes": [
+              "authoritative",
+              "expert",
+              "market"
+            ],
+            "closure": "Separate seller-specific conditions from applicable legal ownership, professional-licensing, and service-performance rules for the relevant jurisdiction and practice activities, using current primary rules for any legal conclusions and clearly scoped evidence for seller preferences."
+          },
+          {
+            "question": "What current lender policies govern seller-note standby for acquisition loans, including whether full or partial standby is required or allowed and how loan size or exceptions affect the policy?",
+            "topic": "Acquisition Financing",
+            "sufficiency": "corroborative",
+            "preferred_classes": [
+              "authoritative",
+              "expert",
+              "market"
+            ],
+            "closure": "Establish the applicable current policy for each lender and loan program, including thresholds and exception authority, without generalizing one lender's terms to others."
+          },
+          {
+            "question": "What evidence supports typical client retention after acquisition of small tax or bookkeeping practices, and how do seller transition length and other conditions relate to retention?",
+            "topic": "Client Retention",
+            "sufficiency": "corroborative",
+            "preferred_classes": [
+              "expert",
+              "experiential"
+            ],
+            "closure": "Use multiple independent, sufficiently described practice-level accounts or studies to characterize retention and its variation by transition conditions; a single buyer report is not enough to establish a typical outcome."
+          }
+        ],
+        "missing_areas": []
+      }
+    },
+    {
+      "domain": "Building operations",
+      "input": [
+        {
+          "id": "b1",
+          "text": "A 2024 trial found that nighttime ventilation lowered peak indoor temperatures by 2 C in dry climates, when windows remained open all night.",
+          "guessed_type": "causal",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "A 2024 trial found that nighttime ventilation lowered peak indoor temperatures by 2 C in dry climates, when windows remained open all night."
+            }
+          ]
+        },
+        {
+          "id": "b2",
+          "text": "In a 2024 trial, overnight ventilation reduced peak indoor temperature by 2 C in dry climates with windows open all night.",
+          "guessed_type": "causal",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "In a 2024 trial, overnight ventilation reduced peak indoor temperature by 2 C in dry climates with windows open all night."
+            }
+          ]
+        },
+        {
+          "id": "b3",
+          "text": "In the 2024 humid-climate arm with windows open all night, nighttime ventilation did not lower peak indoor temperatures.",
+          "guessed_type": "causal",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "In the 2024 humid-climate arm with windows open all night, nighttime ventilation did not lower peak indoor temperatures."
+            }
+          ]
+        },
+        {
+          "id": "b4",
+          "text": "A January 2025 building operator log says that two occupied offices in Oregon kept windows closed overnight during smoke alerts.",
+          "guessed_type": "historical",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "A January 2025 building operator log says that two occupied offices in Oregon kept windows closed overnight during smoke alerts."
+            }
+          ]
+        },
+        {
+          "id": "b5",
+          "text": "The manufacturer requires filter replacement every 90 days on model K2 under normal use in the United States.",
+          "guessed_type": "governing",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "The manufacturer requires filter replacement every 90 days on model K2 under normal use in the United States."
+            }
+          ]
+        },
+        {
+          "id": "b6",
+          "text": "A supplier quoted $340 for one replacement filter in Denver in May 2025, excluding installation.",
+          "guessed_type": "market",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "A supplier quoted $340 for one replacement filter in Denver in May 2025, excluding installation."
+            }
+          ]
+        },
+        {
+          "id": "b7",
+          "text": "One technician said the model K2 filter may clog earlier in workshops that generate fine dust.",
+          "guessed_type": "experiential",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "One technician said the model K2 filter may clog earlier in workshops that generate fine dust."
+            }
+          ]
+        },
+        {
+          "id": "b8",
+          "text": "An engineer suggested that air curtains could reduce dust ingress at doors left open for frequent deliveries, pending a site trial.",
+          "guessed_type": "expert_interpretation",
+          "evidence": [
+            {
+              "source": "Synthetic pilot",
+              "class": "historical",
+              "locator": "p. 1",
+              "passage": "An engineer suggested that air curtains could reduce dust ingress at doors left open for frequent deliveries, pending a site trial."
+            }
+          ]
+        }
+      ],
+      "expected_twins": [
+        "b1",
+        "b2"
+      ],
+      "required_terms": {
+        "b1": [
+          "2024",
+          "2",
+          "dry",
+          "all night|throughout the night"
+        ],
+        "b2": [
+          "2024",
+          "2",
+          "dry",
+          "all night|throughout the night"
+        ],
+        "b3": [
+          "2024",
+          "humid",
+          "did not|no reduction|no decrease",
+          "all night|throughout the night"
+        ],
+        "b4": [
+          "january 2025",
+          "two|2",
+          "oregon",
+          "smoke"
+        ],
+        "b5": [
+          "90 days",
+          "k2",
+          "normal use",
+          "manufacturer"
+        ],
+        "b6": [
+          "340",
+          "denver",
+          "may 2025",
+          "excluding|without"
+        ],
+        "b7": [
+          "k2",
+          "may|can|might",
+          "dust",
+          "earlier|faster|sooner"
+        ],
+        "b8": [
+          "could|may|might",
+          "dust",
+          "deliver",
+          "trial"
+        ]
+      },
+      "model": "gpt-6-luna",
+      "input_tokens": 1887,
+      "output_tokens": 1100,
+      "seconds": 21.13,
+      "failures": [],
+      "result": {
+        "claims": [
+          {
+            "id": "b1",
+            "text": "A 2024 trial found that nighttime ventilation lowered peak indoor temperatures by 2°C in dry climates when windows remained open all night.",
+            "claim_type": "causal",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "",
+              "population": "",
+              "conditions": "Dry climates; windows remained open all night.",
+              "timeframe": "2024 trial",
+              "source_language": "“found that”",
+              "imposed_by": "",
+              "specific_instance": false
+            },
+            "topic": "Ventilation and temperature",
+            "freshness_class": "historical",
+            "merge_into": null
+          },
+          {
+            "id": "b2",
+            "text": "In a 2024 trial, overnight ventilation reduced peak indoor temperature by 2°C in dry climates with windows open all night.",
+            "claim_type": "causal",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "",
+              "population": "",
+              "conditions": "Dry climates; windows open all night.",
+              "timeframe": "2024 trial",
+              "source_language": "“reduced”",
+              "imposed_by": "",
+              "specific_instance": false
+            },
+            "topic": "Ventilation and temperature",
+            "freshness_class": "historical",
+            "merge_into": "b1"
+          },
+          {
+            "id": "b3",
+            "text": "In the 2024 humid-climate arm, nighttime ventilation did not lower peak indoor temperatures when windows were open all night.",
+            "claim_type": "causal",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "",
+              "population": "",
+              "conditions": "Humid-climate arm; windows open all night.",
+              "timeframe": "2024",
+              "source_language": "“did not lower”",
+              "imposed_by": "",
+              "specific_instance": false
+            },
+            "topic": "Ventilation and temperature",
+            "freshness_class": "historical",
+            "merge_into": null
+          },
+          {
+            "id": "b4",
+            "text": "A January 2025 building operator log says that two occupied offices in Oregon kept windows closed overnight during smoke alerts.",
+            "claim_type": "historical",
+            "qualifiers": {
+              "jurisdiction": "Oregon",
+              "product": "",
+              "population": "Two occupied offices",
+              "conditions": "During smoke alerts; windows closed overnight.",
+              "timeframe": "January 2025",
+              "source_language": "“says”",
+              "imposed_by": "",
+              "specific_instance": true
+            },
+            "topic": "Building operations",
+            "freshness_class": "historical",
+            "merge_into": null
+          },
+          {
+            "id": "b5",
+            "text": "The manufacturer requires replacement of the filter every 90 days on model K2 under normal use in the United States.",
+            "claim_type": "governing",
+            "qualifiers": {
+              "jurisdiction": "United States",
+              "product": "Model K2 filter",
+              "population": "",
+              "conditions": "Under normal use.",
+              "timeframe": "Every 90 days",
+              "source_language": "“requires”",
+              "imposed_by": "unclear",
+              "specific_instance": false
+            },
+            "topic": "Filter maintenance",
+            "freshness_class": "operational",
+            "merge_into": null
+          },
+          {
+            "id": "b6",
+            "text": "A supplier quoted $340 for one replacement filter in Denver in May 2025, excluding installation.",
+            "claim_type": "market",
+            "qualifiers": {
+              "jurisdiction": "Denver",
+              "product": "One replacement filter",
+              "population": "",
+              "conditions": "Installation excluded.",
+              "timeframe": "May 2025",
+              "source_language": "“quoted”",
+              "imposed_by": "",
+              "specific_instance": true
+            },
+            "topic": "Filter pricing",
+            "freshness_class": "rates_pricing",
+            "merge_into": null
+          },
+          {
+            "id": "b7",
+            "text": "One technician said the model K2 filter may clog earlier in workshops that generate fine dust.",
+            "claim_type": "experiential",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "Model K2 filter",
+              "population": "One technician",
+              "conditions": "Workshops that generate fine dust; may clog earlier.",
+              "timeframe": "",
+              "source_language": "“said” and “may”",
+              "imposed_by": "",
+              "specific_instance": false
+            },
+            "topic": "Filter maintenance",
+            "freshness_class": "experiential",
+            "merge_into": null
+          },
+          {
+            "id": "b8",
+            "text": "An engineer suggested that air curtains could reduce dust ingress at doors left open for frequent deliveries, pending a site trial.",
+            "claim_type": "expert_interpretation",
+            "qualifiers": {
+              "jurisdiction": "",
+              "product": "Air curtains",
+              "population": "",
+              "conditions": "Doors left open for frequent deliveries; reduction in dust ingress remains pending a site trial.",
+              "timeframe": "",
+              "source_language": "“suggested” and “could”",
+              "imposed_by": "",
+              "specific_instance": false
+            },
+            "topic": "Dust control",
+            "freshness_class": "uncertain",
+            "merge_into": null
+          }
+        ],
+        "targets": [
+          {
+            "question": "For model K2 in the United States, what filter replacement interval does the applicable manufacturer documentation specify, and is it a recommendation, warranty condition, or other binding requirement?",
+            "topic": "Filter maintenance",
+            "sufficiency": "governing",
+            "preferred_classes": [
+              "authoritative"
+            ],
+            "closure": "A current, model-specific manufacturer manual or warranty document establishes the interval and clarifies the status and conditions of the stated requirement."
+          },
+          {
+            "question": "What are the measured effects of nighttime ventilation on peak indoor temperatures across dry and humid climates, and under what trial conditions do those effects hold?",
+            "topic": "Ventilation and temperature",
+            "sufficiency": "corroborative",
+            "preferred_classes": [
+              "expert",
+              "historical"
+            ],
+            "closure": "Independent trial or technical evidence establishes the direction and magnitude of effects by climate and specifies relevant operating conditions, including overnight window status."
+          },
+          {
+            "question": "Under what building conditions can air curtains reduce dust ingress at frequently used open delivery doors, and what site evidence is needed to assess their effectiveness?",
+            "topic": "Dust control",
+            "sufficiency": "corroborative",
+            "preferred_classes": [
+              "expert",
+              "experiential"
+            ],
+            "closure": "Independent technical findings and site measurements establish whether and under which conditions air curtains reduce dust ingress at such doors."
+          }
+        ],
+        "missing_areas": []
+      }
+    }
+  ]
+}

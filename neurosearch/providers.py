@@ -601,22 +601,30 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     if target == "api" and db.account_gate_active():
         return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="anthropic_account_limit")
     from . import claude_code
-    if reason == "local_usage_limit" or (target == "local" and
-            claude_code.health_snapshot(model=claude_code.local_model_for(task)).get("state") == "usage_limit"):
+    local_state = (claude_code.health_snapshot(model=claude_code.local_model_for(task)).get("state")
+                   if target == "local" else reason.removeprefix("local_"))
+    if local_state == "usage_limit":
         return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="local_limit")
+    if task == "claims.extract" and local_state in ("error", "not_installed", "not_signed_in"):
+        return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="local_unavailable")
     if target == "api" and not anthropic_available():
         return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason="anthropic_api_not_configured")
     try:
         return _invoke_anthropic(task, **options)
     except ProviderError as exc:
-        if exc.error_type not in ("LOCAL_LIMIT", RATE_LIMIT, SPEND_CAP, BILLING):
+        if exc.error_type not in ("LOCAL_LIMIT", RATE_LIMIT, SPEND_CAP, BILLING) and not (
+            task == "claims.extract" and exc.error_type == "LOCAL_UNAVAILABLE"
+        ):
             raise
         remember_anthropic_account_limit(exc)
         fallback = exc.error_type.lower()
     except ProviderUnavailable as exc:
-        if exc.operation != "anthropic:messages" or breaker_get(exc.operation).get("last_error_type") != RATE_LIMIT:
+        if task == "claims.extract" and exc.operation in ("anthropic:messages", "claude_code:print"):
+            fallback = "claude_provider_wait"
+        elif exc.operation == "anthropic:messages" and breaker_get(exc.operation).get("last_error_type") == RATE_LIMIT:
+            fallback = "anthropic_rate_limit"
+        else:
             raise
-        fallback = "anthropic_rate_limit"
     return _invoke_chatgpt_plan(task, system=system, messages=messages, fallback_reason=fallback)
 
 
@@ -702,7 +710,8 @@ def _invoke_anthropic(task: str, *, system: Any = None, messages: list[dict[str,
                             model=CC.local_model_for(task))
             from . import chatgpt_plan as plan
             if (current_policy() == "local_only" or not settings.local_api_fallback
-                    or (e.error_type == "LOCAL_LIMIT" and plan.model_for(task) and plan.ready())):
+                    or ((e.error_type == "LOCAL_LIMIT" or task == "claims.extract")
+                        and plan.model_for(task) and plan.ready())):
                 _tl.route = {"executed_by": "none", "reason": reason, "fallback_reason": f"{e.error_type.lower()}: {str(e.cause)[:160]}"}
                 _accumulate_route()
                 raise

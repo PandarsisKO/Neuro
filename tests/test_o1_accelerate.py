@@ -102,7 +102,7 @@ def test_a_cloud_profile_never_offers_the_dialog(monkeypatch):
     assert b["local_ready"] is False and b["local_minutes"] is None and "waiting on Claude Code" not in b["line"]
     html = ui_source(UI.parent)
     assert 'id="backlog"' in html and "loadBacklog()" in html and "accelerate(" in html
-    assert "b.local_ready" in html, "the banner must hide itself when the local provider is not the one doing the work"
+    assert "b.profile !== 'local'" in html, "cloud work does not need the local-to-API action"
 
 
 def test_a_button_that_spends_money_says_so_on_its_face():
@@ -123,6 +123,6 @@ def test_a_button_that_spends_money_says_so_on_its_face():
 
     html = ui_source(UI.parent)
     assert "function accelEstimate" in html and "accelMins(" in html
-    for must in ("saves ~", "buying time, not a different answer", "cannot be undone", "at $0"):
+    for must in ("paid Anthropic API after you confirm", "Estimated cost: about", "o.api_cost.toFixed(2)"):
         assert must in html, f"the purchase must state {must!r} before it is made"
     assert "state.usage" in html, "the confirm must be able to quote the real budget, not a guess"

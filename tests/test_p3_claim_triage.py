@@ -84,7 +84,7 @@ def test_the_fast_lane_is_bounded(monkeypatch):
     assert len(tri["bulk"]) >= 25                                 # the remainder waits, it does not vanish
 
 
-def test_routing_creates_a_paid_priority_job_and_a_cheap_bulk_job(monkeypatch):
+def test_routing_creates_a_priority_job_without_opt_in_to_api(monkeypatch):
     p, s_prio, _ = _setup(monkeypatch)
     for i in range(3):
         _claim(p["id"], f"Priority claim {i} about seller financing terms.", s_prio["id"])
@@ -94,6 +94,6 @@ def test_routing_creates_a_paid_priority_job_and_a_cheap_bulk_job(monkeypatch):
     jobs_ = [j for j in db.list_jobs(limit=50) if j["kind"] == "extract_claims"]
     fast = [j for j in jobs_ if (j.get("payload") or {}).get("claim_ids")]
     bulk = [j for j in jobs_ if not (j.get("payload") or {}).get("claim_ids")]
-    assert len(fast) == 1 and fast[0]["lane"] == "priority" and fast[0]["execution_policy"] == "api_requested"
-    assert len(bulk) == 1 and bulk[0]["lane"] == "slow"           # cheap, non-blocking, local when available
+    assert len(fast) == 1 and fast[0]["lane"] == "priority" and fast[0]["execution_policy"] == "local_preferred"
+    assert len(bulk) == 1 and bulk[0]["lane"] == "slow" and bulk[0]["execution_policy"] == "local_preferred"           # cheap, non-blocking, local when available
     assert fast[0]["payload"]["why"]                              # it can say WHY it jumped the queue

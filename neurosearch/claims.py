@@ -1052,6 +1052,50 @@ def unnormalized(project_id: str) -> list[dict[str, Any]]:
     return [c for c in list_for_project(project_id) if not c.get("normalized") and c["status"] != "rejected"]
 
 
+def estimate_api_work(payload: dict[str, Any]) -> tuple[int, float]:
+    """Estimate the remaining groups for Accelerate without loading evidence bodies or calling a provider."""
+    from . import usage
+
+    project_id = payload["project_id"]
+    conn = db.connect()
+    fixed = payload.get("claim_ids") or []
+    where = "project_id=? AND normalized=0 AND status!='rejected'"
+    params = [project_id]
+    if fixed:
+        where += " AND id IN (SELECT value FROM json_each(?))"
+        params.append(json.dumps(fixed))
+    count, chars = conn.execute(
+        f"SELECT COUNT(*), COALESCE(SUM(LENGTH(text)),0) FROM project_claims WHERE {where}", params
+    ).fetchone()
+    if not fixed:
+        # This job harvests first. Quote the work these findings could add before duplicates are folded.
+        notes, note_chars = conn.execute(
+            """SELECT COUNT(*), COALESCE(SUM(LENGTH(n.content)+COALESCE(LENGTH(n.title),0)),0)
+               FROM project_notes n
+               WHERE n.project_id=? AND n.status IN ('approved','suggested')
+                 AND LENGTH(TRIM(COALESCE(n.title,'') || COALESCE(n.content,'')))>=20
+                 AND LOWER(LTRIM(n.content)) NOT LIKE 'gap:%'
+                 AND NOT EXISTS (SELECT 1 FROM project_claims c WHERE c.project_id=n.project_id AND c.origin_note_id=n.id)
+                 AND n.id NOT IN (SELECT note_id FROM claim_evidence_notes)""",
+            (project_id,),
+        ).fetchone()
+        count += notes
+        chars += note_chars
+    if not count:
+        return 0, 0.0
+    if payload.get("evaluation"):
+        limit = min(count, max(1, int(payload.get("budget") or EVAL_BUDGET)))
+        chars = chars * limit // count
+        count = limit
+    groups = (count + EXTRACT_GROUP - 1) // EXTRACT_GROUP
+    project = db.get_project(project_id) or {}
+    framing = sum(len(str(project.get(key) or "")) for key in ("brief", "goal", "questions"))
+    # The request includes up to 40 topics, 40 target snippets and three bounded evidence excerpts per Claim.
+    context_chars = len(SYSTEM) + framing + 40 * (80 + 160 + 8)
+    input_chars_per_group = context_chars + (chars + 1500 * count) // groups
+    return groups, round(groups * usage.estimate_model_call("claims.extract", input_chars_per_group), 4)
+
+
 def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transport: str = "interactive",
             progress: Any = None, max_groups: int | None = None) -> dict[str, Any]:
     """Normalize a bounded group of candidates with ONE structured call per EXTRACT_GROUP. Idempotent: a group whose
@@ -1143,6 +1187,12 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     from . import concurrency, usage
     from .jobs import current_job
     max_workers = concurrency.limit_for("claims.extract") if current_job()[0] and transport == "job" else 1
+    if max_workers > 1 and providers.current_policy() == "local_preferred":
+        from . import chatgpt_plan, claude_code
+        state = claude_code.health_snapshot(model=claude_code.local_model_for("claims.extract")).get("state")
+        if (state in ("usage_limit", "error", "not_installed", "not_signed_in")
+                and chatgpt_plan.model_for("claims.extract") and chatgpt_plan.ready()):
+            max_workers = 1    # one ChatGPT slot; finish both groups without yielding on our own sibling
 
     def _completed(index, value):
         nonlocal finished_groups
@@ -1374,8 +1424,10 @@ def _absorb_queued_harvests(project_id: str, checked_at: float) -> int:
 def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str, Any] | None:
     """Event-driven, debounced, lazy: queue ONE extract_claims job when enough candidates accumulated or the debounce
     window passed — never a call per finding. Returns the job or None."""
-    from . import providers
-    if not providers.anthropic_available():
+    from . import chatgpt_plan, providers
+    if not providers.anthropic_available() and not (
+        chatgpt_plan.model_for("claims.extract") and chatgpt_plan.ready()
+    ):
         return None
     n = len(unnormalized(project_id))
     if n == 0:
@@ -1384,21 +1436,16 @@ def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str
     if not force and n < CLAIMS_BATCH_MIN and (time.time() - last) < CLAIMS_DEBOUNCE_S:
         return None
     tri = triage(project_id)
-    # The PAID fast pass has its own rate limit, and `n >= CLAIMS_BATCH_MIN` cannot bypass it. That bypass is
-    # exactly what went wrong: findings produce candidates faster than extraction consumes them, so the count test
-    # was always true, the debounce never once engaged, and a paid pass was queued every few minutes indefinitely.
-    # The free bulk pass below is unaffected — the cheap lane is allowed to be eager.
+    # Bound priority passes independently of the bulk debounce.
     fast_last = float(db.kv_get(f"claims:last_fast:{project_id}") or 0)
     fast_due = force or (time.time() - fast_last) >= FAST_MIN_INTERVAL_S
     if tri["fast"] and fast_due:
-        # surface what he is waiting on quickly: small, api_requested (paid, ~3x faster than local), priority lane
-        # so it is claimed ahead of the bulk pass — at most once per FAST_MIN_INTERVAL_S per project.
         db.kv_set(f"claims:last_fast:{project_id}", str(time.time()))
         db.create_job("extract_claims", {"project_id": project_id, "reason": f"{reason} (important)",
                                          "claim_ids": [c["id"] for c in tri["fast"]],
                                          "triage": {k: tri[k] for k in ("considered", "qualified", "share")},
                                          "why": {k: v for k, v in tri["why"].items() if k in {c["id"] for c in tri["fast"]}}},
-                      lane="priority", execution_policy="api_requested")
+                      lane="priority")
     job = db.create_job("extract_claims", {"project_id": project_id, "reason": reason}, lane="slow")
     return job
 
@@ -1414,9 +1461,7 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     cands = [c for c in unnormalized(pid) if c["id"] in ids] if ids else None
     if ids and not cands:
         return {"normalized": 0, "targets": 0, "calls": 0, "note": "already normalized by an earlier pass"}
-    # The bulk pass yields the worker after GROUPS_PER_RUN groups (see the constant). The FAST pass — a small,
-    # explicitly chosen set the user is waiting on — runs to the end: it is bounded by FAST_GROUPS already, and
-    # interrupting the thing that exists to be quick would defeat it.
+    # The bulk pass yields after GROUPS_PER_RUN. A priority pass has a fixed, bounded set and runs to the end.
     res = extract(pid, cands=cands, transport="job", progress=progress,
                   max_groups=None if ids else GROUPS_PER_RUN)
     from . import knowledge

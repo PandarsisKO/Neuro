@@ -626,12 +626,13 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[s
     while not _stop.is_set():
         enabled = tuple(kind for kind, task in (("suggest_findings", "findings.extract"),
                                                 ("rank_proposed", "rank.relevance")) if plan.model_for(task))
-        alternates = enabled if enabled and plan.ready() else ()
+        fallback_kinds = (*enabled, "extract_claims") if plan.model_for("claims.extract") else enabled
+        alternates = fallback_kinds if fallback_kinds and plan.ready() else ()
         job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
                            **({"anthropic_alternates": alternates} if alternates else {}))
         parallel = False
-        if not job and chatgpt_overflow and alternates and settings.chatgpt_plan_parallel:
-            job = db.claim_job(alternates, worker_id=wid, policies=("local_preferred",), lanes=lanes)
+        if not job and chatgpt_overflow and enabled and alternates and settings.chatgpt_plan_parallel:
+            job = db.claim_job(enabled, worker_id=wid, policies=("local_preferred",), lanes=lanes)
             parallel = bool(job)
         if not job:
             _stop.wait(1.5)
@@ -1116,13 +1117,14 @@ def _windows_for(source_id: str) -> int:
 def backlog(project_id: str | None = None) -> dict[str, Any]:
     """What is waiting on the local provider, what it will cost in TIME there, and what the same work would cost in
     DOLLARS on the API. Pure computation — reads the queue, never changes it."""
-    from . import claude_code, sources_value, staleness, usage
+    from . import claims, claude_code, sources_value, staleness, usage
     rate = usage.observed_rate_per_minute()
     rows = [dict(r) for r in db.connect().execute(
         "SELECT id, kind, payload, status, execution_policy, lane, created_at FROM jobs WHERE kind IN "
         f"({','.join('?' for _ in ANALYSIS_KINDS)}) AND status IN ('queued','running') ORDER BY created_at", ANALYSIS_KINDS).fetchall()]
     value = sources_value.compute(project_id) if project_id else {}
     items, running = [], []
+    bulk_claim_estimates = {}
     for r in rows:
         try:
             pl = json.loads(r["payload"] or "{}")
@@ -1133,6 +1135,14 @@ def backlog(project_id: str | None = None) -> dict[str, Any]:
         sids = pl.get("source_ids") or []
         cost = round(sum(usage.estimate_source_findings(s, rate) for s in sids), 4)
         windows = sum(_windows_for(s) for s in sids) or 1
+        if r["kind"] == "extract_claims" and pl.get("project_id"):
+            if pl.get("claim_ids") or pl.get("evaluation"):
+                windows, cost = claims.estimate_api_work(pl)
+            else:
+                pid = pl["project_id"]
+                if pid not in bulk_claim_estimates:
+                    bulk_claim_estimates[pid] = claims.estimate_api_work(pl)
+                windows, cost = bulk_claim_estimates[pid]
         if pl.get("depth") == "deep":
             windows *= 3                                   # deep reads re-window at DEEP_WINDOW_CHARS
         title = (db.get_source(sids[0]) or {}).get("title") if sids else None
@@ -1142,17 +1152,18 @@ def backlog(project_id: str | None = None) -> dict[str, Any]:
         (running if r["status"] == "running" else items).append(item)
     local = [i for i in items if i["policy"] in LOCAL_POLICIES]
     api_side = [i for i in items if i["policy"] in API_POLICIES]
-    minutes = sum(i["windows"] for i in local) * staleness.LOCAL_MINUTES_PER_WINDOW
+    minutes = (None if any(i["kind"] == "extract_claims" for i in local)
+               else sum(i["windows"] for i in local) * staleness.LOCAL_MINUTES_PER_WINDOW)
     ready = claude_code.health_snapshot(model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)).get("state") == "ready" and settings.ai_profile == "local"
     return {"local_queued": len(local), "api_queued": len(api_side), "running": running, "jobs": local,
-            "windows": sum(i["windows"] for i in local), "local_minutes": round(minutes) if ready else None,
-            "local_eta": staleness._hm(minutes) if ready and local else None,
+            "windows": sum(i["windows"] for i in local), "local_minutes": round(minutes) if ready and minutes is not None else None,
+            "local_eta": staleness._hm(minutes) if ready and local and minutes is not None else None,
             "api_cost": round(sum(i["api_cost"] for i in local), 2), "profile": settings.ai_profile, "local_ready": ready,
             "options": accelerate_options(project_id, local),
             "pools": _pool_shape(len(local), len(api_side)),
             "choices": [n for n in (10, 25) if n < len(local)] + ([len(local)] if local else []),
             "line": (f"{len(local)} job{'s' if len(local) != 1 else ''} waiting on Claude Code · about {staleness._hm(minutes)} · the same work on the API ≈ ${sum(i['api_cost'] for i in local):.2f}"
-                     if local and ready else f"{len(local)} AI job{'s' if len(local) != 1 else ''} queued" if local else "nothing waiting")}
+                     if local and ready and minutes is not None else f"{len(local)} AI job{'s' if len(local) != 1 else ''} queued" if local else "nothing waiting")}
 
 
 def _pool_shape(n_local: int, n_api: int) -> dict[str, Any]:
