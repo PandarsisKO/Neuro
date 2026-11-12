@@ -4324,3 +4324,19 @@ passed **94 focused tests** in 19.41 s, including prior Anthropic routing, billi
 cost reporting gates. The exact corrected candidate still needs the full suite, Tier 1 and release-check
 before delivery. Branch publication is for review only. Live plan access, supported response format and
 task quality remain to be verified on a bounded pilot before activation.
+
+
+### Corrected ChatGPT pilot validation — 2026-11-12
+
+Kyle approved final validation with activation on hold and no live calls or app restarts.
+Exact tested revision `b29488a5ddd3a3281835ec97931b4913e936522e` includes the corrected code in `b84864b`.
+The implementation and test files matched that revision at the end of the run.
+Full pytest passed **2,643 tests** in **407.86 s** with one existing Starlette/anyio deprecation warning.
+Fake Tier 1 and `release-check --no-pytest` both passed. Runs used the shared macOS Python 3.14 venv,
+separate temporary data directories, disabled dotenv loading, unset provider keys and disabled plan opt-in.
+Evidence in `evals/release/`:
+- `chatgpt-plan-{full,tier1,release}-b29488a-20261112.txt`
+- `release-check-0.64.5-b29488a-20261112-112815.{json,txt}`
+
+Validation is complete on the review branch. Activation remains held. Live account consent, plan entitlement,
+response compatibility and output quality still need verification before enabling either ChatGPT route.
