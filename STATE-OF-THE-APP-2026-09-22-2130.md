@@ -95,3 +95,11 @@ bulk Claims. The paid API remains available by explicit choice.
 Accelerate quotes the remaining Claims work, with the quote visible
 during a Claude hold. See HANDOFF for the synthetic pilot, release
 gates, and live checks.
+
+## 2026-11-12 — Claims stream and response recovery
+
+Version **0.64.12** is live on the Mac. A dropped ChatGPT stream gets a
+short retry through the existing provider ledger. ChatGPT Claims calls
+now use strict structured output and retry an unexpected schema mismatch
+once on the connected plan. See HANDOFF for the release checks and
+live queue recovery.

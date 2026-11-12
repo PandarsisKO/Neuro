@@ -4812,3 +4812,16 @@ release check, including Tier 1, passed. See
 
 References: [Sign in with ChatGPT preview requirements](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
 and [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+#### Live activation
+
+Fast-forwarded the Mac checkout to published `191980a`. The server
+reloaded and reports 0.64.12. The app recovered interrupted work through
+its existing lease mechanism and reported zero expired leases after
+startup. No global or project pause was needed.
+
+Retried 11 Claims failures matching the transport or schema errors
+through the app's retry endpoint. The queue deduplicated these into
+eight active jobs, all local-preferred. One had started reading
+candidates at the first check. The Mac's automatic paid API fallback
+setting was verified off.
