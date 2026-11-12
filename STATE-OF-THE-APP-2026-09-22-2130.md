@@ -77,3 +77,11 @@ and Challenge this claim searches project passages and optional library leads
 for manual assessment. The downloadable assessment records the scope and date
 of the search, passage judgments and remaining gaps. See HANDOFF for the live
 checks and release evidence.
+
+## 2026-11-12 — Queue progress
+
+Version **0.64.10** is live on the Mac. The open queue checks every two
+seconds while active. Its bars follow measured work where a count is
+available, with current stage and worker check-in visible during longer
+steps. The previously repeating Claims harvest finished in one pass.
+HANDOFF records the live check and release evidence.

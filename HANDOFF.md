@@ -4713,3 +4713,18 @@ counts, and harvest convergence with ignored findings.
 
 The release evidence is in `evals/release/queue-progress-pytest-db1a7d4-20261112.txt`
 and `evals/release/release-check-0.64.10-db1a7d4-20261112-143932.{json,txt}`.
+
+#### Live verification
+
+Fast-forwarded the Mac checkout and GitHub main to `29ebf52` with zero
+running jobs. The watcher reloaded 0.64.10 and the served queue script,
+version script and stylesheet matched disk. The previously repeating harvest
+finished in one pass with zero new claims. Four live running rows were
+sampled. Both claim extraction and harvest reported changes in bar position,
+stage text, and worker check-in. Extraction also reported a stage change
+while its last work count stayed the same.
+
+On the largest project, the pre-release medians were 141.9 ms for tick and
+11.0 ms for the jobs list over five requests each. After the reload, while
+four jobs were running, the medians were 394.6 ms and 90.4 ms. The samples
+reflect different worker load.
