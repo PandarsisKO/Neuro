@@ -4316,3 +4316,11 @@ This is a pilot pending live account and task-quality verification. Its settings
 
 Tests gate the existing job and invocation owners, not a second queue or accounting system. Final validation
 results follow. No live database, paid experiment, app activation or restart was used in this interval.
+
+Validation checkpoint: the first candidate's focused suite passed 76 tests and its Tier 1/release-check passed.
+The first broad run exposed inherited cached Claude health in the new fixtures and stale ChatGPT provenance
+when a different task was recorded on the same thread. Fixed both in `b84864b`. The corrected candidate
+passed **94 focused tests** in 19.41 s, including prior Anthropic routing, billing, schema/provenance, and
+cost reporting gates. The exact corrected candidate still needs the full suite, Tier 1 and release-check
+before delivery. Branch publication is for review only. Live plan access, supported response format and
+task quality remain to be verified on a bounded pilot before activation.
