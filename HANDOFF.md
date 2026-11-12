@@ -4408,3 +4408,17 @@ authenticated health endpoint, reported v0.64.5 and the local Claude profile, an
 workers. The deployed configuration resolves all three plan routes and the session reports ready.
 No dedicated model request was submitted during activation. Findings and ranking output quality
 on real plan responses remains unmeasured. Local activation is separate from publishing GitHub main.
+
+### 2026-11-12 — Deploy the library suggestions disclosure
+
+The ChatGPT rollout left the previously validated library panel fix on its review branch.
+Applied only the disclosure change and its regression test from `c2cf414` onto the live
+checkout, base `7b7d6d4`, candidate `261727f`. Refresh the project page, then click the
+heading to collapse or expand the panel. Its state follows each project while the page is open
+and survives a suggestions poll.
+
+The live endpoint served the candidate JavaScript byte for byte. Headless Chrome tested the
+served code on a fixture, including close, poll, and reopen. The LaunchAgent kept the same PID.
+On the isolated candidate with provider keys unset, all 2,646 tests passed (one existing warning),
+11 focused tests passed, and deterministic Tier 1 and release-check passed. Evidence in
+`evals/release/release-check-0.64.5-261727f-20261112-120249.{json,txt}`.
