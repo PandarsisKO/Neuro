@@ -5240,3 +5240,37 @@ All 2,710 pytest cases passed across six module shards. Tier 1 and
 `release-check --no-pytest` passed at `a5d5bf3` using private data.
 Reports:
 `evals/release/release-check-0.64.23-a5d5bf3-20261112-195530.{json,txt}`.
+
+### 2026-11-12 — Ingest timing and novelty fixtures (0.64.24)
+
+Base `6159887`, candidate `fdfb910`, isolated worktree
+`/private/tmp/neuro-ingest-timing-benchmark`. The previous ingest trace
+measured a 55.57 s median to metadata completion across 482 captioned
+videos. The historical events combine site lock contention, request spacing
+and fetch time. The existing `/api/perf` timing ledger now records each
+interval separately for metadata fetches. A controlled clock test exercised
+a 2 s lock wait, 3 s spacing interval and 7 s fetch through that endpoint.
+The new timings are bounded in memory and reset on restart.
+
+Retries at the audio checkpoint now use the existing audio file directly
+and keep the transcription budget and duration checks. In the crash
+matrix, both recovery from the saved download and recovery immediately
+before transcription made one metadata fetch total, with one download
+and one transcription. The private backup had no 30-day ingest jobs with
+both a saved audio event and multiple claims. The fixture establishes
+the retry saving, with frequency and live speed still unmeasured.
+
+The synthetic benchmark in `tests/fixtures/novelty_challenge.json`
+covers six domains. Three cases have independently authored equivalent
+passages. Three have close matches with different conditions, populations,
+materials or outcomes, or only partial support and contrary results.
+The endpoint test checks retrieval, cited origin, reprint handling and
+unreviewed assessments. Both default and targeted wording surfaced all
+three fixture precedents and 17 close or contrary passages. Targeted
+wording moved one precedent from fifth to second. These small controlled
+cases establish regression coverage. Independent scoring of the six
+real projects remains open.
+
+All 2,717 pytest cases passed across six module shards. Tier 1 and
+the release check passed at `fdfb910`. Reports:
+`evals/release/release-check-0.64.24-fdfb910-20261112-202832.{json,txt}`.

@@ -187,3 +187,10 @@ skipped during listing using the existing batched metadata. Skipped
 sources stay available for Ingest anyway. A four-project replay estimated
 that p90 collection completion fell from 17m 25s to 11m 26s. The Sources
 add endpoint now gives small direct imports the existing priority lane.
+
+## 2026-11-12 — Ingest timing and novelty fixtures (0.64.24)
+
+The performance endpoint shows metadata lock wait, request spacing and
+fetch time. Ingest retries use an already-downloaded audio file without
+fetching metadata again. Six synthetic novelty cases test whether search
+surfaces independent precedents and close passages with different scope.
