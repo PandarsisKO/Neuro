@@ -5449,3 +5449,10 @@ All 2,725 tests passed across six shards. Tier 1 and release-check passed.
 Desktop Chrome verified all three origin labels, save, reopen and export
 against an isolated project.
 Release report: `evals/release/release-check-0.64.29-9ba449f-20261113-083925.json`.
+
+### 2026-11-13 — Claim Challenge provenance live
+
+Published `a5e26a3` and verified GitHub main. The Mac reloaded 0.64.29
+with matching Research JavaScript and zero expired leases. An
+authenticated read-only keyword search returned eight passages with
+origin status. The saved-review endpoint responded successfully.
