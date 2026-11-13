@@ -5027,3 +5027,37 @@ knowledge nodes matched exactly, excluding timestamps and embeddings,
 on all three tested projects. A separate full-scan comparison agreed
 with the indexed matcher on all 917 unlinked targets in the large
 project.
+
+### 2026-11-12 — Precedent and counterevidence in Claim Challenge (0.64.19)
+
+Base `1b029b8`, runtime `95988d0`. Claim Challenge accepts dedicated
+search wording for earlier examples and failures. It interleaves query
+results, retains up to two distinct passages per Work per scope and
+suppresses repeated wording from the same origin. The review shows how
+many ready sources had searchable text. The outcome describes the
+manual judgments and leaves novelty unassessed when only exceptions,
+contrary results, or thin coverage were found.
+
+Saved assessments fingerprint the project and optional library scope
+using source membership, searchable status and transcript revisions.
+A change flags the review and an outdated search cannot be saved as a
+fresh assessment. Older reviews remain readable.
+
+Compared against 0.64.18 on hand-labeled ventilation, tutoring and
+delivery cases. When a precedent and a contrary or qualifying passage
+shared a Work, the old implementation exposed both in 0/3 cases and
+the new one in 3/3. Reprints, project and library labels, incomplete
+review outcomes and saved scope changes have regression coverage.
+Chrome inspected the challenge at 500 px.
+
+Prepared an 11-case blind review across six projects using a private
+copy of a verified backup. The form mixes both versions' candidates
+without revealing their retrieval arm. Its excerpts and answer key
+are local and excluded from Git. Human judgments are pending. The
+fixture comparison establishes regression behavior for these cases
+and does not estimate production false-positive rates.
+
+All 2,698 tests passed across six shards. The final same-Work test
+fixtures were tightened and passed in a focused rerun. Tier 1 and
+release-check passed. See
+`evals/release/release-check-0.64.19-95988d0-20261112-183927.{json,txt}`.
