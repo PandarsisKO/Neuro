@@ -5274,3 +5274,9 @@ real projects remains open.
 All 2,717 pytest cases passed across six module shards. Tier 1 and
 the release check passed at `fdfb910`. Reports:
 `evals/release/release-check-0.64.24-fdfb910-20261112-202832.{json,txt}`.
+
+Delivery: 0.64.24 is staged for review on `codex/ingest-timing-benchmark`.
+The live app stays on 0.64.23 while the Claims extraction queue is active;
+applying the candidate to the watched checkout would restart those jobs.
+The authenticated job list had no new ingest jobs since 0.64.23 at this
+check. Read the timing breakdown after the next natural ingest.
