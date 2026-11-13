@@ -305,7 +305,16 @@ def test_project_onboarding(client):
     p = client.post("/api/projects", headers=H, json=body).json()
     assert p["goal"] == "site live on cheaper host" and p["questions"] == body["questions"] and len(p["jobs"]) == 1
     full = client.get(f"/api/projects/{p['id']}", headers=H).json()
-    assert [c["title"] for c in full["conversations"]] == body["questions"][::-1] or len(full["conversations"]) == 2
+    assert full["conversations"] == [] and not full["has_searchable_sources"]
+    source = db.upsert_source(platform="manual", external_id="onboarding-ready", title="DNS checklist",
+                              url="https://example.test/dns-checklist", status="ready")
+    db.add_project_sources(p["id"], [source["id"]])
+    assert not client.get(f"/api/projects/{p['id']}", headers=H).json()["has_searchable_sources"]
+    db.replace_chunks(source["id"], [{"start": 0, "end": 1, "text": "Verify the new nameservers."}])
+    assert client.get(f"/api/projects/{p['id']}", headers=H).json()["has_searchable_sources"]
+    explicit = client.post("/api/projects", headers=H, json={"name": "Explicit chats", "questions": ["One"],
+                                                               "start_chats": True}).json()
+    assert [c["title"] for c in db.list_conversations(explicit["id"])] == ["One"]
     assert {f["kind"] for f in full["facts"]} == {"constraint", "rejected"}
     steering = db.project_steering(full)
     assert "Goal (what done looks like): site live" in steering and "practitioners" in steering and "Starting questions" in steering

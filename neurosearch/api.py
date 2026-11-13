@@ -2036,7 +2036,7 @@ class ProjectIn(BaseModel):
     # create-only extras
     facts: list[dict[str, str]] | None = None     # [{kind, content}]
     urls: list[str] | None = None                 # initial sources to ingest
-    start_chats: bool = True                      # one chat per starting question
+    start_chats: bool = False                     # explicit opt-in for pre-created conversations
 
 
 @app.get("/api/projects", dependencies=[Depends(require_auth)])
@@ -2138,6 +2138,7 @@ def api_project(project_id: str, notes: str | None = None) -> dict[str, Any]:
         p["suggested"] = db.list_project_notes(project_id, status="suggested", limit=cap) if cap != 0 else []
     with perf.timed("project.counts"):
         p["counts"] = db.note_counts(project_id)
+    p["has_searchable_sources"] = db.has_searchable_sources(p["source_ids"])
     p["notes_inline_max"] = cap
     p["notes_truncated"] = bool(cap != 0 and cap and (p["counts"].get("approved", 0) > cap or p["counts"].get("suggested", 0) > cap))
     p["notes_omitted"] = cap == 0        # never silent: the rows are absent by choice, and `counts` is the number

@@ -24,19 +24,38 @@ globalThis.selectChat = async function selectChat(id, push = true) {
     let ms; try { ms = await api('/api/conversations/' + id); }
     catch (e) { $('#chat').innerHTML = listState('failed', { message: "Couldn't load this chat.", retry: `selectChat('${id}', false)` }); if (push) showView('chats'); $('#q').focus(); return; }
     if (state.conv !== id) return;   // a newer selectChat() call already took over
-    if (!ms.length) { emptyChat(); if (c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
+    if (!ms.length) { emptyChat(); if (state.project.has_searchable_sources && c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
     else { ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false })); scheduleChatDelta(id, ms); }
   } else emptyChat();
   if (push) { showView('chats'); }
   $('#q').focus();
 }
 globalThis.emptyChat = function emptyChat() {
-  const p = state.project, n = +($('#nSources').textContent || p.n_sources || 0);
-  $('#chat').innerHTML = `<div class="empty"><b>${esc(p.name)}</b> · ${n} source${n === 1 ? '' : 's'} in scope.<br><br>
-    Every chat here only sees this project's sources, so you can run several independent lines of inquiry on the same material.
-    Answers cite the source and the exact timestamp or page.<br><br>
-    Things you can say: <i>paste a YouTube/playlist link</i> to add it · <i>“refocus the brief on …”</i> · <i>“pin that as a finding”</i>.
-    ${(p.questions || []).length ? `<br><br>Starting questions:<br>${p.questions.map(q => `<a href="#" class="chip" onclick="$('#q').value=${JSON.stringify(q).replace(/"/g, '&quot;')};$('#q').focus();return false">${esc(q)}</a>`).join(' ')}` : ''}</div>`;
+  const p = state.project;
+  const questions = p.questions || [];
+  const chat = $('#chat');
+  if (!p.has_searchable_sources) {
+    chat.innerHTML = `<div class="empty"><b>${esc(p.name)}</b>
+      <p>Add a source or wait for an import to finish so Neuro can answer with citations.</p>
+      ${questions.length ? '<p>Your research questions are saved and will appear here when a source is searchable.</p>' : ''}
+      <button class="small primary" type="button" data-chat-add-sources>Add sources</button></div>`;
+    chat.querySelector('[data-chat-add-sources]').addEventListener('click', () => {
+      showView('sources');
+      $('#srcAddPanel').open = true;
+      showPane('link');
+      $('#inUrls').focus();
+    });
+    return;
+  }
+  const n = p.n_sources;
+  chat.innerHTML = `<div class="empty"><b>${esc(p.name)}</b> · ${n} source${n === 1 ? '' : 's'} in scope.
+    <p>Ask about the project's material. Answers cite the source and the timestamp or page.</p>
+    ${questions.length ? `<p>Research questions</p>${questions.map((q, i) =>
+      `<button type="button" class="small" data-chat-question="${i}">${esc(q)}</button>`).join(' ')}` : ''}</div>`;
+  chat.querySelectorAll('[data-chat-question]').forEach(button => button.addEventListener('click', () => {
+    $('#q').value = questions[Number(button.dataset.chatQuestion)];
+    $('#q').focus();
+  }));
 }
 globalThis.renameChat = async function renameChat() {
   if (!state.conv) return; const c = state.chats.find(x => x.id === state.conv);

@@ -78,7 +78,7 @@ globalThis.renderWizard = function renderWizard() {
     wizField('name', 'Project name', 'e.g. Personal Portfolio Redesign') +
     wizField('goal', 'What do you want to accomplish?', 'e.g. Build a modern portfolio website that showcases my video work and helps me apply for senior creative roles.', 3) +
     sec('u', 'Links to start with — videos, playlists, whole channels, podcasts', wizField('urls', 'One per line', 'https://www.youtube.com/watch?v=…\nhttps://www.youtube.com/@somechannel', 3)) +
-    sec('q', 'Starting questions — each becomes a ready-made chat', wizField('questions', 'One per line', 'What do they say about raising average ticket?\nHow do they structure the sales process?', 3)) +
+    sec('q', 'Research questions — guide the library search', wizField('questions', 'One per line', 'What do they say about raising average ticket?\nHow do they structure the sales process?', 3)) +
     sec('b', 'A longer brief, if the goal needs one', wizField('brief', 'What are you trying to find out?', 'e.g. How top service-business operators price, sell and scale.', 3)) +
     sec('s', 'Your situation — budget, deadline, experience, what you already have or decided',
       wizField('budget', 'Budget', 'e.g. under $500') + wizField('deadline', 'Deadline / timing', 'e.g. by end of October') +
@@ -167,7 +167,12 @@ globalThis.showView = function showView(v, push = true) {
   document.querySelectorAll('aside nav .item').forEach(i => i.classList.toggle('active', i.dataset.view === v));
   document.querySelectorAll('#main .view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
   if (v === 'sources') { loadSources(); loadJobs(); loadBoot(); }
-  if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
+  if (v === 'chats') api('/api/projects/' + state.project.id).then(p => {
+    if (state.project?.id !== p.id) return;
+    state.project = p;
+    $('#nSources').textContent = p.n_sources;
+    if (state.view === 'chats' && $('#chat .empty')) emptyChat();
+  });
   if (v === 'findings') loadNotes();
   if (v === 'research') loadResearch();
   if (v === 'plan') loadPlan();

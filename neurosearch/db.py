@@ -2227,6 +2227,16 @@ def source_revision(source_id: str, *, persist: bool = True) -> str | None:
     return rev
 
 
+def has_searchable_sources(source_ids: list[str]) -> bool:
+    """Whether any source in an existing retrieval scope has indexed text."""
+    if not source_ids:
+        return False
+    return bool(connect().execute(
+        "SELECT 1 FROM chunks WHERE source_id IN (SELECT value FROM json_each(?)) LIMIT 1",
+        (json.dumps(source_ids),),
+    ).fetchone())
+
+
 def searchable_source_snapshot(source_ids: list[str], *, profiles: bool = False) -> dict[str, list]:
     """Ordered membership and chunk identities for an existing retrieval scope."""
     profile_column = (""", (SELECT enriched_at FROM source_profiles
