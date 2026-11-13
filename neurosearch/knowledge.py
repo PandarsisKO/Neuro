@@ -110,22 +110,38 @@ def set_target_status(target_id: str, status: str) -> dict[str, Any] | None:
     return tg
 
 
-def _claim_for_target(tg: dict[str, Any]) -> dict[str, Any] | None:
-    if tg.get("claim_id"):
-        return claims.get(tg["claim_id"])
-    # best matching claim by topic / token overlap
-    best, score = None, 0.0
-    for c in claims.list_for_project(tg["project_id"]):
-        if c["status"] == "rejected":
-            continue
-        s = claims.overlap(tg["question"], c["text"]) + (0.3 if c.get("topic") == tg.get("topic") else 0)
-        if s > score:
-            best, score = c, s
-    return best if score >= 0.5 else None
+def _target_claim_matcher(project_id: str) -> Callable[[dict[str, Any]], dict[str, Any] | None]:
+    """Find the same best match while loading evidence only for the winning Claim."""
+    rows = db.connect().execute(
+        "SELECT id, text, topic FROM project_claims WHERE project_id=? AND status!='rejected' ORDER BY created_at",
+        (project_id,),
+    ).fetchall()
+    by_token: dict[str, list[int]] = {}
+    for index, row in enumerate(rows):
+        for token in claims._tokens(row["text"]):
+            by_token.setdefault(token, []).append(index)
+
+    def match(target: dict[str, Any]) -> dict[str, Any] | None:
+        # Without any token overlap the topic bonus alone cannot reach 0.5.
+        # Preserve creation order when scores tie, as in the full scan.
+        candidates = {index for token in claims._tokens(target["question"]) for index in by_token.get(token, ())}
+        best_id, best_score = None, 0.0
+        for index in sorted(candidates):
+            row = rows[index]
+            score = claims.overlap(target["question"], row["text"]) + (0.3 if row["topic"] == target.get("topic") else 0)
+            if score > best_score:
+                best_id, best_score = row["id"], score
+        return claims.get(best_id) if best_id is not None and best_score >= 0.5 else None
+
+    return match
 
 
 def assess_target(target_id: str) -> dict[str, Any] | None:
     """Closure is evaluated against the linked/matching Claim's evidence, with the target's own rule."""
+    return _assess_target(target_id)
+
+
+def _assess_target(target_id: str, match: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None) -> dict[str, Any] | None:
     tg = get_target(target_id)
     if tg and tg["status"] == "dropped":
         # a dropped target is not being pursued: nothing shows its gap, and re-deriving it here overwrote the
@@ -134,7 +150,8 @@ def assess_target(target_id: str) -> dict[str, Any] | None:
     if not tg:
         return None
     rule = tg.get("closure_rule") or {}
-    c = _claim_for_target(tg)
+    c = (claims.get(tg["claim_id"]) if tg.get("claim_id")
+         else (match or _target_claim_matcher(tg["project_id"]))(tg))
     ev = c["evidence"] if c else []
     sup = [e for e in ev if e["relation"] in ("SUPPORTS", "EXPERIENTIAL") and not e.get("stale")]
     indep = {e["source_id"] for e in sup if e.get("independent")}
@@ -484,17 +501,22 @@ def dedupe_targets(project_id: str) -> int:
     """Open targets whose questions are near-duplicates (Jaccard ≥ TARGET_DUP_JACCARD) fold into the earliest one; the
     later ones are `dropped`. User-made targets are never dropped. Cheap: open targets only."""
     rows = [t for t in list_targets(project_id, status="open")]
-    # P0 (docs/SPEED-AUDIT-2026-09-17.md §7): the pairwise Jaccard pass is CPU — quadratic in open targets — and it
-    # used to run INSIDE the write transaction, holding SQLite's single writer for 12 s on Kyle's project while
-    # "New chat" (one INSERT) waited 10 s behind it. Decide first, then write the decisions in one short transaction.
-    keep: list[dict[str, Any]] = []
+    # Only questions sharing a token can reach the Jaccard threshold. Keep
+    # candidate indices in creation order so each duplicate folds into the same
+    # earliest surviving question, including user targets.
+    by_token: dict[str, list[int]] = {}
     to_drop: list[tuple[str, str]] = []
-    for t in rows:                                                 # list_targets is created_at ascending
-        dup = next((k for k in keep if claims.jaccard(t["question"], k["question"]) >= TARGET_DUP_JACCARD), None)
-        if dup and t.get("origin") != "user":
-            to_drop.append((t["id"], dup["id"]))
-        else:
-            keep.append(t)
+    for index, target in enumerate(rows):
+        terms = claims._tokens(target["question"])
+        if target.get("origin") != "user":
+            candidates = {i for term in terms for i in by_token.get(term, ())}
+            duplicate = next((rows[i] for i in sorted(candidates)
+                              if claims.jaccard(target["question"], rows[i]["question"]) >= TARGET_DUP_JACCARD), None)
+            if duplicate is not None:
+                to_drop.append((target["id"], duplicate["id"]))
+                continue
+        for term in terms:
+            by_token.setdefault(term, []).append(index)
     if to_drop:
         # Sources cache-churn (docs/SPEED-AUDIT-2026-09-17.md §8): a target dropped HERE as a near-duplicate is
         # folded into its survivor, and the drop says so in `gap` — `detect()`'s reconcile re-opens dropped
@@ -532,10 +554,18 @@ def refresh(project_id: str, progress: Callable[[str], None] | None = None) -> d
     except Exception as e:  # noqa: BLE001
         log.warning("community synthesis skipped: %s", e)
     tgs = list_targets(project_id)
+    matcher = None
+
+    def match_target(target: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal matcher
+        if matcher is None:
+            matcher = _target_claim_matcher(project_id)
+        return matcher(target)
+
     for i, tg in enumerate(tgs, 1):
         if i == 1 or i % 25 == 0:
             say(f"assessing evidence targets ({i}/{len(tgs)})")
-        assess_target(tg["id"])
+        _assess_target(tg["id"], match_target)
     say("rebuilding the research map")
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]
     targets = list_targets(project_id)
@@ -563,8 +593,7 @@ def refresh(project_id: str, progress: Callable[[str], None] | None = None) -> d
             key = t if t in topics else claims._topic_of(tg["question"], vocab)
         topics.setdefault(key, {"claims": [], "targets": [], "tensions": []})["targets"].append(tg)
     for tsn in tensions:
-        c = next((x for x in all_claims if x["id"] == tsn.get("claim_id")), None)
-        topics.setdefault(claim_topic.get((c or {}).get("id") or "") or (tsn.get("evidence") or {}).get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["tensions"].append(tsn)
+        topics.setdefault(claim_topic.get(tsn.get("claim_id") or "") or (tsn.get("evidence") or {}).get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["tensions"].append(tsn)
     t = time.time()
     nodes = []
     rows: list[tuple] = []

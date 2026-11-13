@@ -144,3 +144,25 @@ def test_the_derived_cache_holds_its_working_set_and_evicts_least_recently_used(
     finally:
         with cache._lock:
             cache._store.clear(); cache._store.update(saved)
+
+
+def test_refresh_matches_unlinked_targets_with_existing_score_and_order(fresh):
+    pid = db.create_project("Ventilation evidence")["id"]
+    other = db.create_project("Separate ventilation project")["id"]
+    questions = [
+        knowledge.add_target(pid, "Do rooftop vents reduce summer temperatures?", topic="ventilation"),
+        knowledge.add_target(pid, "Do shaded windows prevent afternoon glare?", topic="lighting"),
+        knowledge.add_target(pid, "What caused winter drafts near entrances?", topic="ventilation"),
+    ]
+    claims.add_claim(other, questions[0]["question"], topic="ventilation")
+    rejected = claims.add_claim(pid, questions[0]["question"], topic="ventilation")
+    claims.set_status(rejected["id"], "rejected")
+    earlier = claims.add_claim(pid, "Rooftop vents reduce summer temperatures.", topic="ventilation")
+    claims.add_claim(pid, "Summer temperatures drop when rooftop vents reduce heat.", topic="ventilation")
+    lighting = claims.add_claim(pid, "Shaded windows prevent afternoon glare.", topic="lighting")
+
+    knowledge.refresh(pid)
+
+    updated = [knowledge.get_target(t["id"]) for t in questions]
+    assert [t["claim_id"] for t in updated] == [earlier["id"], lighting["id"], None]
+    assert updated[2]["gap"] == "no Claim in the project addresses this yet"
