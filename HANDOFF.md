@@ -5387,3 +5387,28 @@ link adjustment passed the affected suite and release check.
 Fast-forwarded to `48e8223` after confirming free space and an idle
 queue. GitHub main and the live Plan script matched. Both saved plans
 returned a clean activity baseline and no changes after that cursor.
+
+### 2026-11-13 — Collection import readiness (0.64.28)
+
+The Sources queue shows the latest tracked collection import for each
+project, including while the queue is collapsed. It counts the jobs
+enqueued together, including failures, skips, cancellations and work
+waiting on an external service. A source earns the searchable milestone
+when it is ready, has indexed chunks and belongs to the project. The
+cited Findings link requires a suggested or approved Finding created
+after the import started, with a located quote from one of those sources.
+The two links use the existing source drawer and Findings workbench.
+
+The first release covers new automatic collection batches and selections
+started from the collection review card. Terminal batches stay visible
+for 24 hours after their last import job. There is no historical backfill.
+The existing jobs API keeps its default response for existing callers.
+The two additive indexes cover the optional latest-batch read. Queue
+admission, source selection and provider policies are unaffected.
+
+All 2,724 tests passed across six shards. The final refresh and retry
+timing adjustment passed the 13 affected tests. Desktop Chrome checked
+the collapsed queue, mixed outcomes and both links with isolated data.
+Tier 1 and release-check passed. Independent Claim Challenge labels are
+still pending for the existing six-project review.
+Release report: `evals/release/release-check-0.64.28-4ef3ee1-20261113-082238.json`.
