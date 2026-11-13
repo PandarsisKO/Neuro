@@ -5482,3 +5482,24 @@ Published `2ed727c` and verified GitHub main. The Mac reloaded 0.64.30
 with matching Research JavaScript and zero expired leases. An
 authenticated keyword search returned eight passages with the retained
 assessment field. Saving and reopening were verified on isolated data.
+
+### 2026-11-13 — Source-first starting questions (0.64.31)
+
+Base `027ebc6`, runtime candidate `7f667e1`, isolated worktree
+`/private/tmp/neuro-source-first-questions`. New projects save research
+questions for the existing library scan without pre-creating chats by
+default. The API still supports explicit `start_chats: true`. The Chat
+empty state offers Add sources until a project source has indexed text.
+Once searchable, the saved questions fill the composer on click and a
+conversation starts when the question is sent. Existing conversations
+and manual Chat actions are preserved. The Chat view refreshes readiness
+when opened.
+
+The focused onboarding and bootstrap tests passed (15), as did all 24
+checks in the chat-delta browser harness. Desktop Chrome on isolated
+data exercised the wizard, the empty Chat and Add sources link, indexing
+a source, then selecting and sending the first question. The final
+candidate passed Tier 1 and release-check.
+Release report: `evals/release/release-check-0.64.31-7f667e1-20261113-090615.json`.
+All 2,726 pytest cases passed across six shards. The final one-line
+empty Chat rendering fix passed the affected suites and Chrome scenario.
