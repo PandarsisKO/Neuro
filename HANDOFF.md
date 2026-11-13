@@ -4905,3 +4905,13 @@ deployment enables this route via `NEUROSEARCH_MAC_FINDINGS=1`.
 All 2682 pytest tests passed. Tier 1 and release-check passed.
 See `evals/release/mac-findings-pytest-13b7586-20261112.txt` and
 `evals/release/release-check-0.64.15-13b7586-20261112-172744.{json,txt}`.
+
+#### Live verification
+
+Published `c0488b2` and passed the GitHub delivery check. The Mac app
+reloaded 0.64.15 with Gemma overflow enabled. The jobs API showed three
+completed Ollama Findings jobs and two more running on the Mac. Findings
+overflow was left enabled. During rollout the Mac temporarily had less
+than 1 GiB free and queue API calls timed out. The API responded again as
+space recovered. The two larger Qwen weights downloaded for comparison
+were removed, and Gemma 4 26B remains installed.
