@@ -181,3 +181,88 @@ def confirmed_deadlines(facts: Iterable) -> list[dict]:
                               "consequence": str(item.get("consequence") or ""),
                               "fallback": str(item.get("fallback") or "")})
     return sorted(deadlines, key=lambda item: item["date"])
+
+
+_ACTIVITY_DECISIONS = {"decision_recorded": "Decision recorded", "decision_changed": "Decision changed",
+                       "decision_withdrawn": "Decision withdrawn"}
+_ACTIVITY_SOURCES = {"source_revised": "Cited source revised", "source_removed": "Cited source removed"}
+_ACTIVITY_TYPES = {*_ACTIVITY_DECISIONS, *_ACTIVITY_SOURCES, "plan_item_status_changed", "plan_version_created",
+                   "finding_status_changed", "claim_assessment_changed", "claim_evidence_added"}
+
+
+def recent_changes(project_id: str, plan_row: dict, since: int | None, until: int | None = None) -> dict:
+    """Read a bounded project ledger page using the current plan's recorded citations."""
+    from . import db, ledger
+    from .decision_impact import decision_impact
+    from .evidence import plan_evidence_ids
+
+    top = ledger.cursor(project_id)
+    if until is not None:
+        top = min(top, until)
+    if since is None or since > top:
+        return {"cursor": top, "next_cursor": top, "changes": [], "more": False, "baseline": True}
+
+    page = ledger.events(project_id, since=since, until=top, event_types=_ACTIVITY_TYPES, limit=50, classify=False)
+    events = sorted(page["events"], key=lambda event: event["id"])
+    plan = plan_row["plan"]
+    evidence = plan.get("_evidence") or {}
+    cited = {eid: evidence[eid] for eid in plan_evidence_ids(plan) if eid in evidence}
+    sources = {ref["source_id"]: eid for eid, ref in cited.items() if ref.get("source_id")}
+    findings = {str(ref["note_id"]): eid for eid, ref in cited.items() if ref.get("note_id") is not None}
+    claim_ids = {e["object_id"] if e["object_type"] == "claim" else (e["after"] or {}).get("claim_id")
+                 for e in events if e["object_type"] in ("claim", "claim_evidence")}
+    impacts = decision_impact(project_id, sorted(claim_ids - {None})) if claim_ids else {}
+    versions = {v["id"]: v["version"] for v in db.list_plans(project_id)}
+    tasks, aliases, _ = task_layout(plan)
+    changes = []
+
+    for event in events:
+        kind, key = event["event_type"], event["object_id"]
+        before, after = event["before"] or {}, event["after"] or {}
+        change = {"at": event["created_at"]}
+        if kind in _ACTIVITY_DECISIONS:
+            change.update(title=_ACTIVITY_DECISIONS[kind], detail=after.get("content") or before.get("content"),
+                          section="decisions", anchor=f"plan-fact-{key}")
+        elif kind == "plan_version_created":
+            change.update(title=f"Plan version {after.get('version')} saved", section="history",
+                          anchor=f"plan-version-{after.get('version')}")
+        elif kind == "plan_item_status_changed":
+            plan_id, _, path = key.partition(":")
+            if before.get("status") == after.get("status") or plan_id not in versions:
+                continue
+            detail = f"{before.get('status', '').replace('_', ' ')} → {after.get('status', '').replace('_', ' ')}"
+            if plan_id == plan_row["id"]:
+                path = aliases.get(path, path)
+                task = tasks.get(path)
+                group, _, index = path.partition(".")
+                fields = {"decisions": "decision", "dependencies": "item", "open_questions": "question"}
+                if task:
+                    label = task["label"]
+                elif group in fields and index.isdigit() and int(index) < len(plan.get(group) or []):
+                    label = plan[group][int(index)].get(fields[group])
+                else:
+                    label = None
+                change.update(title=label or "Plan item status changed", detail=detail,
+                              section="decisions" if group in ("decisions", "open_questions") else "work",
+                              anchor=f"plan-item-{path}")
+            else:
+                change.update(title=f"Task status changed in v{versions[plan_id]}", detail=detail,
+                              section="history", anchor=f"plan-version-{versions[plan_id]}")
+        elif kind in _ACTIVITY_SOURCES or kind == "finding_status_changed":
+            eid = sources.get(key) if kind in _ACTIVITY_SOURCES else findings.get(key)
+            if not eid:
+                continue
+            change.update(title=_ACTIVITY_SOURCES.get(kind, "Cited finding status changed"),
+                          detail=cited[eid]["label"], section="evidence", anchor=f"plan-citation-{eid}")
+        else:
+            cid = key if event["object_type"] == "claim" else after.get("claim_id")
+            if impacts.get(cid, {}).get("plan_impact") is not True:
+                continue
+            claim = db.connect().execute("SELECT text FROM project_claims WHERE id=? AND project_id=?",
+                                         (cid, project_id)).fetchone()
+            if not claim:
+                continue
+            title = "Evidence added to a linked claim" if kind == "claim_evidence_added" else "Linked claim reassessed"
+            change.update(title=title, detail=claim["text"], section="evidence", claim_id=cid)
+        changes.append(change)
+    return {"cursor": top, "next_cursor": page["next_cursor"], "changes": changes, "more": page["more"], "baseline": False}

@@ -150,7 +150,7 @@ MATERIAL_EVENTS = frozenset({"claim_created", "claim_status_changed", "claim_sta
                              "requirement_recorded", "rejected_option_recorded", "commitment_recorded", "plan_version_created",
                              "fact_changed", "deadline_recorded", "fact_proposal_accepted"})
 SUPPORTING_EVENTS = frozenset({"claim_assessment_changed", "claim_evidence_added", "source_attached", "source_removed",
-                               "source_ready", "finding_status_changed", "question_opened", "question_status_changed",
+                               "source_ready", "source_revised", "finding_status_changed", "question_opened", "question_status_changed",
                                "plan_item_status_changed", "brief_changed", "fact_proposed", "fact_recorded",
                                "preference_recorded", "intake_finalized", "intake_needs_review", "tension_status_changed",
                                "counterpart_position_recorded", "concern_recorded", "open_question_recorded",
@@ -235,10 +235,12 @@ def cursor(project_id: str, classes: Iterable[str] | None = None) -> int:
 
 def events(project_id: str, *, since: int = 0, classes: Iterable[str] | None = None, limit: int = 100,
            object_type: str | None = None, object_id: str | None = None,
-           min_materiality: str | None = None) -> dict[str, Any]:
+           min_materiality: str | None = None, event_types: Iterable[str] | None = None,
+           until: int | None = None, classify: bool = True) -> dict[str, Any]:
     """A cursor page of the change stream, floor-filtered IN the query. Impact-ordered inside the page; the cursor
     is always the page's max id so nothing is skipped or repeated."""
-    classify_pending()
+    if classify:
+        classify_pending()
     limit = max(1, min(int(limit), 100))
     base = ["e.project_id=?", "e.id>?"]
     base_args: list[Any] = [project_id, int(since)]
@@ -246,6 +248,9 @@ def events(project_id: str, *, since: int = 0, classes: Iterable[str] | None = N
         base.append("e.object_type=?"); base_args.append(object_type)
     if object_id is not None:
         base.append("e.object_id=?"); base_args.append(str(object_id))
+    if event_types is not None:
+        base.append("e.event_type IN (SELECT value FROM json_each(?))")
+        base_args.append(json.dumps(list(event_types)))
     if min_materiality == "material":
         base.append("e.materiality='material'")
     elif min_materiality == "supporting":
@@ -254,6 +259,8 @@ def events(project_id: str, *, since: int = 0, classes: Iterable[str] | None = N
     conn = db.connect()
     # the window's upper edge, read once: the cursor may pass events this grant cannot see, never ones not yet read
     top = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM project_change_events WHERE project_id=?", (project_id,)).fetchone()[0])
+    if until is not None:
+        top = min(top, until)
     base.append("e.id<=?"); base_args.append(top)
     rows = [dict(r) for r in conn.execute(
         f"SELECT e.* FROM project_change_events e WHERE {' AND '.join(base)} AND {fpred} ORDER BY e.id LIMIT ?",

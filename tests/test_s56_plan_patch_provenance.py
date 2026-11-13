@@ -308,3 +308,32 @@ def test_plan_history_reads_original_version_and_keeps_recorded_decisions(s56_db
     assert "Use the library room" in old.text and "No rental deposit" in old.text
     assert "Community hall cutoff" not in old.text
     assert client.get(path + ".html?version=3", headers=H).status_code == 404
+
+
+def test_plan_activity_uses_a_project_cursor_and_ignores_unrelated_evidence(s56_db):
+    from fastapi.testclient import TestClient
+    from neurosearch.api import app
+
+    pid = db.create_project("Plan activity project")["id"]
+    other = db.create_project("Different project")["id"]
+    sid = db.upsert_source(platform="youtube", external_id="plan-activity", url="https://example.test/cited",
+                           title="Venue terms", status="ready")["id"]
+    db.add_project_sources(pid, [sid])
+    db.replace_transcript(sid, [{"start": 0, "end": 10, "text": "First terms"}], [])
+    plan = db.save_plan(pid, {"first_steps": [{"action": "Compare venues", "evidence": ["S1"]}],
+                             "_evidence": {"S1": {"source_id": sid, "label": "Venue terms"}}}, {})
+    client = TestClient(app)
+    route = f"/api/projects/{pid}/plan/activity"
+    first = client.get(route, headers=H).json()
+    assert first["baseline"] and not first["changes"]
+    db.add_fact(other, "decision", "Do not show another project's decision")
+    db.add_fact(pid, "decision", "Use the community hall")
+    db.set_item_status(plan["id"], "first_steps.0", "complete")
+    db.replace_transcript(sid, [{"start": 0, "end": 10, "text": "Updated terms"}], [])
+    page = client.get(route, headers=H, params={"since": first["cursor"]}).json()
+    assert [(c["title"], c["anchor"].split("-", 2)[1]) for c in page["changes"]] == [
+        ("Decision recorded", "fact"), ("Compare venues", "item"), ("Cited source revised", "citation")
+    ]
+    assert page["changes"][0]["detail"] == "Use the community hall"
+    assert not client.get(route, headers=H, params={"since": page["cursor"]}).json()["changes"]
+    assert client.get(route, headers=H, params={"since": first["cursor"], "until": first["cursor"]}).json()["changes"] == []

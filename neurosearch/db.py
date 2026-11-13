@@ -1676,7 +1676,12 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 # ---------------------------------------------------------------- sources
 
 def _record_source_ready(conn: sqlite3.Connection, source_id: str) -> None:
-    """P11 EA-2: new evidence became available in every project that holds this source (direct or via collection)."""
+    _record_source_change(conn, source_id, "source_ready", {"ready": False}, {"ready": True})
+
+
+def _record_source_change(conn: sqlite3.Connection, source_id: str, event: str, before: dict, after: dict) -> None:
+    """Record changed source evidence for every project that holds the source."""
+
     pids = {r[0] for r in conn.execute(
         "SELECT project_id FROM project_sources WHERE source_id=? AND excluded=0 UNION "
         "SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id "
@@ -1687,8 +1692,7 @@ def _record_source_ready(conn: sqlite3.Connection, source_id: str) -> None:
     from . import access, ledger
     floor = {access.source_classes([source_id])[source_id]}
     for pid in sorted(pids):
-        ledger.record(conn, pid, event_type="source_ready", object_type="source", object_id=source_id,
-                      before={"ready": False}, after={"ready": True}, floor=floor)
+        ledger.record(conn, pid, event_type=event, object_type="source", object_id=source_id, before=before, after=after, floor=floor)
 
 
 def set_acquisition_provenance(source_id: str, provenance: str) -> None:
@@ -2165,6 +2169,7 @@ def source_stats() -> dict[str, Any]:
 def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict]) -> None:
     """Replace all segments and chunks for a source. Embeddings may be None (filled later)."""
     with tx() as conn:
+        source = conn.execute("SELECT revision FROM sources WHERE id=?", (source_id,)).fetchone()
         conn.execute("DELETE FROM segments WHERE source_id=?", (source_id,))
         conn.execute("DELETE FROM chunks WHERE source_id=?", (source_id,))
         conn.executemany(
@@ -2181,6 +2186,9 @@ def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict])
         revision = segments_revision(segments)
         conn.execute("UPDATE sources SET updated_at=CASE WHEN revision IS NOT ? THEN ? ELSE updated_at END, revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END, spoken_chars=? WHERE id=?",
                      (revision, now(), revision, bool(chunks), sum(len(s_["text"]) for s_ in segments), source_id))
+        if source and source["revision"] and source["revision"] != revision:
+            _record_source_change(conn, source_id, "source_revised",
+                                  {"revision": source["revision"]}, {"revision": revision})
     # G5: a moved revision stales exactly the Claim evidence rows frozen on the old one (no-op for sources without Claims)
     try:
         if connect().execute("SELECT 1 FROM claim_evidence WHERE source_id=? LIMIT 1", (source_id,)).fetchone():

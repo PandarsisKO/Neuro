@@ -11,6 +11,7 @@ globalThis.loadPlan = async function loadPlan() {
   $('#nPlan').textContent = r.plan ? `v${r.plan.version}` : '';
   if (!r.plan) return renderNoPlan();
   renderPlan(r);
+  loadPlanActivity(r);
 }
 globalThis.renderNoPlan = function renderNoPlan() {
   const p = state.project;
@@ -63,10 +64,12 @@ globalThis.setItem = async function setItem(key, control) {
     if (planState !== original || state.project?.id !== original.plan.project_id) return;
     const updated = await api(`/api/projects/${original.plan.project_id}/plan`);
     if (planState !== original || state.project?.id !== original.plan.project_id) return;
+    updated.activity = original.activity;
     updated.showChanges = $('#planChanges')?.open;
     updated.showQuestions = $('#planQuestions')?.open;
     globalThis.planState = updated;
     renderPlan(updated);
+    if (!updated.activity) loadPlanActivity(updated);
     const updatedControls = [...$('#planWrap').querySelectorAll('[data-plan-item]')];
     (updatedControls.find(el => el.dataset.planItem === key) || updatedControls[0] || $('#planNextHeading'))?.focus();
   } catch (e) {
@@ -94,7 +97,7 @@ globalThis.planUpdateEvidence = function planUpdateEvidence(update) {
 }
 function planAction(item, evidence) {
   const detail = item.detail || item.why;
-  return `<div class="plan-action">
+  return `<div class="plan-action" ${item.summary ? '' : `id="plan-item-${esc(item.key)}" tabindex="-1"`}>
     <div class="body"><strong>${esc(item.label)}</strong>${item.time ? ` <span class="muted">· ${esc(item.time)}</span>` : ''}
       ${item.unmet?.length ? `<div class="status-warn">Waiting for ${item.unmet.map(esc).join(', ')}</div>` : ''}
       ${detail ? `<div class="muted">${esc(detail)}</div>` : ''}${ev(item.evidence, evidence)}
@@ -165,7 +168,7 @@ function planFocus(r, evidence) {
   const alerts = [...new Set([...(ready.blockers || []), ...(ready.need_before || [])])]
     .filter(label => !(p.dependencies || []).some(d => d.item?.trim().toLowerCase() === label.trim().toLowerCase()));
   const actions = `<section aria-labelledby="planNextHeading"><h3 id="planNextHeading" tabindex="-1">Next actions</h3>
-    ${execution.next_actions.length ? execution.next_actions.map(item => planAction(item, evidence)).join('') :
+    ${execution.next_actions.length ? execution.next_actions.map(item => planAction({ ...item, summary: true }, evidence)).join('') :
       '<p class="muted">No unfinished actions are listed for this milestone.</p>'}
     ${execution.completed ? `<p class="muted">${execution.completed} of ${Object.keys(execution.tasks).length} actions complete</p>` : ''}
     <button class="small ghost" onclick="jumpToPlanSection('work')">View all work</button></section>`;
@@ -211,6 +214,83 @@ globalThis.jumpToPlanSection = function jumpToPlanSection(section) {
   heading?.focus({ preventScroll: true });
 }
 
+function planActivityMarkup(activity) {
+  if (!activity || activity.baseline) return '';
+  const { changes, more } = activity;
+  if (!changes.length && !more) return '<p class="muted plan-activity-empty">No recorded plan changes since your last review.</p>';
+  return `<section class="plan-changes" aria-label="Changes since your last review">
+    <h3>Changes since your last review</h3>
+    ${changes.length ? `<ul>${changes.map((change, i) => `<li>
+      <button class="small ghost" onclick="openPlanActivity(${i})">${esc(change.title)}</button>
+      <span class="muted"> · ${esc(new Date(change.at * 1000).toLocaleDateString())}</span>
+      ${change.detail ? `<div class="plan-decision-note">${esc(change.detail)}</div>` : ''}</li>`).join('')}</ul>` :
+      '<p class="muted">No plan changes in this part of the activity log.</p>'}
+    ${more ? '<button class="small" onclick="loadMorePlanActivity(this)">Review more activity</button>' :
+      '<button class="small" onclick="markPlanActivityReviewed()">Mark changes reviewed</button>'}</section>`;
+}
+
+async function loadPlanActivity(plan, previous = null) {
+  const projectId = plan.plan.project_id;
+  const key = 'ns_plan_reviewed:' + projectId;
+  let seen;
+  try { seen = localStorage.getItem(key); } catch { return; }
+  const params = new URLSearchParams();
+  if (previous) {
+    params.set('since', previous.next_cursor);
+    params.set('until', previous.cursor);
+  } else if (seen !== null && /^\d+$/.test(seen)) {
+    params.set('since', seen);
+  }
+  try {
+    const result = await api(`/api/projects/${projectId}/plan/activity?${params}`, { ack: false });
+    if (planState !== plan || state.project?.id !== projectId) return;
+    if (previous) result.changes = [...previous.changes, ...result.changes];
+    plan.activity = result;
+    if (result.baseline) localStorage.setItem(key, String(result.cursor));
+    $('#planActivity').innerHTML = planActivityMarkup(result);
+    if (previous) $('#planActivity button:last-of-type')?.focus({ preventScroll: true });
+  } catch {
+    if (planState === plan && state.project?.id === projectId) {
+      $('#planActivity').innerHTML = '<button class="small" onclick="retryPlanActivity()">Retry loading plan activity</button>';
+    }
+  }
+}
+
+globalThis.retryPlanActivity = function retryPlanActivity() { return loadPlanActivity(planState, planState.activity?.more ? planState.activity : null); };
+globalThis.loadMorePlanActivity = async function loadMorePlanActivity(button) {
+  button.disabled = true;
+  try { await loadPlanActivity(planState, planState.activity); }
+  finally { button.disabled = false; }
+};
+globalThis.markPlanActivityReviewed = function markPlanActivityReviewed() {
+  const activity = planState.activity;
+  if (!activity || activity.more) return;
+  const key = 'ns_plan_reviewed:' + planState.plan.project_id;
+  try {
+    const current = Number(localStorage.getItem(key));
+    localStorage.setItem(key, String(Math.max(current || 0, activity.cursor)));
+  } catch { toast('Could not save your review on this browser.', 'err'); return; }
+  planState.activity = { ...activity, changes: [] };
+  $('#planActivity').innerHTML = planActivityMarkup(planState.activity);
+  $('#planActivity').tabIndex = -1;
+  $('#planActivity').focus({ preventScroll: true });
+};
+globalThis.openPlanActivity = function openPlanActivity(index) {
+  const change = planState.activity?.changes[index];
+  if (!change) return;
+  if (change.claim_id) return showClaimEvidence(change.claim_id);
+  const target = change.anchor && document.getElementById(change.anchor);
+  if (!target) return jumpToPlanSection(change.section);
+  const disclosure = target.closest('details');
+  if (disclosure) {
+    const filter = $('#evFilter');
+    if (filter?.value) { filter.value = ''; filterEvidence(''); }
+    disclosure.open = true;
+  }
+  target.scrollIntoView?.({ block: 'center' });
+  target.focus({ preventScroll: true });
+};
+
 function planSection(id, title, body) {
   return `<section class="plan-section" aria-labelledby="plan-section-${id}">
     <h2 id="plan-section-${id}" tabindex="-1">${title}</h2>${body}</section>`;
@@ -228,6 +308,7 @@ globalThis.renderPlan = function renderPlan(r) {
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
   h += `<nav class="plan-section-links" aria-label="Jump to a plan section">${planSections.map(([id, title]) =>
     `<button class="small ghost" onclick="jumpToPlanSection('${id}')">${title}</button>`).join('')}</nav>`;
+  h += `<div id="planActivity">${planActivityMarkup(r.activity)}</div>`;
   h += planFocus(r, E) + '<div data-plan-stale-slot></div>';
   if (pending.length || accepted.length) {
     h += `<details class="plan-changes" id="planChanges" ${r.showChanges ? 'open' : ''}><summary>Plan changes · ${pending.length} to review${accepted.length ? ` · ${accepted.length} ready to apply` : ''}</summary>` +
@@ -289,7 +370,7 @@ globalThis.renderPlan = function renderPlan(r) {
         </section>`;
       });
     }
-    if (p.dependencies?.length) body += `<h2>Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
+    if (p.dependencies?.length) body += `<h2>Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item" id="plan-item-dependencies.${i}" tabindex="-1"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
     if (r.deadlines?.length) body += '<h2>Confirmed deadlines</h2>' + r.deadlines.map(d =>
       `<p><time datetime="${esc(d.date)}">${esc(d.date)}</time> · ${esc(d.label)}${d.consequence ? `<br>${esc(d.consequence)}` : ''}
         ${d.fallback ? `<br>Fallback · ${esc(d.fallback)}` : ''}</p>`).join('');
@@ -298,17 +379,17 @@ globalThis.renderPlan = function renderPlan(r) {
   }
   {
     let body = '';
-    if (p.decisions?.length) body += `<h2>Plan decisions</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? 'decided' : d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">Discuss</button></div></div>${statusSel('decisions.' + i, d.decision)}
+    if (p.decisions?.length) body += `<h2>Plan decisions</h2>` + p.decisions.map((d, i) => `<div class="item" id="plan-item-decisions.${i}" tabindex="-1"><div class="body"><span class="tag ${d.when}">${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? 'decided' : d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">Discuss</button></div></div>${statusSel('decisions.' + i, d.decision)}
       ${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? `<div class="plan-decision-note">${esc(pl.items['decisions.' + i]?.note || '')}</div>` :
         `<details><summary>Record decision</summary><form class="plan-form" onsubmit="event.preventDefault(); recordPlanDecision(${i}, this)">
           <label>Your choice <input name="choice" maxlength="500" required></label>
           <label>Why <input name="reason" maxlength="1000"></label><button class="small primary" type="submit">Save decision</button>
         </form></details>`}</div>`).join('');
-    if (p.open_questions?.length) body += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">Research this</button></div></div>${statusSel('open_questions.' + i, q.question)}</div>`).join('');
+    if (p.open_questions?.length) body += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item" id="plan-item-open_questions.${i}" tabindex="-1"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">Research this</button></div></div>${statusSel('open_questions.' + i, q.question)}</div>`).join('');
     if (an.assumptions?.length) body += `<h2>Assumptions this plan rests on</h2>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
     if (!p.decisions?.length && !p.open_questions?.length) body += '<p class="muted">Nothing to decide right now.</p>';
     if (r.recorded_decisions?.length) body += '<h2>Recorded project decisions</h2>' + r.recorded_decisions.map(d =>
-      `<article class="plan-history-row"><p class="plan-decision-note">${esc(d.content)}</p>
+      `<article class="plan-history-row" id="plan-fact-${esc(d.id)}" tabindex="-1"><p class="plan-decision-note">${esc(d.content)}</p>
         <p class="muted">${esc(new Date(d.created_at * 1000).toLocaleDateString())}${d.status !== 'active' ? ` · ${esc(d.status)}` : ''}</p></article>`).join('');
     h += planSection('decisions', 'Decisions and assumptions', body);
   }
@@ -359,14 +440,14 @@ globalThis.renderPlan = function renderPlan(r) {
       for (const prefix of ['cited', ...order]) {
         const items = groups[prefix]; if (!items?.length) continue;
         body += `<details class="evgroup" ${prefix === 'cited' ? 'open' : ''}><summary><b>${esc(prefix === 'cited' ? 'Cited in this plan' : GROUP_LABEL[prefix] || prefix)}</b> <span class="muted">(${items.length})</span></summary>
-          <div class="muted evchips">${items.map(([id, e]) => `<span class="chip" data-evtext="${esc((id + ' ' + e.label).toLowerCase())}">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)}</span>`).join(' ')}</div>
+          <div class="muted evchips">${items.map(([id, e]) => `<span class="chip" id="plan-citation-${esc(id)}" tabindex="-1" data-evtext="${esc((id + ' ' + e.label).toLowerCase())}">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)}</span>`).join(' ')}</div>
         </details>`;
       }
     }
     h += planSection('evidence', 'Evidence', body);
   }
   const versions = r.versions || [];
-  const history = `<ul>${versions.map(v => `<li>
+  const history = `<ul>${versions.map(v => `<li id="plan-version-${esc(v.version)}" tabindex="-1">
     ${v.label === 'current' ? `Version ${v.version} · Current` :
       `<a href="/api/projects/${encodeURIComponent(pl.project_id)}/plan.html?version=${v.version}" target="_blank" rel="noopener">Read version ${v.version}</a>`}
     · ${esc(new Date(v.created_at * 1000).toLocaleDateString())}</li>`).join('')}</ul>

@@ -170,6 +170,9 @@ try {
     versions: [{ version: 2, label: 'current', created_at: 1800000000 }, { version: 1, created_at: 1790000000 }],
     recorded_decisions: [{ content: 'Chose the hall because the library closed', status: 'active', created_at: 1795000000 }],
   };
+  window.planState.activity = { cursor: 73, more: false, changes: [
+    { title: 'Task finished', section: 'work', anchor: 'plan-item-phases.0.tasks.0', at: 1795000000 }
+  ] };
   window.renderPlan(window.planState);
   assert.match(planWrap.querySelector('#plan-section-reasoning').parentElement.textContent, /The library closed/);
   for (const row of planWrap.querySelectorAll('.plan-phase')) assert.equal(row.closest('details'), null);
@@ -179,6 +182,13 @@ try {
   assert.match(versionLink.getAttribute('href'), /plan.html\?version=1$/);
   window.jumpToPlanSection('history');
   assert.equal(document.activeElement.id, 'plan-section-history');
+  assert.ok(planWrap.contains(versionLink));
+  assert.match(planWrap.querySelector('#planActivity').textContent, /Task finished/);
+  planWrap.querySelector('#planActivity li button').click();
+  assert.equal(document.activeElement.id, 'plan-item-phases.0.tasks.0');
+  window.markPlanActivityReviewed();
+  assert.equal(window.localStorage.getItem('ns_plan_reviewed:project'), '73');
+  assert.match(planWrap.querySelector('#planActivity').textContent, /No recorded plan changes/);
   assert.ok(planWrap.contains(versionLink));
 
 } finally {

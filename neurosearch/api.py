@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 import anyio
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.staticfiles import StaticFiles
@@ -2599,7 +2599,7 @@ def api_plan(project_id: str) -> dict[str, Any]:
     plan = db.latest_plan(project_id)
     versions = db.list_plans(project_id)
     facts = db.list_facts(project_id, include_history=True) if plan else []
-    recorded = [{k: f[k] for k in ("content", "created_at", "status")} for f in facts
+    recorded = [{k: f[k] for k in ("id", "content", "created_at", "status")} for f in facts
                 if f["kind"] == "decision" and f["scope"] == "project" and f["status"] in ("active", "superseded", "withdrawn")]
     history = db.reviewed_plan_updates(project_id) if plan else []
     if plan:
@@ -2614,6 +2614,16 @@ def api_plan(project_id: str) -> dict[str, Any]:
             "deadlines": plan_execution.confirmed_deadlines(f for f in facts if f["scope"] == "project" and f["status"] == "active"),
             "applied_updates": [u for u in history if u["status"] == "accepted"],
             "rejected_updates": [u for u in history if u["status"] == "rejected"], "recorded_decisions": recorded}
+
+
+@app.get("/api/projects/{project_id}/plan/activity", dependencies=[Depends(require_auth)])
+def api_plan_activity(project_id: str, since: int | None = Query(None, ge=0),
+                      until: int | None = Query(None, ge=0)) -> dict[str, Any]:
+    from . import plan_execution
+    plan = db.latest_plan(project_id)
+    if not plan:
+        raise HTTPException(404, "No saved plan")
+    return plan_execution.recent_changes(project_id, plan, since, until)
 
 
 @app.get("/api/projects/{project_id}/staleness", dependencies=[Depends(require_auth)])
