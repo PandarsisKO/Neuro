@@ -539,12 +539,19 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
           <option value="">Unreviewed</option>${Object.entries(intent).map(([value, label]) => `<option value="${value}" ${p.assessment === value ? 'selected' : ''}>${label}</option>`).join('')}
         </select></label>
       </div></div>`).join('') || '<p class="muted">No passages returned. Try different wording.</p>'}`;
+    const earlier = groups.flatMap(([scope, group]) => (group.earlier_assessments || []).map(p => ({ ...p, scope })));
     const methods = { keyword: 'Keyword search', hybrid: 'Keyword and similar wording search', mixed: 'Similar wording search available for part of the search' };
     results.innerHTML = `<p class="muted">${esc(checked)} · ${methods[data.method]}
       ${data.semantic_requested && data.method !== 'hybrid' ? ' · Keyword results used where similar wording search was unavailable.' : ''}</p>
       <p class="muted">Searched ${data.queries.map(q => `“${esc(q)}”`).join(' and ')}. Results are limited to the passages shown.</p>
       <p class="muted">Compare what was measured, who it applies to, the conditions and the time period. Open the source if the excerpt leaves any of that unclear.</p>
       ${groups.map(([scope, group]) => passages(scope, group)).join('')}
+      ${earlier.length ? `<details class="mt-2"><summary>Earlier assessments (${earlier.length})</summary>
+        ${earlier.map(p => `<div class="kn"><div class="grow min-w-0">
+          <b>${esc(intent[p.assessment])}</b> · ${claimEvidenceLink(p)} ${originBadge(p)}
+          ${p.scope === 'library' ? '<span class="tag">Library lead</span>' : ''}
+          <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote>
+        </div></div>`).join('')}</details>` : ''}
       <p data-challenge-outcome role="status"></p>
       <label>What still needs checking <input name="gaps" maxlength="500" placeholder="A missing source, population, or time period"></label>
       <button type="button" class="small primary mt-2" data-challenge-save>Save assessment</button>
@@ -566,12 +573,12 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       const scopes = assessedScopes();
       return { ...data, scopes, novelty: claimChallengeSummary(scopes),
         remaining_gaps: results.querySelector('[name="gaps"]').value,
-        scope_limit: 'Ranked passages from the selected sources. Search and review coverage are limited to the passages shown.' };
+        scope_limit: 'Includes the passages returned by this search and retained assessments from earlier searches.' };
     };
     const save = results.querySelector('[data-challenge-save]');
     const saveStatus = results.querySelector('[data-challenge-save-status]');
     save.addEventListener('click', async () => {
-      if (!selections.some(select => select.value)) {
+      if (!earlier.length && !selections.some(select => select.value)) {
         saveStatus.textContent = 'Assess at least one passage before saving.';
         return;
       }

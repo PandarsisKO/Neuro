@@ -15,6 +15,7 @@ from .config import settings
 
 PASSAGES_PER_SCOPE = 8
 PASSAGES_PER_ORIGIN = 2
+EARLIER_ASSESSMENT_LIMIT = 32
 
 
 def _fingerprint(text: str) -> str:
@@ -35,6 +36,15 @@ def _additive_scope(before: dict | None, after: dict) -> bool:
 
 def _saved_passages(group: dict[str, Any]) -> list[dict[str, Any]]:
     return group["passages"] + group.get("earlier_assessments", [])
+
+
+def _retained_assessments(group: dict[str, Any], shown: set[int]) -> list[dict[str, Any]]:
+    if not group:
+        return []
+    return [{k: v for k, v in passage.items() if k != "changed"}
+            for passage in _saved_passages(group)
+            if not passage["changed"] and passage["assessment"] and passage["chunk_id"] not in shown
+            ][:EARLIER_ASSESSMENT_LIMIT]
 
 
 def _same_search(review: dict[str, Any], queries: list[str], semantic: bool, scopes: dict) -> bool:
@@ -85,8 +95,9 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
     if include_library:
         scopes["library"] = library.library_scope(project_id)
     prior = load_review(project_id, claim)
-    if prior and not _same_search(prior, queries, semantic, scopes):
+    if prior and prior["claim_changed"]:
         prior = None
+    same_search = bool(prior and _same_search(prior, queries, semantic, scopes))
     now = datetime.now(timezone.utc).isoformat()
     hybrid = bool(semantic and settings.embeddings_enabled)
     retrieval = {"embeddings": hybrid, "model": settings.embedding_model if hybrid else None,
@@ -97,19 +108,16 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
     results: dict[str, Any] = {}
     for scope, source_ids in scopes.items():
         snapshot = db.searchable_source_snapshot(source_ids)
-        previous = prior["scopes"][scope] if prior else {}
+        previous = prior["scopes"].get(scope, {}) if prior else {}
         old_snapshot = previous.get("source_snapshot")
         same_collection = _additive_scope(old_snapshot, snapshot)
-        incremental = (not full and same_collection and prior.get("retrieval") == retrieval
+        incremental = (not full and same_search and same_collection and prior.get("retrieval") == retrieval
                        and (not retrieval["embeddings"] or previous.get("method") == "hybrid"))
         if incremental:
             to_search = [sid for sid, row in snapshot.items() if row[1] is not None and (sid not in old_snapshot or old_snapshot[sid][1] is None)]
         else:
             to_search = [sid for sid, row in snapshot.items() if row[1] is not None]
-        legacy_revision = _scope_revision(snapshot, legacy=True)
-        same_legacy_collection = old_snapshot is None and previous.get("scope_revision") == legacy_revision
-        kept = ({p["chunk_id"]: p for p in _saved_passages(previous) if not p["changed"]}
-                if same_collection or same_legacy_collection else {})
+        kept = {p["chunk_id"]: p for p in _saved_passages(previous) if not p["changed"]} if previous else {}
         query_hits = []
         scope_modes = []
         if to_search:
@@ -130,7 +138,7 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
                 query_hits.append(hits)
         if incremental:
             query_hits = list(zip_longest(*query_hits))
-            query_hits.extend((p,) for p in kept.values())
+            query_hits.extend((p,) for p in previous["passages"] if p["chunk_id"] in kept)
         else:
             query_hits = zip_longest(*query_hits)
         passages = []
@@ -165,6 +173,10 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
                           "search_mode": ("added" if to_search else "resumed") if incremental else "full",
                           "searched_at": now if to_search or not incremental else previous["searched_at"],
                           "previous_searched_at": previous.get("searched_at") if incremental else None}
+    for scope, group in results.items():
+        previous = prior["scopes"].get(scope, {}) if prior else {}
+        group["earlier_assessments"] = _retained_assessments(previous, shown_chunks)
+
     return {"claim_id": claim_id, "text": claim["text"], "qualifiers": claim.get("qualifiers") or {},
             "searched_at": max(group["searched_at"] for group in results.values()), "queries": queries,
             "method": _method(modes), "retrieval": retrieval, "semantic_requested": semantic,
@@ -190,13 +202,15 @@ def save_review(project_id: str, claim_id: str, review: dict[str, Any]) -> dict[
     if "project" not in review["scopes"]:
         raise ValueError("Project search scope is required.")
     prior = load_review(project_id, claim)
-    if prior and not _same_search(prior, review["queries"], review["semantic_requested"], review["scopes"]):
+    if prior and prior["claim_changed"]:
         prior = None
     if any(not group.get("scope_revision") for group in review["scopes"].values()):
         review["retrieval"] = None  # older clients can save assessments, but cannot assert a resumable search
     selected = [p for group in review["scopes"].values() for p in group["passages"]]
     selected_ids = {p["chunk_id"] for p in selected}
-    if not any(p["assessment"] for p in selected):
+    earlier = {scope: _retained_assessments(prior["scopes"].get(scope, {}) if prior else {}, selected_ids)
+               for scope in review["scopes"]}
+    if not (any(p["assessment"] for p in selected) or any(earlier.values())):
         raise ValueError("Assess at least one passage before saving.")
     if len(selected_ids) != len(selected):
         raise ValueError("Passages must be unique.")
@@ -222,13 +236,7 @@ def save_review(project_id: str, claim_id: str, review: dict[str, Any]) -> dict[
             saved.append({**hit, **p, "text": hit["text"][:1800], "excerpt_truncated": len(hit["text"]) > 1800,
                           **_origin_fields(*compare_origin(hit))})
         group["passages"] = saved
-        old_group = prior["scopes"][scope] if prior else {}
-        old_snapshot = old_group.get("source_snapshot")
-        if _additive_scope(old_snapshot, snapshot):
-            group["earlier_assessments"] = [
-                {k: v for k, v in p.items() if k != "changed"} for p in _saved_passages(old_group)
-                if not p["changed"] and p["assessment"] and p["chunk_id"] not in selected_ids
-            ][:32]
+        group["earlier_assessments"] = earlier[scope]
     review["claim_id"] = claim_id
     review["passage_limit_per_scope"] = PASSAGES_PER_SCOPE
     with db.tx() as conn:

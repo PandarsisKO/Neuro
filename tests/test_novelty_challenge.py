@@ -182,6 +182,48 @@ def test_challenge_origin_tracks_current_works_without_rewriting_judgments(clien
     assert stored["assessment"] == "equivalent" and not stored["changed"]
 
 
+def test_challenge_keeps_reviewed_passages_when_search_wording_changes(client):
+    pid = db.create_project("Reworded Claim Challenge")["id"]
+    claim = claims.add_claim(pid, "Roof vents lower storage temperatures.")
+    original = _source(pid, "reworded-claim-original", "Roof vents lower storage temperatures.")
+    _source(pid, "reworded-claim-exception", "Persistent condensation in a humid warehouse.")
+    unrelated = _source(pid, "reworded-claim-unrelated", "An unrelated ramp permit.")
+    path = f"/api/projects/{pid}/claims/{claim['id']}/challenge"
+
+    initial = client.post(path, headers=H, json={}).json()
+    first = initial["scopes"]["project"]["passages"][0]
+    first["assessment"] = "equivalent"
+    initial["remaining_gaps"] = "Check humid conditions"
+    assert client.put(path + "/review", headers=H, json=initial).status_code == 200
+
+    amended = client.post(path, headers=H, json={"q": "persistent condensation"}).json()
+    group = amended["scopes"]["project"]
+    assert group["search_mode"] == "full"
+    assert group["earlier_assessments"][0]["assessment"] == "equivalent"
+    assert amended["remaining_gaps"] == "Check humid conditions"
+    group["earlier_assessments"][0]["assessment"] = "irrelevant"
+    saved = client.put(path + "/review", headers=H, json=amended)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["review"]["scopes"]["project"]["earlier_assessments"][0]["assessment"] == "equivalent"
+
+    resumed = client.post(path, headers=H, json={"q": "persistent condensation"}).json()["scopes"]["project"]
+    assert resumed["search_mode"] == "resumed"
+    assert all(p["source_id"] != original for p in resumed["passages"])
+    assert resumed["earlier_assessments"][0]["source_id"] == original
+
+    db.remove_project_sources(pid, [unrelated])
+    refreshed = client.post(path, headers=H, json={"full": True}).json()
+    first = refreshed["scopes"]["project"]["passages"][0]
+    assert first["source_id"] == original and first["assessment"] == "equivalent"
+    assert not refreshed["scopes"]["project"]["earlier_assessments"]
+
+    revised = [{"start": 40, "end": 55, "text": "Roof vents raise storage temperatures."}]
+    db.replace_transcript(original, revised, revised)
+    amended = client.post(path, headers=H, json={"q": "persistent condensation"}).json()
+    assert not amended["scopes"]["project"]["earlier_assessments"]
+    assert client.put(path + "/review", headers=H, json=amended).status_code == 409
+
+
 def test_pending_plan_proposal_shows_recorded_claim_and_passage(client):
     pid = db.create_project("Plan with evidence")["id"]
     claim = claims.add_claim(pid, "Roof vents lower storage temperatures.")
