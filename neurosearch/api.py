@@ -2598,16 +2598,21 @@ def api_plan(project_id: str) -> dict[str, Any]:
     from . import plan_execution, planner
     plan = db.latest_plan(project_id)
     versions = db.list_plans(project_id)
+    facts = db.list_facts(project_id, include_history=True) if plan else []
+    recorded = [{k: f[k] for k in ("content", "created_at", "status")} for f in facts
+                if f["kind"] == "decision" and f["scope"] == "project" and f["status"] in ("active", "superseded", "withdrawn")]
+    applied = db.applied_plan_updates(project_id) if plan else []
     if plan:
         from . import plan_narrative
         plan_narrative.attach_update_evidence(project_id, plan["updates"])
+        plan_narrative.attach_update_evidence(project_id, applied, history=True)
     for v in versions:                                  # older versions are superseded, never "current"
         v["label"] = "current" if plan and v["id"] == plan["id"] else "superseded"
     return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions,
             "can_apply_exact": bool(plan and planner.exact_edits(plan)),
             "execution": plan_execution.execution_view(plan["plan"], plan["items"]) if plan else None,
-            "deadlines": plan_execution.confirmed_deadlines(db.list_facts(project_id)) if plan else [],
-            "applied_updates": db.applied_plan_updates(project_id) if plan else []}
+            "deadlines": plan_execution.confirmed_deadlines(f for f in facts if f["scope"] == "project" and f["status"] == "active"),
+            "applied_updates": applied, "recorded_decisions": recorded}
 
 
 @app.get("/api/projects/{project_id}/staleness", dependencies=[Depends(require_auth)])
@@ -2907,12 +2912,17 @@ def _saved_plan_download(plan: dict[str, Any], project: dict[str, Any], *, filen
 
 
 @app.get("/api/projects/{project_id}/plan.html", dependencies=[Depends(require_auth)])
-def api_plan_html(project_id: str) -> Any:
+def api_plan_html(project_id: str, version: int | None = None) -> Any:
     from .planner import plan_html
-    plan, p = db.latest_plan(project_id), db.get_project(project_id)
+    p = db.get_project(project_id)
+    if version is None:
+        plan = db.latest_plan(project_id)
+    else:
+        match = next((v for v in db.list_plans(project_id) if v["version"] == version), None)
+        plan = db.get_plan(match["id"]) if match else None
     if not plan or not p:
         raise HTTPException(404, "no plan yet")
-    return HTMLResponse(plan_html(plan, p))
+    return HTMLResponse(plan_html(plan, p, historical=version is not None))
 
 
 class DiscoverIn(BaseModel):

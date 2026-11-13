@@ -5524,7 +5524,7 @@ def list_plans(project_id: str) -> list[dict[str, Any]]:
 
 def applied_plan_updates(project_id: str) -> list[dict[str, Any]]:
     return [dict(row) for row in connect().execute(
-        """SELECT u.section, u.previous, u.proposed, v.version
+        """SELECT u.section, u.previous, u.proposed, u.reason, u.status, u.claim_id, u.evidence_json, v.version
            FROM plan_updates u JOIN plans v ON v.id=u.applied_plan_id
            WHERE v.project_id=? ORDER BY v.version DESC, u.id DESC""", (project_id,))]
 

@@ -707,7 +707,7 @@ def _ev_links(ids: list[str] | None, emap: dict[str, Any]) -> str:
     return (" _(based on: " + "; ".join(out) + ")_") if out else ""
 
 
-def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
+def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any], *, historical: bool = False) -> str:
     p = plan_row["plan"]
     emap = p.get("_evidence", {})
     items = plan_row.get("items", {})
@@ -730,7 +730,8 @@ def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
         out += [f"**Recommended approach** — {approach}", ""]
     if phase:
         out += ["## Next milestone", phase.get("outcome") or phase.get("objective") or phase.get("name") or "", ""]
-    deadlines = plan_execution.confirmed_deadlines(project.get("facts") or db.list_facts(project["id"])) if project.get("id") else []
+    facts = (project.get("facts") or db.list_facts(project["id"])) if not historical and project.get("id") else []
+    deadlines = plan_execution.confirmed_deadlines(facts)
     if deadlines:
         out += ["**Confirmed deadlines**"]
         for item in deadlines:
@@ -821,9 +822,16 @@ def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
             out += [f"### {'Decide now' if d.get('when') == 'now' else 'Decide later'} — {d.get('decision')}{st(f'decisions.{i}')}",
                     "Options: " + "; ".join(d.get("options") or []),
                     f"**Recommended:** {d.get('recommended', '')} — {d.get('why', '')}{L(d.get('evidence'), emap)}"]
+            if note := items.get(f"decisions.{i}", {}).get("note"):
+                out += ["", "**Recorded decision** — " + " · ".join(note.splitlines())]
             if d.get("by_phase"):
                 out.append(f"_Needed by:_ {d['by_phase']}")
             out.append("")
+    recorded = [f["content"] for f in facts if f["kind"] == "decision"]
+    if recorded:
+        out += ["## Recorded project decisions"]
+        out += ["- " + " · ".join(content.splitlines()) for content in recorded]
+        out.append("")
     if p.get("tools"):
         out += ["## 7. Tools & services", "| Need | Tool | Free option | Premium option | Approx. cost | Tier | Why |", "|---|---|---|---|---|---|---|"]
         for t in p["tools"]:
@@ -892,9 +900,9 @@ def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def plan_html(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
+def plan_html(plan_row: dict[str, Any], project: dict[str, Any], *, historical: bool = False) -> str:
     """Self-contained, printable page for sharing with the team."""
-    md = plan_markdown(plan_row, project)
+    md = plan_markdown(plan_row, project, historical=historical)
     body = _md_to_html(md)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_h(project['name'])} — Master Plan</title>

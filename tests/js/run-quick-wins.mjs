@@ -150,6 +150,37 @@ try {
   assert.match(card.textContent, /Source revised/);
   assert.equal(card.querySelector('a').getAttribute('href'), 'https://example.test/video?t=750s');
 
+  window.eval(planJs.replace(/^route\(\);$/m, '').replace(/^export const moduleName.*$/m, ''));
+  const planWrap = document.createElement('div');
+  planWrap.id = 'planWrap';
+  document.body.append(planWrap);
+  window.STATUSES = ['not_started', 'complete'];
+  window.stLabel = s => s.replaceAll('_', ' ');
+  window.planState = {
+    plan: { id: 'saved', project_id: 'project', status: 'started', version: 2,
+      items: { 'phases.0.tasks.0': { status: 'complete' } }, updates: [], plan: {
+        approach: { recommended: 'Use the hall', why: 'The library closed', alternatives: [{ option: 'Library', why_not: 'Closed' }] },
+        phases: [{ name: 'Preparation' }, { name: 'Registration' }, { name: 'Follow-up' }],
+        analysis: { assumptions: [{ assumption: 'Eight people will attend' }] },
+        _evidence: { F1: { label: 'Venue agreement' } },
+      } },
+    execution: { phase: { name: 'Registration' }, phase_index: 1, next_actions: [], completed: 1, tasks: {
+      'phases.0.tasks.0': { phase: 0, label: 'Compare venues' }, 'phases.2.tasks.0': { phase: 2, label: 'Survey attendees' },
+    } },
+    versions: [{ version: 2, label: 'current', created_at: 1800000000 }, { version: 1, created_at: 1790000000 }],
+    recorded_decisions: [{ content: 'Chose the hall because the library closed', status: 'active', created_at: 1795000000 }],
+  };
+  window.renderPlan(window.planState);
+  assert.match(planWrap.querySelector('#plan-section-reasoning').parentElement.textContent, /The library closed/);
+  for (const row of planWrap.querySelectorAll('.plan-phase')) assert.equal(row.closest('details'), null);
+  assert.match(planWrap.querySelector('#plan-section-work').parentElement.textContent, /Compare venues.*Survey attendees/s);
+  assert.match(planWrap.querySelector('#plan-section-decisions').parentElement.textContent, /Chose the hall/);
+  const versionLink = planWrap.querySelector('#plan-section-history + ul a');
+  assert.match(versionLink.getAttribute('href'), /plan.html\?version=1$/);
+  window.jumpToPlanSection('history');
+  assert.equal(document.activeElement.id, 'plan-section-history');
+  assert.ok(planWrap.contains(versionLink));
+
 } finally {
   window.close();
 }

@@ -86,8 +86,8 @@ def propose_updates(project_id: str, claim_id: str | None = None, tension_id: st
     return [u for u in db.get_plan(plan["id"])["updates"] if u.get("origin") == "lp3" and u.get("status") == "pending"]
 
 
-def attach_update_evidence(project_id: str, updates: list[dict[str, Any]]) -> None:
-    """Preview recorded Claims on pending proposals, with current passage availability."""
+def attach_update_evidence(project_id: str, updates: list[dict[str, Any]], *, history: bool = False) -> None:
+    """Preview recorded evidence and, when requested, current evidence for historical Claim links."""
     from . import claims_view
 
     previews: dict[str, dict[str, Any] | None] = {}
@@ -104,7 +104,7 @@ def attach_update_evidence(project_id: str, updates: list[dict[str, Any]]) -> No
                     item["stale"] = not source or source.get("revision") != item.get("revision")
             update["verified_evidence"] = verified
         claim_id = update.get("claim_id")
-        if update["status"] != "pending" or not claim_id:
+        if not claim_id or (update["status"] != "pending" and not history):
             continue
         if claim_id not in previews:
             previews[claim_id] = claims_view.review_evidence(project_id, claim_id, limit=2)

@@ -4,7 +4,6 @@ globalThis.loadPlan = async function loadPlan() {
   const r = await api(`/api/projects/${projectId}/plan`);
   if (state.project?.id !== projectId) return;
   if (globalThis.planState?.plan?.project_id === projectId) {
-    r.tab = planState.tab;
     r.showChanges = $('#planChanges')?.open;
     r.showQuestions = $('#planQuestions')?.open;
   }
@@ -64,7 +63,6 @@ globalThis.setItem = async function setItem(key, control) {
     if (planState !== original || state.project?.id !== original.plan.project_id) return;
     const updated = await api(`/api/projects/${original.plan.project_id}/plan`);
     if (planState !== original || state.project?.id !== original.plan.project_id) return;
-    updated.tab = original.tab;
     updated.showChanges = $('#planChanges')?.open;
     updated.showQuestions = $('#planQuestions')?.open;
     globalThis.planState = updated;
@@ -170,18 +168,18 @@ function planFocus(r, evidence) {
     ${execution.next_actions.length ? execution.next_actions.map(item => planAction(item, evidence)).join('') :
       '<p class="muted">No unfinished actions are listed for this milestone.</p>'}
     ${execution.completed ? `<p class="muted">${execution.completed} of ${Object.keys(execution.tasks).length} actions complete</p>` : ''}
-    <button class="small ghost" onclick="selectPlanTab('do')">View all work</button></section>`;
+    <button class="small ghost" onclick="jumpToPlanSection('work')">View all work</button></section>`;
   const attention = decisions.length || blockers.length || questions.length || alerts.length ? `<section><h3>Needs attention</h3>
     ${decisions.map(d => `<details class="plan-attention"><summary>${esc(d.decision)}</summary>
       ${d.recommended ? `<p><strong>Recommendation</strong> · ${esc(d.recommended)}${d.why ? ` — ${esc(d.why)}` : ''}</p>` : ''}
       ${d.by_phase ? `<p class="muted">Needed for ${esc(d.by_phase)}</p>` : ''}
       ${d.options?.length ? `<p class="muted">Options · ${d.options.map(esc).join(' · ')}</p>` : ''}
-      ${ev(d.evidence, evidence)}<button class="small ghost" onclick="selectPlanTab('decide')">Review decision</button></details>`).join('')}
+      ${ev(d.evidence, evidence)}<button class="small ghost" onclick="jumpToPlanSection('decisions')">Review decision</button></details>`).join('')}
     ${blockers.map(d => `<div class="plan-attention"><strong>${esc(d.item)}</strong>${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}
-      <button class="small ghost" onclick="selectPlanTab('do')">Review dependency</button></div>`).join('')}
+      <button class="small ghost" onclick="jumpToPlanSection('work')">Review dependency</button></div>`).join('')}
     ${questions.map(q => `<div class="plan-attention"><strong>${esc(q.question)}</strong>${q.why ? `<div class="muted">${esc(q.why)}</div>` : ''}</div>`).join('')}
     ${alerts.map(label => `<div class="plan-attention">${esc(label)}</div>`).join('')}
-    <button class="small ghost" onclick="selectPlanTab('decide')">View decisions and questions</button></section>` : '';
+    <button class="small ghost" onclick="jumpToPlanSection('decisions')">View decisions and questions</button></section>` : '';
   return `<section class="plan-focus">
     ${goal.outcome ? `<p class="plan-goal">${esc(goal.outcome)}</p>` : ''}
     ${approach.recommended ? `<details class="plan-approach"><summary>${esc(approach.recommended)}</summary>
@@ -202,11 +200,20 @@ function planFocus(r, evidence) {
   </section>`;
 }
 
-globalThis.selectPlanTab = function selectPlanTab(tab) {
-  planState.tab = tab;
-  renderPlan(planState);
-  $('#planTabs').scrollIntoView?.({ block: 'nearest' });
-  $('#planTabs').querySelector('.on')?.focus({ preventScroll: true });
+const planSections = [
+  ['reasoning', 'Reasoning'], ['work', 'All work'], ['decisions', 'Decisions'],
+  ['costs', 'Costs & tools'], ['risks', 'Risks'], ['evidence', 'Evidence'], ['history', 'History'],
+];
+
+globalThis.jumpToPlanSection = function jumpToPlanSection(section) {
+  const heading = document.getElementById('plan-section-' + section);
+  heading?.scrollIntoView?.({ block: 'start' });
+  heading?.focus({ preventScroll: true });
+}
+
+function planSection(id, title, body) {
+  return `<section class="plan-section" aria-labelledby="plan-section-${id}">
+    <h2 id="plan-section-${id}" tabindex="-1">${title}</h2>${body}</section>`;
 }
 
 globalThis.renderPlan = function renderPlan(r) {
@@ -219,6 +226,8 @@ globalThis.renderPlan = function renderPlan(r) {
     <button class="small" onclick="checkUpdates(this)">Check for updates</button>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
+  h += `<nav class="plan-section-links" aria-label="Jump to a plan section">${planSections.map(([id, title]) =>
+    `<button class="small ghost" onclick="jumpToPlanSection('${id}')">${title}</button>`).join('')}</nav>`;
   h += planFocus(r, E) + '<div data-plan-stale-slot></div>';
   if (pending.length || accepted.length) {
     h += `<details class="plan-changes" id="planChanges" ${r.showChanges ? 'open' : ''}><summary>Plan changes · ${pending.length} to review${accepted.length ? ` · ${accepted.length} ready to apply` : ''}</summary>` +
@@ -227,17 +236,6 @@ globalThis.renderPlan = function renderPlan(r) {
       (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span>${r.can_apply_exact ? '<button class="small primary" onclick="applyUpdates(this, true)">Apply exact edits</button>' : ''}<button class="small" onclick="applyUpdates(this)">Rebuild with accepted changes</button></div>` : '') + `</details>`;
   }
 
-  if (r.versions?.length > 1) {
-    h += `<details class="plan-changes"><summary>Version history · ${r.versions.length} versions</summary>
-      <ul>${r.versions.map(v => `<li>Version ${v.version} · ${esc(new Date(v.created_at * 1000).toLocaleDateString())}${v.label === 'current' ? ' · Current' : ''}</li>`).join('')}</ul>
-      ${(r.applied_updates || []).map(u => `<p><b>Applied in v${u.version}</b> · ${esc(u.proposed)}</p>`).join('')}</details>`;
-  }
-
-  if (rejected.length) {
-    h += `<details class="mb-3"><summary>Kept current plan (${rejected.length})</summary>
-      ${rejected.map(u => `<p><b>${esc(u.section)}</b> · ${esc(u.proposed)}
-        ${u.decision_reason ? `<br>Decision reason · ${esc(u.decision_reason)}` : ''}</p>`).join('')}</details>`;
-  }
   // ---------- REFINE: guided questions ----------
   const qs = p.refine_questions || [];
   if (qs.length) {
@@ -255,68 +253,83 @@ globalThis.renderPlan = function renderPlan(r) {
       </div>`; }).join('') + `</details>`;
   }
 
-  // ---------- TABS ----------
-  const tab = planState.tab || 'do';
-  const tabs = [['overview', 'Where you stand'], ['do', 'Do this'], ['decide', 'Decide'], ['money', 'Money & tools'], ['watch', 'Watch out'], ['evidence', 'Evidence']];
-  h += `<div class="ptabs" id="planTabs" aria-label="Plan sections">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" aria-pressed="${tab === k}" onclick="selectPlanTab('${k}')">${l}</button>`).join('')}</div><div class="plan">`;
-
-  if (tab === 'overview') {
+  h += '<div class="plan">';
+  {
+    let body = '';
     const cell = x => `<b>${esc(x.point || '')}</b>${x.so_what ? `<div class="muted">${esc(x.so_what)}</div>` : ''}${ev(x.evidence, E)}`;
     const col = (title, arr, cls) => `<div class="swot ${cls}"><div class="swh">${title}</div>${(arr || []).map(x => `<div class="swi">${cell(x)}</div>`).join('') || '<div class="muted">—</div>'}</div>`;
     const g = p.goal || {}, a = p.approach || {};
-    h += `<h2>Goal</h2><p>${esc(g.outcome || '')}</p>${g.constraints?.length ? `<p><b>Constraints:</b> ${g.constraints.map(esc).join('; ')}</p>` : ''}${g.success?.length ? `<p><b>Success looks like:</b> ${g.success.map(esc).join('; ')}</p>` : ''}${ev(g.evidence, E)}`;
-    if (an.situation) h += `<h2>Where you stand</h2><p>${esc(an.situation)}</p>`;
-    if (an.swot) h += `<div class="swotgrid">${col('Strengths', an.swot.strengths, 's')}${col('Weaknesses', an.swot.weaknesses, 'w')}${col('Opportunities', an.swot.opportunities, 'o')}${col('Threats', an.swot.threats, 't')}</div>`;
-    if (an.readiness?.length) h += `<p><b>Readiness</b></p><div class="row" style="flex-wrap:wrap;gap:6px">${an.readiness.map(r => `<span class="chip" title="${esc(r.note || '')}"><span class="conf ${r.level === 'ready' ? 'high' : r.level === 'partly' ? 'medium' : 'needs_research'}">●</span> ${esc(r.area)} <span class="muted">· ${esc(r.level)}${r.note ? ' — ' + esc(r.note) : ''}</span></span>`).join('')}</div>`;
-    if (an.options?.length) h += `<h2>Paths compared</h2><table><tr><th>Path</th><th>Cost</th><th>Time to result</th><th>Risk</th><th>Fit</th><th>Why</th></tr>${an.options.map(o => `<tr><td><b>${esc(o.path)}</b><div class="muted">${esc(o.summary || '')}</div></td><td>${esc(o.cost || '')}</td><td>${esc(o.time_to_result || '')}</td><td><span class="tag ${esc(o.risk || '')}">${esc(o.risk || '')}</span></td><td class="status-warn">${'●'.repeat(+o.fit || 0)}</td><td>${esc(o.why_fit || '')}${ev(o.evidence, E)}</td></tr>`).join('')}</table>`;
-    h += `<h2>Recommended approach</h2><p class="k">${esc(a.recommended || '')}</p><p>${esc(a.why || '')}</p>` +
+    body += `<h2>Goal</h2><p>${esc(g.outcome || '')}</p>${g.constraints?.length ? `<p><b>Constraints:</b> ${g.constraints.map(esc).join('; ')}</p>` : ''}${g.success?.length ? `<p><b>Success looks like:</b> ${g.success.map(esc).join('; ')}</p>` : ''}${ev(g.evidence, E)}`;
+    if (an.verdict) body += `<p class="verdict">${esc(an.verdict)}</p>`;
+    if (an.situation) body += `<h2>Where you stand</h2><p>${esc(an.situation)}</p>`;
+    if (an.swot) body += `<div class="swotgrid">${col('Strengths', an.swot.strengths, 's')}${col('Weaknesses', an.swot.weaknesses, 'w')}${col('Opportunities', an.swot.opportunities, 'o')}${col('Threats', an.swot.threats, 't')}</div>`;
+    if (an.readiness?.length) body += `<p><b>Readiness</b></p><div class="row" style="flex-wrap:wrap;gap:6px">${an.readiness.map(r => `<span class="chip" title="${esc(r.note || '')}"><span class="conf ${r.level === 'ready' ? 'high' : r.level === 'partly' ? 'medium' : 'needs_research'}">●</span> ${esc(r.area)} <span class="muted">· ${esc(r.level)}${r.note ? ' — ' + esc(r.note) : ''}</span></span>`).join('')}</div>`;
+    if (an.options?.length) body += `<h2>Paths compared</h2><div class="plan-table"><table><tr><th>Path</th><th>Cost</th><th>Time to result</th><th>Risk</th><th>Fit</th><th>Why</th></tr>${an.options.map(o => `<tr><td><b>${esc(o.path)}</b><div class="muted">${esc(o.summary || '')}</div></td><td>${esc(o.cost || '')}</td><td>${esc(o.time_to_result || '')}</td><td><span class="tag ${esc(o.risk || '')}">${esc(o.risk || '')}</span></td><td class="status-warn">${'●'.repeat(+o.fit || 0)}</td><td>${esc(o.why_fit || '')}${ev(o.evidence, E)}</td></tr>`).join('')}</table></div>`;
+    body += `<h2>Recommended approach</h2><p class="k">${esc(a.recommended || '')}</p><p>${esc(a.why || '')}</p>` +
       (a.alternatives?.length ? `<p class="muted">Alternatives considered:</p><ul>${a.alternatives.map(x => `<li><b>${esc(x.option)}</b> — ${esc(x.why_not)}</li>`).join('')}</ul>` : '') + basis(a) + ev(a.evidence, E);
-    if (p.confidence?.length) h += `<h2>Plan confidence</h2><ul>${p.confidence.map(x => `<li><b>${esc(x.area)}</b>: <span class="conf ${x.level}">${esc((x.level || '').replace('_', ' '))}</span> — ${esc(x.note || '')}</li>`).join('')}</ul>`;
+    if (p.confidence?.length) body += `<h2>Plan confidence</h2><ul>${p.confidence.map(x => `<li><b>${esc(x.area)}</b>: <span class="conf ${x.level}">${esc((x.level || '').replace('_', ' '))}</span> — ${esc(x.note || '')}</li>`).join('')}</ul>`;
+    h += planSection('reasoning', 'Why this plan', body);
   }
-  if (tab === 'do') {
+  {
+    let body = '';
     const tasks = Object.entries(execution.tasks);
     const taskById = Object.fromEntries(tasks.filter(([, task]) => task.id).map(([, task]) => [task.id, task.label]));
     const decisionById = Object.fromEntries((p.decisions || []).filter(d => d.id).map(d => [d.id, d.decision]));
     const standalone = tasks.filter(([, item]) => item.phase == null);
-    if (standalone.length) h += '<h2>Standalone actions</h2>' + standalone.map(([key, item]) => planAction({ key, ...item }, E)).join('');
+    if (standalone.length) body += '<h2>Standalone actions</h2>' + standalone.map(([key, item]) => planAction({ key, ...item }, E)).join('');
     if (p.phases?.length) {
-      h += '<h2>Phases</h2>';
+      body += '<h2>Phases</h2>';
       p.phases.forEach((phase, i) => {
-        h += `<details ${i === execution.phase_index ? 'open' : ''}><summary><b>${esc(phase.name)}</b>
-          <span class="muted">${esc(phase.objective || '')}</span></summary>
+        body += `<section class="plan-phase"><h3>${esc(phase.name)}</h3>
+          <p class="muted">${esc(phase.objective || '')}</p>
           ${tasks.filter(([, item]) => item.phase === i).map(([key, item]) => planAction({ key, ...item }, E)).join('')}
           ${phase.dependencies?.length ? `<p class="muted">Depends on ${phase.dependencies.map(dep => esc(taskById[dep] || dep)).join(', ')}</p>` : ''}
           ${phase.decisions?.length ? `<p class="muted">Decisions needed · ${phase.decisions.map(d => esc(decisionById[d] || d)).join(', ')}</p>` : ''}
           ${phase.outcome ? `<p class="muted">Outcome · ${esc(phase.outcome)}</p>` : ''}
-        </details>`;
+        </section>`;
       });
     }
-    if (p.dependencies?.length) h += `<h2>Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
-    if (p.defer?.length) h += `<h2>Not yet</h2><ul>${p.defer.map(d => `<li>${esc(d.item)} <span class="muted">— ${esc(d.until || '')}</span></li>`).join('')}</ul>`;
+    if (p.dependencies?.length) body += `<h2>Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
+    if (r.deadlines?.length) body += '<h2>Confirmed deadlines</h2>' + r.deadlines.map(d =>
+      `<p><time datetime="${esc(d.date)}">${esc(d.date)}</time> · ${esc(d.label)}${d.consequence ? `<br>${esc(d.consequence)}` : ''}
+        ${d.fallback ? `<br>Fallback · ${esc(d.fallback)}` : ''}</p>`).join('');
+    if (p.defer?.length) body += `<h2>Not yet</h2><ul>${p.defer.map(d => `<li>${esc(d.item)} <span class="muted">— ${esc(d.until || '')}</span></li>`).join('')}</ul>`;
+    h += planSection('work', 'All work', body);
   }
-  if (tab === 'decide') {
-    if (p.decisions?.length) h += `<h2>Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">Discuss</button></div></div>${statusSel('decisions.' + i, d.decision)}
-      ${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? `<div class="muted">${esc(pl.items['decisions.' + i]?.note || '')}</div>` :
+  {
+    let body = '';
+    if (p.decisions?.length) body += `<h2>Plan decisions</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? 'decided' : d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">Discuss</button></div></div>${statusSel('decisions.' + i, d.decision)}
+      ${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? `<div class="plan-decision-note">${esc(pl.items['decisions.' + i]?.note || '')}</div>` :
         `<details><summary>Record decision</summary><form class="plan-form" onsubmit="event.preventDefault(); recordPlanDecision(${i}, this)">
           <label>Your choice <input name="choice" maxlength="500" required></label>
           <label>Why <input name="reason" maxlength="1000"></label><button class="small primary" type="submit">Save decision</button>
         </form></details>`}</div>`).join('');
-    if (p.open_questions?.length) h += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">Research this</button></div></div>${statusSel('open_questions.' + i, q.question)}</div>`).join('');
-    if (an.assumptions?.length) h += `<h2>Assumptions this plan rests on</h2>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
-    if (!p.decisions?.length && !p.open_questions?.length) h += '<p class="muted">Nothing to decide right now.</p>';
+    if (p.open_questions?.length) body += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">Research this</button></div></div>${statusSel('open_questions.' + i, q.question)}</div>`).join('');
+    if (an.assumptions?.length) body += `<h2>Assumptions this plan rests on</h2>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
+    if (!p.decisions?.length && !p.open_questions?.length) body += '<p class="muted">Nothing to decide right now.</p>';
+    if (r.recorded_decisions?.length) body += '<h2>Recorded project decisions</h2>' + r.recorded_decisions.map(d =>
+      `<article class="plan-history-row"><p class="plan-decision-note">${esc(d.content)}</p>
+        <p class="muted">${esc(new Date(d.created_at * 1000).toLocaleDateString())}${d.status !== 'active' ? ` · ${esc(d.status)}` : ''}</p></article>`).join('');
+    h += planSection('decisions', 'Decisions and assumptions', body);
   }
-  if (tab === 'money') {
-    if (p.tools?.length) h += `<h2>Tools & services</h2><table><tr><th>Need</th><th>Tool</th><th>Free</th><th>Premium</th><th>Cost</th><th>Tier</th><th>Why</th></tr>` + p.tools.map(t => `<tr><td>${esc(t.need)}</td><td>${esc(t.tool)}</td><td>${esc(t.free_option || '—')}</td><td>${esc(t.premium_option || '—')}</td><td>${esc(t.cost || '—')}</td><td>${esc(t.tier || '')}</td><td>${esc(t.why || '')}${ev(t.evidence, E)}</td></tr>`).join('') + `</table>`;
-    const c = p.costs; if (c) { h += `<h2>Costs</h2><p>Minimum viable budget: <b>${esc(c.minimum || '?')}</b> · Recommended: <b>${esc(c.recommended || '?')}</b> · Premium: <b>${esc(c.premium || '?')}</b></p>`; for (const [k, l] of [['upfront', 'Upfront'], ['recurring', 'Recurring'], ['optional', 'Optional upgrades'], ['services', 'Professional services']]) if (c[k]?.length) h += `<p><b>${l}:</b> ${c[k].map(x => `${esc(x.item)} (${esc(x.amount)})`).join('; ')}</p>`;
-      if (c.contingency) h += `<p><b>Contingency:</b> ${esc(c.contingency)}</p>`; h += `${c.note ? `<p class="muted">${esc(c.note)}</p>` : ''}${ev(c.evidence, E)}`; }
-    if (!p.tools?.length && !p.costs) h += '<p class="muted">No cost or tooling detail in this plan.</p>';
+  {
+    let body = '';
+    if (p.tools?.length) body += `<h2>Tools & services</h2><div class="plan-table"><table><tr><th>Need</th><th>Tool</th><th>Free</th><th>Premium</th><th>Cost</th><th>Tier</th><th>Why</th></tr>` + p.tools.map(t => `<tr><td>${esc(t.need)}</td><td>${esc(t.tool)}</td><td>${esc(t.free_option || '—')}</td><td>${esc(t.premium_option || '—')}</td><td>${esc(t.cost || '—')}</td><td>${esc(t.tier || '')}</td><td>${esc(t.why || '')}${ev(t.evidence, E)}</td></tr>`).join('') + `</table></div>`;
+    const c = p.costs; if (c) { body += `<h2>Costs</h2><p>Minimum viable budget: <b>${esc(c.minimum || '?')}</b> · Recommended: <b>${esc(c.recommended || '?')}</b> · Premium: <b>${esc(c.premium || '?')}</b></p>`; for (const [k, l] of [['upfront', 'Upfront'], ['recurring', 'Recurring'], ['optional', 'Optional upgrades'], ['services', 'Professional services']]) if (c[k]?.length) body += `<p><b>${l}:</b> ${c[k].map(x => `${esc(x.item)} (${esc(x.amount)})`).join('; ')}</p>`;
+      if (c.contingency) body += `<p><b>Contingency:</b> ${esc(c.contingency)}</p>`; body += `${c.note ? `<p class="muted">${esc(c.note)}</p>` : ''}${ev(c.evidence, E)}`; }
+    if (!p.tools?.length && !p.costs) body += '<p class="muted">No cost or tooling detail in this plan.</p>';
+    h += planSection('costs', 'Costs and tools', body);
   }
-  if (tab === 'watch') {
-    if (p.risks?.length) h += `<h2>Risks</h2>` + [...p.risks].sort((x, y) => ({ high: 0, medium: 1, low: 2 }[x.priority] ?? 1) - ({ high: 0, medium: 1, low: 2 }[y.priority] ?? 1)).map(r => `<div class="item"><div class="body"><span class="k">${esc(r.risk)}</span><span class="tag ${r.priority}">${esc(r.priority || 'medium')}</span><div class="muted">Mitigation: ${esc(r.mitigation || '')}</div></div></div>`).join('');
-    if (an.failure_patterns?.length) h += `<h2>Why people fail at this <span class="muted" style="font-weight:400;font-size:13px">— per the sources</span></h2>` + an.failure_patterns.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.pattern)}</span>${x.seen_in ? ` <span class="muted">(${esc(x.seen_in)})</span>` : ''}<div class="muted">Avoid: ${esc(x.avoid || '')}</div>${ev(x.evidence, E)}</div></div>`).join('');
-    if (p.gotchas?.length) h += `<h2>Beginner gotchas</h2>` + p.gotchas.map(g => `<div class="item"><div class="body"><span class="k">${esc(g.gotcha)}</span><div class="muted">${esc(g.avoid || '')}</div></div></div>`).join('');
+  {
+    let body = '';
+    if (p.risks?.length) body += `<h2>Risks</h2>` + [...p.risks].sort((x, y) => ({ high: 0, medium: 1, low: 2 }[x.priority] ?? 1) - ({ high: 0, medium: 1, low: 2 }[y.priority] ?? 1)).map(r => `<div class="item"><div class="body"><span class="k">${esc(r.risk)}</span><span class="tag ${r.priority}">${esc(r.priority || 'medium')}</span><div class="muted">Mitigation: ${esc(r.mitigation || '')}</div></div></div>`).join('');
+    if (an.failure_patterns?.length) body += `<h2>Why people fail at this <span class="muted" style="font-weight:400;font-size:13px">— per the sources</span></h2>` + an.failure_patterns.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.pattern)}</span>${x.seen_in ? ` <span class="muted">(${esc(x.seen_in)})</span>` : ''}<div class="muted">Avoid: ${esc(x.avoid || '')}</div>${ev(x.evidence, E)}</div></div>`).join('');
+    if (p.gotchas?.length) body += `<h2>Beginner gotchas</h2>` + p.gotchas.map(g => `<div class="item"><div class="body"><span class="k">${esc(g.gotcha)}</span><div class="muted">${esc(g.avoid || '')}</div></div></div>`).join('');
+    if (!body) body = '<p class="muted">No risks are recorded in this plan.</p>';
+    h += planSection('risks', 'Risks and mitigations', body);
   }
-  if (tab === 'evidence') {
+  {
+    let body = '';
     // 2026-09-14 - a mature project's evidence map can run into the thousands (Kyle's laundromat plan: 1,804
     // entries). Rendered flat, that was an unbroken wall of same-weight chips with no search, no grouping, no way
     // to find one thing - and 16 of them read as literally identical text ("F22 · pinned finding research",
@@ -334,24 +347,37 @@ globalThis.renderPlan = function renderPlan(r) {
     };
     collect(p);
     const evs = Object.entries(E);
-    if (!evs.length) { h += '<p class="muted">No evidence map.</p>'; }
+    if (!evs.length) { body += '<p class="muted">No evidence map.</p>'; }
     else {
       const GROUP_LABEL = { U: 'Other project facts', F: 'Other findings', S: 'Other sources', C: 'Other research passages' };
       const groups = {};
       for (const [id, e] of evs) { if (cited.has(id)) continue; const prefix = id.replace(/\d+$/, ''); (groups[prefix] = groups[prefix] || []).push([id, e]); }
       const order = [...new Set(['U', 'F', 'S', 'C', ...Object.keys(groups)])];
-      h += `<h2>Evidence <span class="muted" style="font-weight:400;font-size:13px">— ${evs.filter(([id]) => cited.has(id)).length} cited · ${evs.length} available</span></h2>
-        <input id="evFilter" placeholder="Filter evidence by title…" oninput="filterEvidence(this.value)" style="width:100%;margin-bottom:10px">`;
+      body += `<p class="muted">${evs.filter(([id]) => cited.has(id)).length} cited · ${evs.length} available</p>
+        <input id="evFilter" aria-label="Filter evidence by title" placeholder="Filter evidence by title…" oninput="filterEvidence(this.value)" style="width:100%;margin-bottom:10px">`;
       groups.cited = evs.filter(([id]) => cited.has(id));
       for (const prefix of ['cited', ...order]) {
         const items = groups[prefix]; if (!items?.length) continue;
-        h += `<details class="evgroup" ${prefix === 'cited' ? 'open' : ''}><summary><b>${esc(prefix === 'cited' ? 'Cited in this plan' : GROUP_LABEL[prefix] || prefix)}</b> <span class="muted">(${items.length})</span></summary>
+        body += `<details class="evgroup" ${prefix === 'cited' ? 'open' : ''}><summary><b>${esc(prefix === 'cited' ? 'Cited in this plan' : GROUP_LABEL[prefix] || prefix)}</b> <span class="muted">(${items.length})</span></summary>
           <div class="muted evchips">${items.map(([id, e]) => `<span class="chip" data-evtext="${esc((id + ' ' + e.label).toLowerCase())}">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)}</span>`).join(' ')}</div>
         </details>`;
       }
     }
+    h += planSection('evidence', 'Evidence', body);
   }
-  h += `</div>`;
+  const versions = r.versions || [];
+  const history = `<ul>${versions.map(v => `<li>
+    ${v.label === 'current' ? `Version ${v.version} · Current` :
+      `<a href="/api/projects/${encodeURIComponent(pl.project_id)}/plan.html?version=${v.version}" target="_blank" rel="noopener">Read version ${v.version}</a>`}
+    · ${esc(new Date(v.created_at * 1000).toLocaleDateString())}</li>`).join('')}</ul>
+    ${(r.applied_updates || []).map(u => `<article class="plan-history-row"><b>Applied in v${u.version} · ${esc(u.section)}</b>
+      ${u.previous ? `<p class="muted">Previous · ${esc(u.previous)}</p>` : ''}<p>${esc(u.proposed)}</p>
+      ${u.reason ? `<p>Reason · ${esc(u.reason)}</p>` : ''}${u.claim_evidence || u.verified_evidence?.length ? planUpdateEvidence(u) : ''}</article>`).join('')}
+    ${rejected.map(u => `<article class="plan-history-row"><b>Kept current plan · ${esc(u.section)}</b>
+      <p>${esc(u.proposed)}</p>${u.reason ? `<p>Proposed because · ${esc(u.reason)}</p>` : ''}
+      ${u.decision_reason ? `<p>Decision reason · ${esc(u.decision_reason)}</p>` : ''}
+      ${u.verified_evidence?.length ? planUpdateEvidence(u) : ''}</article>`).join('')}`;
+  h += planSection('history', 'Plan history', history) + '</div>';
   const stale = $('#stalePlan');
   const wrap = $('#planWrap');
   if (stale && wrap.contains(stale)) wrap.after(stale);

@@ -281,3 +281,26 @@ def test_recorded_decision_and_confirmed_deadline_reach_the_plan_and_export(s56_
     md = client.get(f"/api/projects/{pid}/plan.md", headers=H).text
     assert md.index("Next milestone") < md.index("First steps")
     assert "Venue hold expires" in md and "Decisions needed" not in md
+
+
+def test_plan_history_reads_original_version_and_keeps_recorded_decisions(s56_db):
+    from fastapi.testclient import TestClient
+    from neurosearch.api import app
+
+    pid = db.create_project("Workshop plan history")["id"]
+    first = db.save_plan(pid, {"approach": {"recommended": "Use the library room", "why": "No rental deposit"},
+                               "decisions": [{"decision": "Pick a room", "when": "now"}]}, {})
+    client = TestClient(app)
+    assert client.post(f"/api/plans/{first['id']}/decisions/0", headers=H,
+                       json={"choice": "Library", "reason": "No rental deposit"}).status_code == 200
+    db.save_plan(pid, {"approach": {"recommended": "Use the community hall", "why": "The library closed"}}, {})
+    db.add_fact(pid, "deadline", '{"date":"2027-02-01","label":"Community hall cutoff"}')
+    path = f"/api/projects/{pid}/plan"
+    current = client.get(path, headers=H).json()
+    assert "No rental deposit" in current["recorded_decisions"][0]["content"]
+    assert not current["plan"]["plan"].get("decisions")
+    old = client.get(path + ".html?version=1", headers=H)
+    assert old.status_code == 200
+    assert "Use the library room" in old.text and "No rental deposit" in old.text
+    assert "Community hall cutoff" not in old.text
+    assert client.get(path + ".html?version=3", headers=H).status_code == 404
