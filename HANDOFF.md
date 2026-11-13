@@ -5320,3 +5320,12 @@ mobile screenshots inspected in `/private/tmp/neuro-master-plan-browser`.
 Tier 1 and release-check passed on `dbce605` with private data.
 Reports: `evals/release/release-check-0.64.25-dbce605-20261112-210909.{json,txt}`.
 Prepared on the review branch. The live checkout was not changed.
+
+### 2026-11-12 — Master Plan 0.64.25 live
+
+Fast-forwarded the watched Mac checkout to `d32c0f1` at Kyle's direction.
+GitHub main matched. The server reported 0.64.25 and served the matching
+Plan, Research, and version scripts. Authenticated reads verified the
+execution view and milestone-first Markdown and HTML for both saved plans
+across seven projects. All six jobs from the pre-restart check were still
+present, with one running and five queued. No expired leases were reported.

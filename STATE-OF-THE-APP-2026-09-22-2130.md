@@ -194,3 +194,11 @@ The performance endpoint shows metadata lock wait, request spacing and
 fetch time. Ingest retries use an already-downloaded audio file without
 fetching metadata again. Six synthetic novelty cases test whether search
 surfaces independent precedents and close passages with different scope.
+
+## 2026-11-12 — Milestone view in Master Plan (0.64.25)
+
+The Plan opens on the active milestone, next actions, and decisions or
+blockers. Linked tasks share progress. Rebuilds carry progress to matched
+tasks and flag ambiguous matches. Confirmed deadlines and recorded decisions
+are project facts. The review area shows verified quotes where available,
+and Markdown and HTML exports begin with the milestone and next actions.
