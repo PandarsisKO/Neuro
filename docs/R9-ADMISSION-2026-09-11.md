@@ -63,3 +63,19 @@ classification decision is closed: Llama 3.1 8B is the only local candidate that
 the other three are rejected. No findings or claims routing changes are authorized until R9(c) is measured. A negative
 result remains a valid closeout: retain the present provider path rather than compromising the frozen quality or latency
 gates.
+
+### November 12 budget fallback pilot
+
+The installed Qwen3.5 9B was tested for taking over when Neuro Search hits
+its spending cap. The test used the existing production prompts and schemas,
+the two synthetic Claims cohorts, and the full golden Findings cohort.
+It used loopback Ollama and a private database.
+
+Claims kept all 16 IDs and both intended merges in 77–100 seconds per group.
+Manual review found that a manufacturer requirement was attributed to a
+lender in a structured qualifier. Findings retrieved 8 of 10 evidence
+checks and lost two passages the historical baseline found. The quote
+validator accepted 35 of 37 suggestions (94.59%, below the 98% floor).
+The longest window took 51 seconds. Neither task qualified for automatic
+takeover with this model. The installed model continues to handle source
+profiles. See `evals/r9/qwen35-9b-budget-fallback-20261112.json`.

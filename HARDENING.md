@@ -2496,3 +2496,10 @@ pause during an active source profile, preservation of that profile, the
 paused state after navigation, and resume. After the drain, `ollama ps`
 showed no resident model. The worker admission condition serializes Mac
 batches even if two producers enqueue simultaneously.
+
+### On-device budget fallback pilot — 2026-11-12
+
+Qwen3.5 9B missed the Findings quote and evidence gates and assigned the
+wrong requirement source in Claims. See the November 12 entry in
+`docs/R9-ADMISSION-2026-09-11.md` and the associated scorecard. The pilot
+made no runtime or spending-policy changes.

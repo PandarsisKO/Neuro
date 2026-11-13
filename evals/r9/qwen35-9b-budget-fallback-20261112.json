@@ -1,0 +1,311 @@
+{
+  "candidate": "qwen3.5:9b",
+  "ollama_model_id": "56671c2ab938",
+  "runtime": "Ollama 0.33.3",
+  "app_commit": "206d8d8",
+  "host": "M3 Max, 128 GB",
+  "data": "Synthetic Claims and repository golden Findings in a private database",
+  "settings": {
+    "temperature": 0,
+    "think": false,
+    "keep_alive": 0,
+    "claims_context": 8192,
+    "findings_context": 32768
+  },
+  "claims": {
+    "baseline_fixture": "evals/release/chatgpt-plan-synthetic-claims-20261112.json",
+    "groups": [
+      {
+        "domain": "Business acquisition",
+        "model": "qwen3.5:9b",
+        "wall_seconds": 76.71,
+        "saved_chatgpt_seconds": 30.5,
+        "load_seconds": 0.02,
+        "prompt_seconds": 2.75,
+        "done_reason": "stop",
+        "schema_errors": [],
+        "expected_ids": [
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+          "a5",
+          "a6",
+          "a7",
+          "a8"
+        ],
+        "returned_ids": [
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+          "a5",
+          "a6",
+          "a7",
+          "a8"
+        ],
+        "merges": [
+          [
+            "a2",
+            "a1"
+          ]
+        ],
+        "expected_twins_merged": true,
+        "unintended_merges": [],
+        "text_terms_to_review": {},
+        "critical_field_mismatches": {}
+      },
+      {
+        "domain": "Building operations",
+        "model": "qwen3.5:9b",
+        "wall_seconds": 99.65,
+        "saved_chatgpt_seconds": 21.13,
+        "load_seconds": 0.01,
+        "prompt_seconds": 2.91,
+        "done_reason": "stop",
+        "schema_errors": [],
+        "expected_ids": [
+          "b1",
+          "b2",
+          "b3",
+          "b4",
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ],
+        "returned_ids": [
+          "b1",
+          "b2",
+          "b3",
+          "b4",
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ],
+        "merges": [
+          [
+            "b2",
+            "b1"
+          ]
+        ],
+        "expected_twins_merged": true,
+        "unintended_merges": [],
+        "text_terms_to_review": {},
+        "critical_field_mismatches": {}
+      }
+    ],
+    "manual_review_failure": {
+      "candidate_id": "b5",
+      "statement": "The manufacturer requires filter replacement every 90 days on model K2 under normal use in the United States.",
+      "returned_imposed_by": "lender_policy",
+      "baseline_imposed_by": "unclear"
+    },
+    "verdict": "FAIL"
+  },
+  "findings": {
+    "historical_baseline": "evals/baseline-findings-0.18.0-e2.2-5753ad6-sonnet-4-6.json",
+    "comparison": {
+      "verdict": "FAIL",
+      "headline": "FAIL \u2014 keep claude-sonnet-4-6 for findings.extract",
+      "fails": [
+        "finding_quote_validity 0.9459 is under the floor 0.98",
+        "2 planted nuggets the baseline found were lost: yt03: sixty day exclusivity period in the LOI; yt03: two to three and a half times SDE"
+      ],
+      "caveats": [
+        "more findings rejected by the quote validator: 0 \u2192 2",
+        "windows with no findings at all: 2 \u2192 3",
+        "latency up +166%: 129.77s \u2192 345.39s"
+      ],
+      "notes": [
+        "findings kept: 49 \u2192 35 (not a gate)",
+        "single run per model (n=1): differences inside the tolerances are not distinguishable from run-to-run noise"
+      ],
+      "lost_nuggets": [
+        "yt03: sixty day exclusivity period in the LOI",
+        "yt03: two to three and a half times SDE"
+      ],
+      "gained_nuggets": [
+        "yt03: Do not raise prices in the first ninety days"
+      ],
+      "production_default_changed": false,
+      "how_to_migrate": "set NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=qwen3.5:9b (and THINKING=disabled) or change the findings.extract contract; nothing was changed by this run"
+    },
+    "quality": {
+      "golden_evidence_recall": 0.8,
+      "nuggets": {
+        "yt01: the SBA requires a minimum ten percent equity injection": true,
+        "yt01: half of that ten percent can come from a seller note": true,
+        "yt01: debt service coverage ratio of at least one point two five": true,
+        "yt02: quality of earnings report costs somewhere between eight and": true,
+        "yt02: more than twenty percent of revenue, price that risk in or w": true,
+        "yt03: sixty day exclusivity period in the LOI": false,
+        "yt03: two to three and a half times SDE": false,
+        "yt03: Do not raise prices in the first ninety days": true,
+        "pod: zero percent down using seller financing for the whole purch": true,
+        "article: SDE multiples cluster between 2.0x and 3.5x": true
+      },
+      "finding_quote_validity": 0.9459,
+      "stored_findings_verified": 1.0,
+      "findings_suggested": 35,
+      "findings_rejected": 2,
+      "findings_candidates": 37,
+      "sources": 8,
+      "failed_sources": [],
+      "transcript_windows": 9,
+      "findings_per_source": 4.38,
+      "findings_per_window": 3.89,
+      "per_source": {
+        "yt01": {
+          "suggested": 10,
+          "rejected": 0,
+          "substance": 85,
+          "summary_chars": 174,
+          "windows": 1
+        },
+        "yt02": {
+          "suggested": 5,
+          "rejected": 0,
+          "substance": 85,
+          "summary_chars": 272,
+          "windows": 1
+        },
+        "yt03": {
+          "suggested": 4,
+          "rejected": 0,
+          "substance": 15,
+          "summary_chars": 508,
+          "windows": 2
+        },
+        "pod": {
+          "suggested": 5,
+          "rejected": 0,
+          "substance": 45,
+          "summary_chars": 217,
+          "windows": 1
+        },
+        "vlog": {
+          "suggested": 0,
+          "rejected": 0,
+          "substance": 0,
+          "summary_chars": 104,
+          "windows": 1
+        },
+        "article": {
+          "suggested": 5,
+          "rejected": 2,
+          "substance": 92,
+          "summary_chars": 211,
+          "windows": 1
+        },
+        "report": {
+          "suggested": 6,
+          "rejected": 0,
+          "substance": 95,
+          "summary_chars": 164,
+          "windows": 1
+        },
+        "sourdough": {
+          "suggested": 0,
+          "rejected": 0,
+          "substance": 0,
+          "summary_chars": 150,
+          "windows": 1
+        }
+      },
+      "summary_validity": 1.0,
+      "substance_validity": 1.0,
+      "window_calls": 9,
+      "truncated_windows": 0,
+      "parse_failed_windows": 0,
+      "no_json_windows": 0,
+      "repaired_windows": 0,
+      "empty_windows": 3,
+      "windows_missing_summary": 0,
+      "windows_missing_substance": 0,
+      "incomplete_outputs": 0,
+      "raw_findings": 37
+    },
+    "performance": {
+      "findings_s": 345.39,
+      "s_per_window": 38.38,
+      "s_per_source": 43.17,
+      "total_s": 345.55
+    },
+    "gates": {
+      "finding_quote_validity": {
+        "value": 0.9459,
+        "floor": 0.98,
+        "pass": false
+      },
+      "stored_findings_verified": {
+        "value": 1.0,
+        "floor": 1.0,
+        "pass": true
+      },
+      "incomplete_outputs": {
+        "value": 0,
+        "floor": 0,
+        "pass": true
+      },
+      "all_invocations_resolved": {
+        "value": 0,
+        "floor": 0,
+        "pass": true
+      },
+      "all_sources_analysed": {
+        "value": 0,
+        "floor": 0,
+        "pass": true
+      }
+    },
+    "windows": [
+      {
+        "prompt_tokens": 1343,
+        "output_tokens": 1107,
+        "seconds": 46.15
+      },
+      {
+        "prompt_tokens": 1311,
+        "output_tokens": 593,
+        "seconds": 36.83
+      },
+      {
+        "prompt_tokens": 17612,
+        "output_tokens": 63,
+        "seconds": 51.16
+      },
+      {
+        "prompt_tokens": 7701,
+        "output_tokens": 425,
+        "seconds": 44.01
+      },
+      {
+        "prompt_tokens": 1150,
+        "output_tokens": 553,
+        "seconds": 34.59
+      },
+      {
+        "prompt_tokens": 978,
+        "output_tokens": 37,
+        "seconds": 20.42
+      },
+      {
+        "prompt_tokens": 1212,
+        "output_tokens": 1012,
+        "seconds": 52.9
+      },
+      {
+        "prompt_tokens": 1192,
+        "output_tokens": 746,
+        "seconds": 38.36
+      },
+      {
+        "prompt_tokens": 898,
+        "output_tokens": 46,
+        "seconds": 20.7
+      }
+    ]
+  }
+}
