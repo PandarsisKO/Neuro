@@ -5160,3 +5160,37 @@ All 2,706 pytest cases passed across six isolated shards. Tier 1 and the
 deterministic release check passed at `bf7c1d9` using a private data
 directory. Reports:
 `evals/release/release-check-0.64.21-bf7c1d9-20261112-192826.{json,txt}`.
+
+### 2026-11-12 — Faster starts for new source collections (0.64.22)
+
+Base `4e6af02`, runtime candidate `09d911a`, isolated worktree
+`/private/tmp/neuro-ingest-first-wave`. The app's verified 19:33 backup
+provided 729 completed source jobs across four projects in 30 days.
+Time to first worker claim was 256 s median and 704 s p90. The first
+jobs of one newer collection waited 572 s behind earlier priority
+collections. The latest 50-job batch started promptly, occupied the
+three general workers, and took 997 s to start its last job. Seventeen
+jobs produced transcripts and 33 completed as skips.
+
+New collection requests use the existing priority lane for up to three
+items, using relevance order for approved lists and listing order for
+automatic imports. The rest stay on the normal lane. Direct link
+requests of up to five URLs, session imports and queued uploads use the
+priority lane. Existing queue order and the media rate limiter still
+govern admission. Previously queued jobs retain their assigned lanes.
+
+Replayed 690 completed YouTube jobs in 25 collection batches across four
+projects, using recorded arrivals and final-attempt durations on three
+simulated workers. At p90, first claim per collection went from 279 s to
+8 s. First completed transcript across 24 collections with a transcript
+went from 365 s to 72 s. Full collection completion was 1,045 s p90 in
+both arms. Across all individual jobs, p90 wait moved from 700 s to 715 s.
+The replay holds durations fixed and omits other job kinds and upstream
+rate-limit feedback. Live speed gains need a fresh sample of collection
+imports. The queue regression covers two projects, ranked order, a
+direct add and continued service of the older batch.
+
+All 2,707 pytest cases passed in six module shards. Tier 1 and
+`release-check --no-pytest` passed on the runtime candidate with a
+private data directory. Reports:
+`evals/release/release-check-0.64.22-09d911a-20261112-194304.{json,txt}`.

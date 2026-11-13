@@ -2520,3 +2520,12 @@ during a hold. Claims model selection remains open. The 10.9 s historical
 API target still applies to replacing the normal route, where requests
 do not already have to wait. Evidence:
 `evals/r9/mac-research-models-20261112.json`.
+
+### Ingest queue admission — 2026-11-12
+
+The 0.64.22 regression in `tests/test_s66_harvest_isolation.py` checks
+that a large approved collection gives its highest-ranked three items
+priority, then yields that priority lane to another collection's first
+items and a direct source add. The older collection still drains in order.
+The four-project replay and its fixed-duration assumptions are recorded in
+the handoff. This is an admission change using the existing worker pool.

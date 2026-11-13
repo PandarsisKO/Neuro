@@ -172,3 +172,10 @@ conversation so a long findings history cannot crowd out a newly added
 source. A changed transcript updates the source timestamp. The three-project
 reuse benchmark, queue timing sample and six-project blind review first pass
 are recorded in the 0.64.21 handoff.
+
+## 2026-11-12 — First wave for new ingest requests (0.64.22)
+
+New collection requests prioritize their first three items. Direct
+small link requests, browser-session imports and queued uploads also
+get priority. A four-project queue replay measured earlier first starts
+and earlier first transcripts. Results and limitations are in the handoff.
