@@ -117,6 +117,9 @@ def video_fields(item: dict[str, Any]) -> dict[str, Any]:
     cd = item.get("contentDetails") or {}
     st = item.get("statistics") or {}
     published = (sn.get("publishedAt") or "")[:10] or None          # YYYY-MM-DD, as the schema stores it
+    thumbnails = sn.get("thumbnails") or {}
+    thumbnail = next((thumbnails[size]["url"] for size in ("high", "medium", "default")
+                      if (thumbnails.get(size) or {}).get("url")), None)
     return {
         "external_id": item.get("id"),
         "title": sn.get("title"),
@@ -124,6 +127,7 @@ def video_fields(item: dict[str, Any]) -> dict[str, Any]:
         "creator": sn.get("channelTitle"),
         "channel_id": sn.get("channelId"),
         "published_at": published,
+        "thumbnail_url": thumbnail,
         "duration": parse_duration(cd.get("duration")),
         "view_count": int(st["viewCount"]) if str(st.get("viewCount", "")).isdigit() else None,
         # `usage.estimate_video` quotes "+$X if captions turn out to be missing" because nothing could tell it.

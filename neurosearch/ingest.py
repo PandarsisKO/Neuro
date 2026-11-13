@@ -95,17 +95,23 @@ def ingest_url(
         elif review:
             # keep a bigger pool so the relevance ranker can pick the best `mx`, not just the newest
             entries = entries[:max(relevance.POOL, mx or 0)]
-        queued, skipped, proposed = 0, 0, 0
+        queued, skipped, proposed, before_cutoff = 0, 0, 0, 0
         counts = {"already_in_project": 0, "already_in_library": 0, "new": 0}
 
-        def _list_one(i: int, e: dict[str, Any]) -> None:
-            nonlocal queued, skipped, proposed
-            # G1: identity first. An existing row is never reset by a listing (a video being ingested for another
-            # project keeps its status); only NEW rows start as proposed/pending.
-            cand = identity.Candidate(platform="youtube", external_id=e["id"], url=e["url"], title=e.get("title"), tags=tags,
-                                      fields={"duration": e.get("duration"), "description": e.get("description") or None,
-                                              "view_count": e.get("view_count") or None, "access_gate": e.get("access_gate")})
-            res = identity.resolve_or_create_source(cand, None, initial_status="proposed" if review else "pending", resume_skipped=False)
+        def _list_one(e: dict[str, Any]) -> None:
+            nonlocal queued, skipped, proposed, before_cutoff
+            # The batched video metadata can settle the cutoff before we ask a worker to fetch a video.
+            published = e.get("published_at")
+            cutoff_reason = _listing_cutoff_reason(published, min_date)
+            initial_status = "proposed" if review or cutoff_reason else "pending"
+            fields = {"duration": e.get("duration"), "description": e.get("description") or None,
+                      "view_count": e.get("view_count") or None, "access_gate": e.get("access_gate"),
+                      "published_at": published, "thumbnail_url": e.get("thumbnail_url"),
+                      "channel": e.get("creator") or e.get("channel") or (info.get("title") if kind == "channel" else None)}
+            cand = identity.Candidate(platform="youtube", external_id=e["id"], url=e["url"],
+                                      title=e.get("title"), tags=tags, fields=fields)
+            # A shared ready, pending or proposed source keeps its state and existing work.
+            res = identity.resolve_or_create_source(cand, None, initial_status=initial_status, resume_skipped=False)
             src = res.source
             db.link_source_collection(src["id"], coll["id"])
             in_project = bool(project_id) and src["id"] in project_member_ids
@@ -115,6 +121,11 @@ def ingest_url(
                 counts["new"] += 1
             else:
                 counts["already_in_library"] += 1
+            if res.created and cutoff_reason:
+                # Leave existing candidate links open. This row has metadata and no transcript.
+                db.set_source_status(src["id"], "skipped", cutoff_reason)
+                before_cutoff += 1
+                return
             already = (src["status"] == "ready" and not force) or (in_project and src["status"] != "proposed")
             if already:
                 skipped += 1
@@ -131,19 +142,20 @@ def ingest_url(
         project_member_ids = set(db.project_source_ids(project_id, ready_only=False)) if project_id else set()
         for start in range(0, len(entries), 50):
             with db.batch():   # one transaction per 50 videos instead of ~3 per video (keeps the API responsive)
-                for i, e in enumerate(entries[start:start + 50], start=start):
-                    _list_one(i, e)
+                for e in entries[start:start + 50]:
+                    _list_one(e)
             progress(0.05 + 0.9 * min(start + 50, len(entries)) / len(entries), f"listed {min(start + 50, len(entries))}/{len(entries)}")
         from . import candidates as _cand      # G3: every listed video is remembered cheaply, selected or not
         _cand.remember([{"external_id": e["id"], "url": e["url"], "title": e.get("title"), "description": e.get("description"), "duration": e.get("duration"),
                          "view_count": e.get("view_count"), "creator": info.get("title") if kind == "channel" else e.get("channel"), "published_at": e.get("published_at")}
                         for e in entries], "youtube", project_id, {"collection_id": coll["id"], "kind": kind, "title": coll.get("title")})
         if review and proposed:
-            db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel",
+            db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "before_cutoff": before_cutoff, "newest_first": kind == "channel",
                                                           "project_id": project_id, "max_videos": mx, "ranked": False, "counts": counts}))
             db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx}, lane="priority")
         return {"kind": kind, "collection_id": coll["id"], "title": coll.get("title"),
-                "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped, "counts": counts,
+                "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped,
+                "before_cutoff": before_cutoff, "counts": counts,
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
 
     if kind == "web":
@@ -389,6 +401,18 @@ def propose_community_listing(project_id: str, *, platform: str, community: str,
     db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx}, lane="priority")
     return {"kind": "subreddit", "collection_id": coll["id"], "title": label, "found": len(items), "proposed": proposed,
             "already_ingested": skipped, "counts": counts, "review": proposed > 0}
+
+
+def _listing_cutoff_reason(published: str | None, min_date: str | None) -> str | None:
+    if not min_date or not isinstance(published, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", published):
+        return None
+    from datetime import date
+    try:
+        if date.fromisoformat(published) < date.fromisoformat(min_date):
+            return f"published {published}, before cutoff {min_date}"
+    except ValueError:
+        pass
+    return None
 
 
 def _cutoff_date(years: float | None) -> str | None:

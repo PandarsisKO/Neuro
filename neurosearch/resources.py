@@ -199,7 +199,8 @@ def classify_many(text: str) -> list[Classification]:
 
 
 def route(c: Classification, project_id: str | None, action: str | None = None, *, tags: list[str] | None = None,
-          since_years: float | None = None, max_videos: int | None = None, force: bool = False) -> dict[str, Any]:
+          since_years: float | None = None, max_videos: int | None = None, force: bool = False,
+          lane: str = "normal") -> dict[str, Any]:
     """Turn a classification + chosen action into work on the STANDARD paths. Returns {action, kind, job_id? | note}.
     Never enqueues a naive page fetch for a container unless the caller chose `page` explicitly."""
     from . import jobs
@@ -213,7 +214,7 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
         return {"kind": c.kind, "action": action, "queued": False, "unavailable": True, "note": avail[action].get("note") or c.detail}
     if action in ("ingest", "page"):
         assert c.url
-        job = jobs.enqueue("ingest_url", {"url": c.url, "tags": tags or [], "project_id": project_id, "force": force, "review": False})
+        job = jobs.enqueue("ingest_url", {"url": c.url, "tags": tags or [], "project_id": project_id, "force": force, "review": False}, lane=lane)
         return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url}
     if action == "explore":
         assert c.url and (c.kind in EXPLORABLE_NOW or c.kind == "search_query")
@@ -235,7 +236,7 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
             job = jobs.enqueue("explore", {"url": c.url, "kind": c.kind, "tags": tags or [], "project_id": project_id, "max_items": max_videos or None})
             return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url, "review": True}
         job = jobs.enqueue("ingest_url", {"url": c.url, "tags": tags or [], "project_id": project_id, "force": force, "review": True,
-                                          "since_years": since_years, "max_videos": max_videos})
+                                          "since_years": since_years, "max_videos": max_videos}, lane=lane)
         return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url, "review": True}
     if action == "discover":
         if not project_id:
@@ -261,7 +262,7 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
             return {"kind": c.kind, "action": action, "queued": False, "resolver": res, "note": "you already own a copy — attach it instead of acquiring again"}
         if not res.get("url"):
             return {"kind": c.kind, "action": action, "queued": False, "resolver": res, "note": "no official location known for this Work"}
-        job = jobs.enqueue("ingest_url", {"url": res["url"], "tags": tags or [], "project_id": project_id, "force": force, "review": False})
+        job = jobs.enqueue("ingest_url", {"url": res["url"], "tags": tags or [], "project_id": project_id, "force": force, "review": False}, lane=lane)
         return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": res["url"], "resolver": res}
     if action == "upload":
         return {"kind": c.kind, "action": action, "queued": False, "note": "use Upload (or the chat attach button) to add the file"}

@@ -339,11 +339,14 @@ globalThis.watchIngest = async function watchIngest(msgEl, jobIds) {
       const label = chip.dataset.label;
       if (j.status === 'done') { const r = j.result || {};
         const cnt = r.counts ? ` — ${r.counts.already_in_library || 0} already in your library, ${r.counts.new || 0} new` : '';
+        const cutoff = r.before_cutoff ? ` · ${r.before_cutoff} skipped at the date cutoff` : '';
         chip.textContent = r.review ? `📋 ${r.title || label}: ${r.proposed} videos waiting for your approval in Sources${cnt}`
           : r.already_pending ? `⏳ ${r.title || label} — already being ingested for another project; it joins this one when it finishes`
           : r.failed ? `⚠ ${r.title || label} — attached, but its last acquisition failed (Retry it in Sources)`
+          : r.found ? `✓ ${r.title || label} (${r.found} videos, ${r.queued ?? 0} queued${cnt})`
           : r.already_ingested ? `✓ ${r.title || label} — already in your library, attached (nothing re-downloaded)`
-          : `✓ ${r.title || label}` + (r.found ? ` (${r.found} videos, ${r.queued} queued${cnt})` : '');
+          : `✓ ${r.title || label}`;
+        chip.textContent += cutoff;
         if (r.review) { chip.style.cursor = 'pointer'; chip.onclick = () => showView('sources'); } }
       else if (j.status === 'failed') { chip.textContent = `✗ ${label}`; chip.title = j.message || ''; }
       else { chip.textContent = `⏳ ${label} ${j.message ? '· ' + j.message : ''}`; pending++; }

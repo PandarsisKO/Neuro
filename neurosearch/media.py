@@ -499,7 +499,7 @@ def _enrich_youtube(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if f.get("description") and not e.get("description"):
                 e["description"] = f["description"]
                 filled += 1
-            for k in ("duration", "view_count", "published_at", "has_captions", "creator"):
+            for k in ("duration", "view_count", "published_at", "has_captions", "creator", "thumbnail_url"):
                 if e.get(k) in (None, "") and f.get(k) is not None:
                     e[k] = f[k]
         log.info("youtube api: enriched %d/%d listing entries (%d descriptions), %s",

@@ -303,3 +303,61 @@ def test_large_collection_does_not_block_new_direct_add_or_another_first_wave(is
     assert claim()["id"] == direct
     assert [claim()["payload"]["source_id"] for _ in range(5)] == older[3:]
     assert [claim()["payload"]["source_id"] for _ in range(2)] == newer[3:]
+
+
+@pytest.mark.parametrize("review", [True, False])
+def test_collection_uses_listing_cutoff_without_queueing_old_video(isolated, monkeypatch, review):
+    from neurosearch import api, ingest, media
+
+    project = db.create_project("Dated collection")
+    url = "https://www.youtube.com/@dated-collection"
+    videos = [
+        {"id": "old-listing", "published_at": "2019-01-01", "creator": "Creator",
+         "thumbnail_url": "https://example.com/thumb.jpg", "description": "Useful old material"},
+        {"id": "shared-ready", "published_at": "2019-01-01"},
+        {"id": "unknown-date"},
+        {"id": "invalid-date", "published_at": "2019-02-31"},
+        {"id": "cutoff-day", "published_at": "2024-01-01"},
+    ]
+    for entry in videos:
+        entry.update(url=f"https://www.youtube.com/watch?v={entry['id']}", title=entry["id"])
+    shared = db.upsert_source(platform="youtube", external_id="shared-ready", url=videos[1]["url"], status="ready")
+    monkeypatch.setattr(ingest, "_cutoff_date", lambda years: "2024-01-01")
+    monkeypatch.setattr(media, "enumerate_entries", lambda _: ({"id": "dated", "title": "Creator", "url": url}, videos))
+    monkeypatch.setattr(media, "fetch_info", lambda *args, **kwargs: pytest.fail("unexpected per-video fetch"))
+    result = ingest.ingest_url(url, project_id=project["id"], review=review, max_videos=10)
+    assert result["before_cutoff"] == 1
+    assert result["already_ingested"] == 1
+    assert db.get_source(shared["id"])["status"] == "ready"
+    old = db.find_source("youtube", "old-listing")
+    assert old["status"] == "skipped"
+    assert "before cutoff 2024-01-01" in old["error"]
+    assert old["thumbnail_url"] == videos[0]["thumbnail_url"]
+    assert old["description"] == videos[0]["description"]
+    assert old["published_at"] == "2019-01-01"
+    assert old["channel"] == "Creator"
+    assert old["id"] in db.project_source_ids(project["id"], ready_only=False)
+
+    if review:
+        assert result["proposed"] == 3
+        assert db.review_meta(result["collection_id"])["before_cutoff"] == 1
+        assert ingest.approve_proposed(result["collection_id"])["started"] == 3
+    else:
+        assert result["queued"] == 3
+    queued = [j for j in db.list_jobs() if j["kind"] == "ingest_source"]
+    assert {j["payload"]["source_id"] for j in queued} == {
+        db.find_source("youtube", entry["id"])["id"] for entry in videos[2:]
+    }
+    retry = db.get_job(api.api_retry(old["id"])["job"])
+    assert retry["payload"]["source_id"] == old["id"]
+    assert "min_date" not in retry["payload"]
+
+
+def test_sources_add_route_prioritizes_a_direct_url(isolated):
+    from neurosearch import api
+
+    project = db.create_project("Manual add")
+    earlier = db.create_job("ingest_source", {"source_id": "bulk-tail"}, lane="normal")
+    add = api.api_add(project["id"], api.AddIn(input="https://example.com/article", action="page"))
+    assert db.claim_job(kinds=("ingest_url", "ingest_source"))["id"] == add["jobs"][0]
+    assert db.claim_job(kinds=("ingest_url", "ingest_source"))["id"] == earlier["id"]

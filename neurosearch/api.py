@@ -814,10 +814,12 @@ def api_add(project_id: str, body: AddIn) -> dict[str, Any]:
     if not db.get_project(project_id):
         raise HTTPException(404)
     out = []
-    for c in resources.classify_many(body.input):
+    classified = resources.classify_many(body.input)
+    lane = jobs.user_pick_lane(True, len(classified)) or "normal"
+    for c in classified:
         try:
             r = resources.route(c, project_id, body.action if body.action in {a["action"] for a in c.actions} else None,
-                                tags=body.tags, since_years=body.since_years, max_videos=body.max_videos, force=body.force)
+                                tags=body.tags, since_years=body.since_years, max_videos=body.max_videos, force=body.force, lane=lane)
         except ValueError as e:
             r = {"kind": c.kind, "action": body.action, "queued": False, "note": str(e)}
         out.append({**c.as_dict(), "result": r})
