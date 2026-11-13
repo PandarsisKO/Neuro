@@ -5280,3 +5280,13 @@ The live app stays on 0.64.23 while the Claims extraction queue is active;
 applying the candidate to the watched checkout would restart those jobs.
 The authenticated job list had no new ingest jobs since 0.64.23 at this
 check. Read the timing breakdown after the next natural ingest.
+
+### 2026-11-12 — Ingest timing 0.64.24 live
+
+At Kyle's direction, fast-forwarded the watched Mac checkout to
+`b840e64` and verified the same SHA on GitHub main. The server
+reported 0.64.24 and served matching JavaScript. All nine jobs active
+or queued before the rollout were present afterward: one completed,
+four were running again, and four stayed queued. No expired leases
+were reported. The performance endpoint responded; no metadata
+timing samples had been collected yet.
