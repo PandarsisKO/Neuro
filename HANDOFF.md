@@ -4876,3 +4876,11 @@ Tier 1 and release-check --no-pytest passed. Artifacts:
 `evals/release/mac-source-profile-pilot-20261112.jsonl`,
 `evals/release/mac-profiles-pytest-ecb96a6-20261112.txt` and
 `evals/release/release-check-0.64.14-ecb96a6-20261112-162346.{json,txt}`.
+
+#### Live verification
+
+Published `0ea8617` to GitHub main and passed `tools/git_sync_check.py
+--delivery`. The Mac server reloaded 0.64.14 and reported Mac work enabled
+and unpaused. There were 56 wanted profiles before activation. A live
+profile reached `current` with model `qwen3.5:9b` and transport `ollama`,
+verified through the app API. The Mac queue was left enabled.
