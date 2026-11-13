@@ -6,6 +6,7 @@ plan_impact.py: LP1 is the deterministic citation walker, this is a templating l
 "thin shared seams" rule argues against merging a templating concern into the module that owns the walk."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from . import claims, db, plan_impact
@@ -90,7 +91,18 @@ def attach_update_evidence(project_id: str, updates: list[dict[str, Any]]) -> No
     from . import claims_view
 
     previews: dict[str, dict[str, Any] | None] = {}
+    sources = {}
     for update in updates:
+        verified = json.loads(update.pop("evidence_json", None) or "[]")
+        if verified:
+            for item in verified:
+                sid = item.get("source_id")
+                if sid:
+                    if sid not in sources:
+                        sources[sid] = db.get_source(sid)
+                    source = sources[sid]
+                    item["stale"] = not source or source.get("revision") != item.get("revision")
+            update["verified_evidence"] = verified
         claim_id = update.get("claim_id")
         if update["status"] != "pending" or not claim_id:
             continue

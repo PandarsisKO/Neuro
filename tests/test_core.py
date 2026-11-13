@@ -2342,7 +2342,8 @@ def test_planner_v3_status_survives_rebuild(golden_project, monkeypatch):
     p2 = r2["plan"]
     assert p2["_ids"]["phases.0.tasks.1"] == "task:get-lender-prequalification"          # reconciled back to the stable id
     assert p2["_build"]["id_renames_on_rebuild"] == {"task:lender-prequal-letter": "task:get-lender-prequalification"}
-    assert r2["items"]["phases.0.tasks.1"] == {"status": "done", "note": "did it"} and "phases.0.tasks.0" not in r2["items"]
+    assert r2["items"]["phases.0.tasks.1"] == {"status": "done", "note": "did it"}
+    assert r2["items"]["phases.0.tasks.0"]["status"] == "in_progress"
     assert r2["items"]["first_steps.1"]["status"] == "in_progress"
     # references were rewritten with the reconciled id
     assert all("task:lender-prequal-letter" not in json.dumps(v) for v in (p2["phases"], p2["first_steps"], p2["this_week"], p2["risks"]))

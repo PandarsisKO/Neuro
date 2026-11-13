@@ -1,6 +1,13 @@
 globalThis.loadPlan = async function loadPlan() {
+  const projectId = state.project.id;
   loadStaleness();
-  const r = await api(`/api/projects/${state.project.id}/plan`);
+  const r = await api(`/api/projects/${projectId}/plan`);
+  if (state.project?.id !== projectId) return;
+  if (globalThis.planState?.plan?.project_id === projectId) {
+    r.tab = planState.tab;
+    r.showChanges = $('#planChanges')?.open;
+    r.showQuestions = $('#planQuestions')?.open;
+  }
   globalThis.planState = r;
   $('#nPlan').textContent = r.plan ? `v${r.plan.version}` : '';
   if (!r.plan) return renderNoPlan();
@@ -41,15 +48,40 @@ globalThis.ev = function ev(ids, emap) {
   const parts = ids.map(i => emap[i]).filter(Boolean).map(e => e.removed ? `<span title="Evidence source removed">⚠ ${esc(e.label)} (source removed)</span>` : e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label));
   return parts.length ? `<div class="ev muted">based on: ${parts.join(' · ')}</div>` : '';
 }
-globalThis.statusSel = function statusSel(key) {
+globalThis.statusSel = function statusSel(key, label = 'Item') {
   const cur = planState.plan.items[key]?.status || 'not_started';
-  return `<select onchange="setItem('${key}', this.value)">${STATUSES.map(s => `<option value="${s}" ${s === cur ? 'selected' : ''}>${stLabel(s)}</option>`).join('')}</select>`;
+  const statuses = STATUSES.includes(cur) ? STATUSES : [...STATUSES, cur];
+  return `<select aria-label="Status for ${esc(label)}" data-plan-item="${key}" onchange="setItem('${key}', this)">${statuses.map(s => `<option value="${esc(s)}" ${s === cur ? 'selected' : ''}>${stLabel(s)}</option>`).join('')}</select>`;
 }
-globalThis.setItem = async function setItem(key, status) { await put(`/api/plans/${planState.plan.id}/items/${encodeURIComponent(key)}`, { status }); planState.plan.items[key] = { status }; }
+globalThis.setItem = async function setItem(key, control) {
+  const original = planState;
+  const controls = [...$('#planWrap').querySelectorAll('[data-plan-item]')];
+  for (const el of controls) el.disabled = true;
+  try {
+    await put(`/api/plans/${original.plan.id}/items/${encodeURIComponent(key)}`, { status: control.value });
+    if (planState !== original || state.project?.id !== original.plan.project_id) return;
+    const updated = await api(`/api/projects/${original.plan.project_id}/plan`);
+    if (planState !== original || state.project?.id !== original.plan.project_id) return;
+    updated.tab = original.tab;
+    updated.showChanges = $('#planChanges')?.open;
+    updated.showQuestions = $('#planQuestions')?.open;
+    globalThis.planState = updated;
+    renderPlan(updated);
+    const updatedControls = [...$('#planWrap').querySelectorAll('[data-plan-item]')];
+    (updatedControls.find(el => el.dataset.planItem === key) || updatedControls[0] || $('#planNextHeading'))?.focus();
+  } catch (e) {
+    control.value = original.plan.items[key]?.status || 'not_started';
+    toast(e.message || 'Could not update the plan.', 'err');
+  } finally { for (const el of controls) el.disabled = false; }
+}
 globalThis.basis = function basis(x) { return x.basis ? `<span class="basis">basis: ${esc(x.basis)}${x.confidence ? ' · confidence: ' + esc(x.confidence.replace('_', ' ')) : ''}</span>` : ''; }
 globalThis.planUpdateEvidence = function planUpdateEvidence(update) {
   const evidence = update.claim_evidence;
-  if (!evidence) return '<p class="muted">No Claim is linked to this update.</p>';
+  if (!evidence && update.verified_evidence?.length) return `<details class="mt-2"><summary>Evidence behind this update</summary>
+    ${update.verified_evidence.map(p => `<div>${p.link && !p.stale ? claimEvidenceLink(p) : esc(p.title)}
+      ${p.stale ? '<span class="tag status-warn">Source revised or unavailable</span>' : ''}
+      <blockquote class="quote">${esc(p.excerpt)}</blockquote></div>`).join('')}</details>`;
+  if (!evidence) return '<p class="muted">No verified passage is recorded.</p>';
   const passages = [...evidence.counter, ...evidence.supporting].filter(p => p.locator && p.excerpt);
   const relations = { SUPPORTS: 'Supports', CONTRADICTS: 'Contradicts', QUALIFIES: 'Qualifies',
     INTERPRETS: 'Interprets', EXPERIENTIAL: 'Firsthand experience' };
@@ -60,20 +92,143 @@ globalThis.planUpdateEvidence = function planUpdateEvidence(update) {
       <blockquote class="quote">${esc(p.excerpt)}</blockquote></div>`).join('') || '<p class="muted">No located passage is recorded.</p>'}
   </details>`;
 }
+function planAction(item, evidence) {
+  const detail = item.detail || item.why;
+  return `<div class="plan-action">
+    <div class="body"><strong>${esc(item.label)}</strong>${item.time ? ` <span class="muted">· ${esc(item.time)}</span>` : ''}
+      ${item.unmet?.length ? `<div class="status-warn">Waiting for ${item.unmet.map(esc).join(', ')}</div>` : ''}
+      ${detail ? `<div class="muted">${esc(detail)}</div>` : ''}${ev(item.evidence, evidence)}
+    </div>${statusSel(item.key, item.label)}
+  </div>`;
+}
+
+function planDeadlines(deadlines) {
+  const next = deadlines[0];
+  return `<section class="plan-deadlines">
+    ${next ? `<div class="plan-attention"><strong>Confirmed deadline</strong> · <time datetime="${esc(next.date)}">${esc(next.date)}</time>
+      <div>${esc(next.label)}</div>${next.consequence ? `<div class="muted">${esc(next.consequence)}</div>` : ''}
+      ${next.fallback ? `<div class="muted">Fallback · ${esc(next.fallback)}</div>` : ''}</div>` : ''}
+    <details><summary>${next ? 'Manage deadlines' : 'Add a confirmed deadline'}</summary>
+      ${deadlines.map(d => `<div class="row plan-attention"><span class="grow">${esc(d.date)} · ${esc(d.label)}</span>
+        <button class="small ghost" onclick="removePlanDeadline(${d.id})">Remove</button></div>`).join('')}
+      <form class="plan-form" onsubmit="event.preventDefault(); savePlanDeadline(this)">
+        <label>What’s due <input name="label" required maxlength="250"></label>
+        <label>Deadline <input name="date" type="date" required></label>
+        <label>Consequence if missed <input name="consequence" maxlength="500"></label>
+        <label>Fallback <input name="fallback" maxlength="500"></label>
+        <button class="small primary" type="submit">Save deadline</button>
+      </form></details>
+  </section>`;
+}
+globalThis.savePlanDeadline = async function savePlanDeadline(form) {
+  const projectId = state.project.id, data = Object.fromEntries(new FormData(form));
+  if (!data.label.trim()) return;
+  const button = form.querySelector('button');
+  button.disabled = true;
+  try {
+    await post(`/api/projects/${projectId}/facts`, { kind: 'deadline', content: JSON.stringify(data) });
+    if (state.project.id === projectId) await loadPlan();
+  } catch (e) { toast(e.message, 'err'); }
+  finally { button.disabled = false; }
+}
+globalThis.removePlanDeadline = async function removePlanDeadline(id) {
+  if (!confirm('Remove this confirmed deadline?')) return;
+  const projectId = state.project.id;
+  try {
+    await del('/api/facts/' + id);
+    if (state.project.id === projectId) await loadPlan();
+  } catch (e) { toast(e.message, 'err'); }
+}
+globalThis.recordPlanDecision = async function recordPlanDecision(index, form) {
+  const projectId = state.project.id, planId = planState.plan.id, button = form.querySelector('button');
+  const data = Object.fromEntries(new FormData(form));
+  button.disabled = true;
+  try {
+    await post(`/api/plans/${planId}/decisions/${index}`, data);
+    if (state.project.id === projectId) await loadPlan();
+  } catch (e) { toast(e.message, 'err'); }
+  finally { button.disabled = false; }
+}
+
+function planFocus(r, evidence) {
+  const { plan: row, execution } = r;
+  const p = row.plan, phase = execution.phase, ready = p.ready || {}, goal = p.goal || {};
+  const approach = p.approach || {}, started = row.status === 'started';
+  const open = key => !['complete', 'done'].includes(row.items[key]?.status);
+  const decisions = (p.decisions || []).map((d, i) => ({ ...d, key: `decisions.${i}` }))
+    .filter(d => open(d.key) && (d.when === 'now' || (d.id && phase?.decisions?.includes(d.id))
+      || (d.by_phase && [phase?.id, phase?.name].includes(d.by_phase))));
+  const blockers = (p.dependencies || []).map((d, i) => ({ ...d, key: `dependencies.${i}` }))
+    .filter(d => d.blocking && open(d.key));
+  const questions = (p.open_questions || []).map((q, i) => ({ ...q, key: `open_questions.${i}` }))
+    .filter(q => q.category === 'blocking' && open(q.key));
+  const alerts = [...new Set([...(ready.blockers || []), ...(ready.need_before || [])])]
+    .filter(label => !(p.dependencies || []).some(d => d.item?.trim().toLowerCase() === label.trim().toLowerCase()));
+  const actions = `<section aria-labelledby="planNextHeading"><h3 id="planNextHeading" tabindex="-1">Next actions</h3>
+    ${execution.next_actions.length ? execution.next_actions.map(item => planAction(item, evidence)).join('') :
+      '<p class="muted">No unfinished actions are listed for this milestone.</p>'}
+    ${execution.completed ? `<p class="muted">${execution.completed} of ${Object.keys(execution.tasks).length} actions complete</p>` : ''}
+    <button class="small ghost" onclick="selectPlanTab('do')">View all work</button></section>`;
+  const attention = decisions.length || blockers.length || questions.length || alerts.length ? `<section><h3>Needs attention</h3>
+    ${decisions.map(d => `<details class="plan-attention"><summary>${esc(d.decision)}</summary>
+      ${d.recommended ? `<p><strong>Recommendation</strong> · ${esc(d.recommended)}${d.why ? ` — ${esc(d.why)}` : ''}</p>` : ''}
+      ${d.by_phase ? `<p class="muted">Needed for ${esc(d.by_phase)}</p>` : ''}
+      ${d.options?.length ? `<p class="muted">Options · ${d.options.map(esc).join(' · ')}</p>` : ''}
+      ${ev(d.evidence, evidence)}<button class="small ghost" onclick="selectPlanTab('decide')">Review decision</button></details>`).join('')}
+    ${blockers.map(d => `<div class="plan-attention"><strong>${esc(d.item)}</strong>${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}
+      <button class="small ghost" onclick="selectPlanTab('do')">Review dependency</button></div>`).join('')}
+    ${questions.map(q => `<div class="plan-attention"><strong>${esc(q.question)}</strong>${q.why ? `<div class="muted">${esc(q.why)}</div>` : ''}</div>`).join('')}
+    ${alerts.map(label => `<div class="plan-attention">${esc(label)}</div>`).join('')}
+    <button class="small ghost" onclick="selectPlanTab('decide')">View decisions and questions</button></section>` : '';
+  return `<section class="plan-focus">
+    ${goal.outcome ? `<p class="plan-goal">${esc(goal.outcome)}</p>` : ''}
+    ${approach.recommended ? `<details class="plan-approach"><summary>${esc(approach.recommended)}</summary>
+      ${approach.why ? `<p>${esc(approach.why)}</p>` : ''}${ev(approach.evidence, evidence)}</details>` : ''}
+    <div class="plan-milestone">
+      <div class="muted">${phase ? 'Next milestone' : 'Plan progress'}</div>
+      <h3>${esc(phase?.outcome || phase?.objective || phase?.name ||
+        (Object.keys(execution.tasks).length && !execution.next_actions.length ? 'Scheduled actions complete' : 'First actions'))}</h3>
+      ${phase?.name && phase?.name !== (phase.outcome || phase.objective || phase.name) ? `<div class="muted">${esc(phase.name)}</div>` : ''}
+      ${goal.success?.length ? `<details class="plan-approach"><summary>Success criteria</summary><ul>${goal.success.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+      ${!started ? '<button class="small primary mt-2" onclick="startProject()">Start project</button>' : ''}
+    </div>
+    ${planDeadlines(r.deadlines || [])}
+    <div class="plan-focus-grid${attention ? ' has-attention' : ''}">${!started && attention ? attention + actions : actions + attention}</div>
+    ${p._progress_review?.length ? `<details class="plan-attention"><summary>Review progress from the previous plan (${p._progress_review.length})</summary>
+      <p class="muted">These entries need a match before their status can be carried forward. The previous version retains the original progress.</p>
+      <ul>${p._progress_review.map(x => `<li>${esc(x.label)} · ${esc(stLabel(x.status))}</li>`).join('')}</ul></details>` : ''}
+  </section>`;
+}
+
+globalThis.selectPlanTab = function selectPlanTab(tab) {
+  planState.tab = tab;
+  renderPlan(planState);
+  $('#planTabs').scrollIntoView?.({ block: 'nearest' });
+  $('#planTabs').querySelector('.on')?.focus({ preventScroll: true });
+}
+
 globalThis.renderPlan = function renderPlan(r) {
   const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
   const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted' && !u.applied_plan_id);
   const rejected = pl.updates.filter(u => u.status === 'rejected');
   const an = p.analysis || {}, facts = (state.project.facts || []);
-  let h = `<div class="row mb-3"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
+  const execution = r.execution;
+  let h = `<div class="row mb-3 plan-header"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
     <button class="small" onclick="checkUpdates(this)">Check for updates</button>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
+  h += planFocus(r, E);
   if (pending.length || accepted.length) {
-    h += `<div class="banner"><b>Master Plan has ${pending.length} suggested update${pending.length === 1 ? '' : 's'}</b>` +
+    h += `<details class="plan-changes" id="planChanges" ${r.showChanges ? 'open' : ''}><summary>Plan changes · ${pending.length} to review${accepted.length ? ` · ${accepted.length} ready to apply` : ''}</summary>` +
       pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>${planUpdateEvidence(u)}
         <div class="row" style="margin-top:6px"><button class="small primary" onclick="updStatus(${u.id},'accepted')">Accept change</button><button class="small" onclick="updStatus(${u.id},'rejected')">Keep current plan</button><button class="small ghost" onclick="researchThis(${JSON.stringify(u.section + ': ' + u.proposed + ' — is this right? What does the research say?').replace(/"/g, '&quot;')})">Research further</button></div></div>`).join('') +
-      (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span>${r.can_apply_exact ? '<button class="small primary" onclick="applyUpdates(this, true)">Apply exact edits</button>' : ''}<button class="small" onclick="applyUpdates(this)">Rebuild with accepted changes</button></div>` : '') + `</div>`;
+      (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span>${r.can_apply_exact ? '<button class="small primary" onclick="applyUpdates(this, true)">Apply exact edits</button>' : ''}<button class="small" onclick="applyUpdates(this)">Rebuild with accepted changes</button></div>` : '') + `</details>`;
+  }
+
+  if (r.versions?.length > 1) {
+    h += `<details class="plan-changes"><summary>Version history · ${r.versions.length} versions</summary>
+      <ul>${r.versions.map(v => `<li>Version ${v.version} · ${esc(new Date(v.created_at * 1000).toLocaleDateString())}${v.label === 'current' ? ' · Current' : ''}</li>`).join('')}</ul>
+      ${(r.applied_updates || []).map(u => `<p><b>Applied in v${u.version}</b> · ${esc(u.proposed)}</p>`).join('')}</details>`;
   }
 
   if (rejected.length) {
@@ -81,30 +236,12 @@ globalThis.renderPlan = function renderPlan(r) {
       ${rejected.map(u => `<p><b>${esc(u.section)}</b> · ${esc(u.proposed)}
         ${u.decision_reason ? `<br>Decision reason · ${esc(u.decision_reason)}` : ''}</p>`).join('')}</details>`;
   }
-  // ---------- START HERE: the short version ----------
-  const rd = p.ready || {};
-  const weekItem = (t, i) => { const done = planState.plan.items['this_week.' + i]?.status === 'complete';
-    return `<label class="wk ${done ? 'done' : ''}"><input type="checkbox" ${done ? 'checked' : ''} onchange="setItem('this_week.${i}', this.checked ? 'complete' : 'not_started'); this.closest('.wk').classList.toggle('done', this.checked)"><div><b>${esc(t.action)}</b>${t.time ? ` <span class="tag">${esc(t.time)}</span>` : ''}<div class="muted">${esc(t.why || '')}</div></div></label>`; };
-  h += `<div class="start">
-    <div class="startcol">
-      <div class="starth">🎯 Start here</div>
-      ${an.verdict ? `<p class="verdict">${esc(an.verdict)}</p>` : ''}
-      ${(p.approach || {}).recommended ? `<p><b>Approach:</b> ${esc(p.approach.recommended)}</p>` : ''}
-      <p><b>Initial cost:</b> ${esc(rd.initial_cost || '?')}${rd.blockers?.length ? ` · <b class="status-bad">Blocked by:</b> ${rd.blockers.map(esc).join('; ')}` : ''}${rd.need_before?.length ? ` · <b>Need first:</b> ${rd.need_before.map(esc).join('; ')}` : ''}</p>
-      ${started ? '<span class="tag">🚀 project started</span>' : `<button class="primary" onclick="startProject()">Start project</button> <span class="muted">marks the first steps ready and switches to execution</span>`}
-    </div>
-    <div class="startcol">
-      <div class="starth">📅 This week</div>
-      ${(p.this_week || []).length ? p.this_week.map(weekItem).join('') : `<ol>${(rd.first_three || []).map(x => `<li>${esc(x)}</li>`).join('')}</ol>`}
-    </div>
-  </div>`;
-
   // ---------- REFINE: guided questions ----------
   const qs = p.refine_questions || [];
   if (qs.length) {
     const answered = q => facts.find(f => f.content.startsWith('Q: ' + q.question));
     const n = qs.filter(answered).length;
-    h += `<div class="refine"><div class="row"><div class="starth grow">💬 Make this plan yours <span class="muted" style="font-weight:400">— ${n} of ${qs.length} answered</span></div>
+    h += `<details class="refine" id="planQuestions" ${r.showQuestions ? 'open' : ''}><summary>Questions for you · ${n} of ${qs.length} answered</summary><div class="row">
       ${n ? `<button class="small primary" onclick="rebuildWithAnswers()">↻ Rebuild plan with my answers</button>` : ''}</div>
       <div class="muted" style="margin-bottom:6px">These are the things only you know. Each answer you save becomes a project fact; rebuild when you've answered a few and the plan will be tighter and more specific.</div>` +
       qs.map((q, i) => { const a = answered(q); return `<div class="rq ${a ? 'answered' : ''}" id="rq-${i}">
@@ -113,13 +250,13 @@ globalThis.renderPlan = function renderPlan(r) {
             : `<div class="row" style="margin-top:4px;flex-wrap:wrap">${(q.options || []).map(o => `<button class="small" onclick="answerQ(${i}, ${JSON.stringify(o).replace(/"/g, '&quot;')})">${esc(o)}</button>`).join('')}
                <input placeholder="${q.options?.length ? 'or type your own…' : 'your answer…'}" style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter'){answerQ(${i}, this.value)}">
                <button class="small ghost" onclick="researchThis(${JSON.stringify(q.question + ' — help me think this through for my project. What do the sources say, and what should I consider?').replace(/"/g, '&quot;')})">Discuss</button></div>`}
-      </div>`; }).join('') + `</div>`;
+      </div>`; }).join('') + `</details>`;
   }
 
   // ---------- TABS ----------
-  const tab = planState.tab || 'overview';
+  const tab = planState.tab || 'do';
   const tabs = [['overview', 'Where you stand'], ['do', 'Do this'], ['decide', 'Decide'], ['money', 'Money & tools'], ['watch', 'Watch out'], ['evidence', 'Evidence']];
-  h += `<div class="ptabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" onclick="planState.tab='${k}';renderPlan(planState)">${l}</button>`).join('')}</div><div class="plan">`;
+  h += `<div class="ptabs" id="planTabs" aria-label="Plan sections">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" aria-pressed="${tab === k}" onclick="selectPlanTab('${k}')">${l}</button>`).join('')}</div><div class="plan">`;
 
   if (tab === 'overview') {
     const cell = x => `<b>${esc(x.point || '')}</b>${x.so_what ? `<div class="muted">${esc(x.so_what)}</div>` : ''}${ev(x.evidence, E)}`;
@@ -135,16 +272,34 @@ globalThis.renderPlan = function renderPlan(r) {
     if (p.confidence?.length) h += `<h2>Plan confidence</h2><ul>${p.confidence.map(x => `<li><b>${esc(x.area)}</b>: <span class="conf ${x.level}">${esc((x.level || '').replace('_', ' '))}</span> — ${esc(x.note || '')}</li>`).join('')}</ul>`;
   }
   if (tab === 'do') {
-    h += `<h2>First steps</h2>` + (p.first_steps || []).map((s, i) => `<div class="item"><div style="flex:0 0 22px;color:var(--muted)">${i + 1}.</div><div class="body"><span class="k">${esc(s.action)}</span>${s.today ? '<span class="tag">today</span>' : ''}<div class="muted">${esc(s.detail || '')}</div>${ev(s.evidence, E)}</div>${statusSel('first_steps.' + i)}</div>`).join('');
-    if (p.phases?.length) { h += `<h2>Phases</h2>`; p.phases.forEach((ph, i) => { h += `<details ${i === 0 ? 'open' : ''}><summary><b>Phase ${i + 1} — ${esc(ph.name)}</b> <span class="muted">${esc(ph.objective || '')}</span></summary>` +
-        (ph.tasks || []).map((t, j) => `<div class="item"><div class="body">${esc(t.task)}${t.detail ? `<div class="muted">${esc(t.detail)}</div>` : ''}</div>${statusSel(`phases.${i}.tasks.${j}`)}</div>`).join('') +
-        (ph.dependencies?.length ? `<div class="muted" style="margin-top:6px">Depends on: ${ph.dependencies.map(esc).join('; ')}</div>` : '') + (ph.decisions?.length ? `<div class="muted">Decisions needed: ${ph.decisions.map(esc).join('; ')}</div>` : '') + (ph.outcome ? `<div class="muted">Outcome: ${esc(ph.outcome)}</div>` : '') + `</details>`; }); }
+    const tasks = Object.entries(execution.tasks);
+    const taskById = Object.fromEntries(tasks.filter(([, task]) => task.id).map(([, task]) => [task.id, task.label]));
+    const decisionById = Object.fromEntries((p.decisions || []).filter(d => d.id).map(d => [d.id, d.decision]));
+    const standalone = tasks.filter(([, item]) => item.phase == null);
+    if (standalone.length) h += '<h2>Standalone actions</h2>' + standalone.map(([key, item]) => planAction({ key, ...item }, E)).join('');
+    if (p.phases?.length) {
+      h += '<h2>Phases</h2>';
+      p.phases.forEach((phase, i) => {
+        h += `<details ${i === execution.phase_index ? 'open' : ''}><summary><b>${esc(phase.name)}</b>
+          <span class="muted">${esc(phase.objective || '')}</span></summary>
+          ${tasks.filter(([, item]) => item.phase === i).map(([key, item]) => planAction({ key, ...item }, E)).join('')}
+          ${phase.dependencies?.length ? `<p class="muted">Depends on ${phase.dependencies.map(dep => esc(taskById[dep] || dep)).join(', ')}</p>` : ''}
+          ${phase.decisions?.length ? `<p class="muted">Decisions needed · ${phase.decisions.map(d => esc(decisionById[d] || d)).join(', ')}</p>` : ''}
+          ${phase.outcome ? `<p class="muted">Outcome · ${esc(phase.outcome)}</p>` : ''}
+        </details>`;
+      });
+    }
     if (p.dependencies?.length) h += `<h2>Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
     if (p.defer?.length) h += `<h2>Not yet</h2><ul>${p.defer.map(d => `<li>${esc(d.item)} <span class="muted">— ${esc(d.until || '')}</span></li>`).join('')}</ul>`;
   }
   if (tab === 'decide') {
-    if (p.decisions?.length) h += `<h2>Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">Discuss</button></div></div>${statusSel('decisions.' + i)}</div>`).join('');
-    if (p.open_questions?.length) h += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">Research this</button></div></div>${statusSel('open_questions.' + i)}</div>`).join('');
+    if (p.decisions?.length) h += `<h2>Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">Discuss</button></div></div>${statusSel('decisions.' + i, d.decision)}
+      ${['complete', 'done'].includes(pl.items['decisions.' + i]?.status) ? `<div class="muted">${esc(pl.items['decisions.' + i]?.note || '')}</div>` :
+        `<details><summary>Record decision</summary><form class="plan-form" onsubmit="event.preventDefault(); recordPlanDecision(${i}, this)">
+          <label>Your choice <input name="choice" maxlength="500" required></label>
+          <label>Why <input name="reason" maxlength="1000"></label><button class="small primary" type="submit">Save decision</button>
+        </form></details>`}</div>`).join('');
+    if (p.open_questions?.length) h += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">Research this</button></div></div>${statusSel('open_questions.' + i, q.question)}</div>`).join('');
     if (an.assumptions?.length) h += `<h2>Assumptions this plan rests on</h2>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
     if (!p.decisions?.length && !p.open_questions?.length) h += '<p class="muted">Nothing to decide right now.</p>';
   }
@@ -167,18 +322,28 @@ globalThis.renderPlan = function renderPlan(r) {
     // (fixed at the source in planner.py's _evidence()). Grouped by id prefix (U/F/S/C - facts, pinned findings,
     // sources, research chunks) behind collapsible sections, plus a text filter, so the same data is navigable at
     // any scale instead of a scroll-forever wall.
+    const cited = new Set();
+    const collect = item => {
+      if (!item || typeof item !== 'object') return;
+      for (const [key, value] of Object.entries(item)) {
+        if (key === 'evidence' && Array.isArray(value)) value.forEach(id => cited.add(id));
+        else if (!key.startsWith('_')) collect(value);
+      }
+    };
+    collect(p);
     const evs = Object.entries(E);
     if (!evs.length) { h += '<p class="muted">No evidence map.</p>'; }
     else {
-      const GROUP_LABEL = { U: 'Facts you told us', F: 'Pinned findings', S: 'Sources', C: 'Research chunks' };
+      const GROUP_LABEL = { U: 'Other project facts', F: 'Other findings', S: 'Other sources', C: 'Other research passages' };
       const groups = {};
-      for (const [id, e] of evs) { const prefix = id.replace(/\d+$/, ''); (groups[prefix] = groups[prefix] || []).push([id, e]); }
+      for (const [id, e] of evs) { if (cited.has(id)) continue; const prefix = id.replace(/\d+$/, ''); (groups[prefix] = groups[prefix] || []).push([id, e]); }
       const order = [...new Set(['U', 'F', 'S', 'C', ...Object.keys(groups)])];
-      h += `<h2>Evidence used by this plan <span class="muted" style="font-weight:400;font-size:13px">— ${evs.length} total</span></h2>
+      h += `<h2>Evidence <span class="muted" style="font-weight:400;font-size:13px">— ${evs.filter(([id]) => cited.has(id)).length} cited · ${evs.length} available</span></h2>
         <input id="evFilter" placeholder="Filter evidence by title…" oninput="filterEvidence(this.value)" style="width:100%;margin-bottom:10px">`;
-      for (const prefix of order) {
+      groups.cited = evs.filter(([id]) => cited.has(id));
+      for (const prefix of ['cited', ...order]) {
         const items = groups[prefix]; if (!items?.length) continue;
-        h += `<details class="evgroup" ${items.length <= 30 ? 'open' : ''}><summary><b>${esc(GROUP_LABEL[prefix] || prefix)}</b> <span class="muted">(${items.length})</span></summary>
+        h += `<details class="evgroup" ${prefix === 'cited' ? 'open' : ''}><summary><b>${esc(prefix === 'cited' ? 'Cited in this plan' : GROUP_LABEL[prefix] || prefix)}</b> <span class="muted">(${items.length})</span></summary>
           <div class="muted evchips">${items.map(([id, e]) => `<span class="chip" data-evtext="${esc((id + ' ' + e.label).toLowerCase())}">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)}</span>`).join(' ')}</div>
         </details>`;
       }
@@ -205,11 +370,11 @@ globalThis.answerQ = async function answerQ(i, text) {
   const q = planState.plan.plan.refine_questions[i];
   const kind = q.kind === 'decision' ? 'decision' : q.kind === 'preference' ? 'requirement' : 'context';
   await post(`/api/projects/${state.project.id}/facts`, { kind, content: `Q: ${q.question}\nA: ${text}` });
-  state.project = await api('/api/projects/' + state.project.id); renderPlan(planState);
+  state.project = await api('/api/projects/' + state.project.id); planState.showQuestions = true; renderPlan(planState);
 }
 globalThis.delFactByContent = async function delFactByContent(content) {
   const f = (state.project.facts || []).find(x => x.content === content); if (!f) return;
-  await del('/api/facts/' + f.id); state.project = await api('/api/projects/' + state.project.id); renderPlan(planState);
+  await del('/api/facts/' + f.id); state.project = await api('/api/projects/' + state.project.id); planState.showQuestions = true; renderPlan(planState);
 }
 globalThis.rebuildWithAnswers = async function rebuildWithAnswers() {
   const qs = planState.plan.plan.refine_questions || [], facts = state.project.facts || [];
@@ -224,6 +389,7 @@ globalThis.checkUpdates = async function checkUpdates(button) {
   try {
     const r = await post(`/api/projects/${state.project.id}/plan/check-updates`);
     await loadPlan();
+    if (r.updates.length && $('#planChanges')) $('#planChanges').open = true;
     if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted mb-2">No new changes to review.</div>');
   } catch (e) { toast(e.message || e, 'err'); $('#chk')?.remove(); }
   finally { if (button) button.disabled = false; }
@@ -233,6 +399,7 @@ globalThis.updStatus = async function updStatus(id, status) {
   if (reason === null) return;
   await post(`/api/plan-updates/${id}`, { status, ...(reason ? { reason } : {}) });
   await loadPlan();
+  $('#planChanges')?.querySelector('summary')?.focus();
 }
 globalThis.applyUpdates = async function applyUpdates(button, exact = false) {
   if (button) button.disabled = true;

@@ -506,5 +506,5 @@ def build_plan_v3(project_id: str, instructions: str | None = None, progress: An
                        provenance={"model": ", ".join(sorted({str(c["model"]) for c in telemetry["components"] if c.get("model")})), "prompt_version": prompt_version(),
                                    "routing": providers.routing_json("planner.core", next((c.get("model") for c in telemetry["components"] if c.get("model")), None)),
                                    "analysis_hash": analysis_hash, "planner_version": PLANNER_VERSION})
-    db.update_project(project_id, mode="plan")
+    db.update_project(project_id, mode="execute" if row["status"] == "started" else "plan")
     return row

@@ -18,6 +18,7 @@ from typing import Iterable, Any, Iterator
 
 import numpy as np
 
+from . import plan_execution
 from .config import settings
 
 FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # mirrored from contracts (db must not import contracts)
@@ -1312,6 +1313,7 @@ MIGRATIONS = [
     ("plan_updates", "tension_id", "ALTER TABLE plan_updates ADD COLUMN tension_id TEXT"),
     ("plan_updates", "decided_at", "ALTER TABLE plan_updates ADD COLUMN decided_at REAL"),
     ("plan_updates", "decided_by", "ALTER TABLE plan_updates ADD COLUMN decided_by TEXT"),
+    ("plan_updates", "evidence_json", "ALTER TABLE plan_updates ADD COLUMN evidence_json TEXT"),
     ("plan_updates", "decision_reason", "ALTER TABLE plan_updates ADD COLUMN decision_reason TEXT"),
     ("plan_updates", "applied_plan_id", "ALTER TABLE plan_updates ADD COLUMN applied_plan_id TEXT"),
     # CR8 product decision (Kyle, 2026-09-16): "primary for this project" is a property of the project<->
@@ -5464,7 +5466,7 @@ def project_snapshot(project_id: str) -> dict[str, int]:
 
 
 def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], carry_statuses_from: str | None = None,
-              provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+              provenance: dict[str, Any] | None = None, *, exact_edit: bool = False) -> dict[str, Any]:
     pid = new_id()
     prov = {**project_revisions(project_id), **(provenance or {})}
     with tx() as conn:
@@ -5475,17 +5477,19 @@ def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], c
                      (pid, project_id, v, json.dumps(plan), json.dumps(snapshot), t, t, prov.get("model"), prov.get("prompt_version"),
                       prov["brief_revision"], prov["facts_revision"], prov["source_set_revision"], prov.get("routing")))
         if carry_statuses_from:
-            rows = conn.execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (carry_statuses_from,)).fetchall()
-            prev_row = conn.execute("SELECT plan FROM plans WHERE id=?", (carry_statuses_from,)).fetchone()
-            prev_ids = (json.loads(prev_row["plan"] or "{}") if prev_row else {}).get("_ids") or {}
-            new_ids = plan.get("_ids") or {}
-            if prev_ids and new_ids:
-                # F4: statuses follow the semantic id, not the array position — a task that moved keeps its DONE
-                by_id = {v: k for k, v in new_ids.items()}
-                carried = [(pid, by_id[prev_ids[r["key"]]], r["status"], r["note"], t) for r in rows if r["key"] in prev_ids and prev_ids[r["key"]] in by_id]
-            else:
-                carried = [(pid, r["key"], r["status"], r["note"], t) for r in rows]
-            conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)", carried)
+            rows = conn.execute("SELECT key, status, note, updated_at FROM plan_items WHERE plan_id=?",
+                                (carry_statuses_from,)).fetchall()
+            prev = conn.execute("SELECT plan, status FROM plans WHERE id=?", (carry_statuses_from,)).fetchone()
+            if prev:
+                previous_plan = json.loads(prev["plan"])
+                carried, review = plan_execution.carry_items(previous_plan, plan, rows, exact_edit=exact_edit)
+                previous_review = previous_plan.get("_progress_review") or []
+                review = previous_review + [entry for entry in review if entry not in previous_review]
+                if review:
+                    plan = {**plan, "_progress_review": review}
+                conn.execute("UPDATE plans SET status=?, plan=? WHERE id=?", (prev["status"], json.dumps(plan), pid))
+                conn.executemany("INSERT INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)",
+                                 [(pid, key, item["status"], item["note"], t) for key, item in carried.items()])
         from . import ledger
         ledger.record(conn, project_id, event_type="plan_version_created", object_type="plan", object_id=pid,
                       before=None, after={"version": v}, floor=_plan_floor(conn, plan))
@@ -5499,8 +5503,10 @@ def get_plan(plan_id: str) -> dict[str, Any] | None:
     d = dict(row)
     d["plan"] = json.loads(d["plan"] or "{}")
     d["snapshot"] = json.loads(d["snapshot"] or "{}")
-    d["items"] = {r["key"]: {"status": r["status"], "note": r["note"]} for r in
-                  connect().execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (plan_id,)).fetchall()}
+    _, aliases, _ = plan_execution.task_layout(d["plan"])
+    rows = connect().execute("SELECT key, status, note, updated_at FROM plan_items WHERE plan_id=?", (plan_id,))
+    d["items"] = plan_execution.canonical_items(rows, aliases)
+    d["items"].update({key: d["items"][target] for key, target in aliases.items() if target in d["items"]})
     d["updates"] = [dict(r) for r in connect().execute(
         "SELECT * FROM plan_updates WHERE plan_id=? ORDER BY created_at", (plan_id,)).fetchall()]
     return d
@@ -5514,6 +5520,13 @@ def latest_plan(project_id: str) -> dict[str, Any] | None:
 def list_plans(project_id: str) -> list[dict[str, Any]]:
     return [dict(r) for r in connect().execute(
         "SELECT id, version, status, created_at FROM plans WHERE project_id=? ORDER BY version DESC", (project_id,)).fetchall()]
+
+
+def applied_plan_updates(project_id: str) -> list[dict[str, Any]]:
+    return [dict(row) for row in connect().execute(
+        """SELECT u.section, u.previous, u.proposed, v.version
+           FROM plan_updates u JOIN plans v ON v.id=u.applied_plan_id
+           WHERE v.project_id=? ORDER BY v.version DESC, u.id DESC""", (project_id,))]
 
 
 def set_plan_status(plan_id: str, status: str) -> None:
@@ -5539,17 +5552,25 @@ def _plan_floor(conn: sqlite3.Connection, plan: dict[str, Any]) -> set[str]:
 
 def set_item_status(plan_id: str, key: str, status: str, note: str | None = None) -> None:
     with tx() as conn:
-        old = conn.execute("SELECT i.status, p.project_id FROM plans p LEFT JOIN plan_items i ON i.plan_id=p.id AND i.key=? WHERE p.id=?",
-                           (key, plan_id)).fetchone()
+        row = conn.execute("SELECT project_id, plan FROM plans WHERE id=?", (plan_id,)).fetchone()
+        if row is None:
+            raise LookupError("Plan not found")
+        _, aliases, _ = plan_execution.task_layout(json.loads(row["plan"]))
+        key = aliases.get(key, key)
+        keys = [key] + [path for path, target in aliases.items() if target == key]
+        old = plan_execution.canonical_items(conn.execute(
+            "SELECT key, status, note, updated_at FROM plan_items WHERE plan_id=? "
+            "AND key IN (SELECT value FROM json_each(?))", (plan_id, json.dumps(keys))), aliases).get(key, {})
+        conn.execute("DELETE FROM plan_items WHERE plan_id=? AND key<>? AND key IN (SELECT value FROM json_each(?))",
+                     (plan_id, key, json.dumps(keys)))
         conn.execute("""INSERT INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)
                         ON CONFLICT(plan_id, key) DO UPDATE SET status=excluded.status,
-                        note=COALESCE(excluded.note, plan_items.note), updated_at=excluded.updated_at""",
-                     (plan_id, key, status, note, now()))
-        if old is not None:
-            from . import ledger
-            ledger.record(conn, old["project_id"], event_type="plan_item_status_changed", object_type="plan_item",
-                          object_id=f"{plan_id}:{key}", before={"status": old["status"] or "not_started"}, after={"status": status},
-                          floor={"standard"})
+                        note=excluded.note, updated_at=excluded.updated_at""",
+                     (plan_id, key, status, note if note is not None else old.get("note"), now()))
+        from . import ledger
+        ledger.record(conn, row["project_id"], event_type="plan_item_status_changed", object_type="plan_item",
+                      object_id=f"{plan_id}:{key}", before={"status": old.get("status", "not_started")},
+                      after={"status": status}, floor={"standard"})
 
 
 def add_plan_updates(plan_id: str, updates: list[dict[str, Any]], origin: str | None = None) -> None:
@@ -5565,10 +5586,11 @@ def add_plan_updates(plan_id: str, updates: list[dict[str, Any]], origin: str | 
         else:
             conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending' AND origin=?", (plan_id, origin))
         conn.executemany(
-            "INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, origin, claim_id, tension_id, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, origin, claim_id, tension_id, created_at, evidence_json) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             [(plan_id, u.get("section", ""), u.get("previous"), u.get("proposed", ""), u.get("reason"), origin,
-              u.get("claim_id"), u.get("tension_id"), now()) for u in updates])
+              u.get("claim_id"), u.get("tension_id"), now(),
+              json.dumps(u["verified_evidence"]) if u.get("verified_evidence") else None) for u in updates])
 
 
 def set_update_status(update_id: int, status: str, decided_by: str = "user", decision_reason: str | None = None) -> dict[str, Any] | None:

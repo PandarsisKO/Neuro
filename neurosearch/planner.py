@@ -16,7 +16,8 @@ from typing import Any
 
 from . import db
 from .config import settings
-from .search import search
+from .chunking import fmt_locator
+from .search import deep_link, search
 
 log = logging.getLogger(__name__)
 
@@ -376,7 +377,7 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
     row = db.save_plan(project_id, plan, snapshot, carry_statuses_from=prev["id"] if prev else None,
                        provenance={"model": _last_model.get("model") or settings.answer_model, "prompt_version": "plan-" + hashlib.sha1((ANALYSIS_SYSTEM + SYSTEM).encode()).hexdigest()[:8],
                                    "routing": providers.routing_json("planner.build", _last_model.get("model"))})
-    db.update_project(project_id, mode="plan")
+    db.update_project(project_id, mode="execute" if row["status"] == "started" else "plan")
     return row
 
 
@@ -448,22 +449,37 @@ def _suggest_updates(project_id: str) -> list[dict[str, Any]]:
            FROM sources s LEFT JOIN attached a ON a.object_id=s.id
            WHERE s.id IN (SELECT value FROM json_each(?)) AND changed_at>?
            ORDER BY changed_at DESC, s.id LIMIT 100""", (project_id, since, json.dumps(source_ids), since)).fetchall()
+    material_refs = []
+
+    def source_material(row):
+        source = db.get_source(row["id"])
+        if not source:
+            return "", None
+        segments = db.get_segments(row["id"])[:30]
+        passage = " ".join(segment["text"] for segment in segments)[:600]
+        return f"- {(row['title'] or 'Untitled source')[:200]}: {passage}", {
+            "title": row["title"] or "Untitled source", "text": passage, "source_id": row["id"],
+            "revision": source.get("revision"), "url": source["url"], "platform": source["platform"],
+            "segments": segments,
+        }
+
     sections = (
-        ("NEW FINDINGS", (f"- {n['content'][:1000]}" for n in new_notes), 16000),
-        ("NEW USER FACTS", (f"- [{f['kind']}] {f['content'][:1500]}" for f in new_facts), 8000),
-        ("NEW SOURCES", (f"- {(row['title'] or 'Untitled source')[:200]}: " + " ".join(x["text"] for x in db.get_segments(row["id"])[:30])[:600]
-                         for row in new_srcs), 10000),
-        ("NEW CONVERSATION", (f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1200]}" for m in new_msgs), 6000),
+        ("NEW FINDINGS", ((f"- {n['content'][:1000]}", None) for n in new_notes), 16000),
+        ("NEW USER FACTS", ((f"- [{f['kind']}] {f['content'][:1500]}",
+                            {"title": "Project fact", "text": f["content"][:1500]}) for f in new_facts), 8000),
+        ("NEW SOURCES", (source_material(row) for row in new_srcs), 10000),
+        ("NEW CONVERSATION", ((f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1200]}", None)
+                              for m in new_msgs), 6000),
     )
     blocks = []
     for title, lines, budget in sections:
-        # Give each evidence type space even on projects with thousands of findings.
-        # Keep complete entries, ordered newest first except for the selected conversation turns.
         block = [title + ":"]
-        for line in lines:
+        for line, ref in lines:
             if len(line) + 1 > budget:
                 break
             block.append(line)
+            if ref:
+                material_refs.append(ref)
             budget -= len(line) + 1
         if title == "NEW CONVERSATION":
             block[1:] = reversed(block[1:])
@@ -475,7 +491,7 @@ def _suggest_updates(project_id: str) -> list[dict[str, Any]]:
     from . import providers
     from .contracts import contract
     cfg = contract("planner.update")
-    digest = hashlib.sha256(repr((UPDATE_SYSTEM, user, cfg, settings.fake_ai, settings.ai_profile,
+    digest = hashlib.sha256(repr(("verified-plan-passages-v1", UPDATE_SYSTEM, user, cfg, settings.fake_ai, settings.ai_profile,
                                   settings.claude_code_model, providers.current_policy())).encode()).hexdigest()
     key = f"planner:checked:{plan['id']}"
     receipt = json.loads(db.kv_get(key) or "{}")
@@ -509,7 +525,35 @@ def _suggest_updates(project_id: str) -> list[dict[str, Any]]:
             _observe(event="parse", task="planner.update", ok=False, repaired=False, error=str(exc)[:200])
             raise RuntimeError(f"planner.update: could not understand the model's output ({exc}); no updates were recorded") from exc
     updates = [u for u in updates if isinstance(u, dict) and u.get("proposed")]
+    for update in updates:
+        update["verified_evidence"] = _verified_update_evidence(update.get("reason"), evidence, material_refs)
     return _record_plan_check(plan, key, digest, evidence, updates)
+
+
+def _verified_update_evidence(reason: str, material: str, refs: list[dict]) -> list[dict]:
+    """Resolve a quoted span only when it identifies one included source or fact."""
+    results = []
+    for quote in sorted(_quoted_evidence(reason, material)):
+        pattern = re.compile(r"\s+".join(re.escape(word) for word in quote.split()), re.IGNORECASE)
+        matches = [(ref, match) for ref in refs if (match := pattern.search(ref["text"]))]
+        if len(matches) != 1:
+            continue
+        ref, match = matches[0]
+        item = {"title": ref["title"], "excerpt": match.group()}
+        if ref.get("source_id"):
+            offset = 0
+            for segment in ref["segments"]:
+                offset += len(segment["text"]) + 1
+                if match.start() < offset:
+                    start = segment["start"]
+                    item.update(source_id=ref["source_id"], revision=ref["revision"],
+                                locator=fmt_locator(ref["platform"], start),
+                                link=deep_link(ref["url"], ref["platform"], start))
+                    break
+        results.append(item)
+        if len(results) == 3:
+            break
+    return results
 
 
 def _pending_model_updates(plan_id: str) -> list[dict[str, Any]]:
@@ -581,7 +625,11 @@ def apply_exact_edits(project_id: str, plan_id: str) -> dict[str, Any]:
         updates = exact_edits(plan)
         if not updates:
             raise ValueError("The accepted changes do not match individual fields in this plan.")
+        from . import plan_execution
         revised = copy.deepcopy(plan["plan"])
+        _, aliases, _ = plan_execution.task_layout(revised)
+        if aliases:
+            revised["_task_aliases"] = aliases
         revised.setdefault("_research_checked_since", plan["created_at"])
         for update in updates:
             path = update["section"].split(".")
@@ -591,17 +639,16 @@ def apply_exact_edits(project_id: str, plan_id: str) -> dict[str, Any]:
             item[path[-1]] = update["proposed"]
         provenance = {k: plan[k] for k in ("model", "prompt_version", "brief_revision", "facts_revision",
                                            "source_set_revision", "routing")}
-        new = db.save_plan(project_id, revised, plan["snapshot"], carry_statuses_from=plan_id, provenance=provenance)
-        db.set_plan_status(new["id"], plan["status"])
+        new = db.save_plan(project_id, revised, plan["snapshot"], carry_statuses_from=plan_id, provenance=provenance, exact_edit=True)
         conn.executemany("UPDATE plan_updates SET applied_plan_id=? WHERE id=?", [(new["id"], u["id"]) for u in updates])
         # A pending proposal or rejection on the previous version remains attributable to that version.
         # Preserve decisions for subsequent checks on the new version, and keep pending work visible.
         conn.execute(
             """INSERT INTO plan_updates
                (plan_id, section, previous, proposed, reason, origin, claim_id, tension_id, created_at,
-                status, decided_at, decided_by, decision_reason)
+                status, decided_at, decided_by, decision_reason, evidence_json)
                SELECT ?, section, previous, proposed, reason, origin, claim_id, tension_id, created_at,
-                      status, decided_at, decided_by, decision_reason
+                      status, decided_at, decided_by, decision_reason, evidence_json
                FROM plan_updates WHERE plan_id=? AND status IN ('pending','rejected') ORDER BY id""",
             (new["id"], plan_id))
         for old, carried in zip([u for u in sorted(plan["updates"], key=lambda u: u["id"]) if u["status"] in ("pending", "rejected")],
@@ -671,6 +718,39 @@ def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
         return f" `{s.replace('_', ' ')}`" if s and s != "not_started" else ""
 
     out = [f"# {project['name']} — Master Plan", f"_Version {plan_row['version']} · generated {p.get('_generated', '')} · status: {plan_row['status']}_", ""]
+    from . import plan_execution
+
+    focus = plan_execution.execution_view(p, items)
+    phase = focus["phase"] or {}
+    goal = p.get("goal") or {}
+    approach = (p.get("approach") or {}).get("recommended")
+    if goal.get("outcome"):
+        out += [goal["outcome"], ""]
+    if approach:
+        out += [f"**Recommended approach** — {approach}", ""]
+    if phase:
+        out += ["## Next milestone", phase.get("outcome") or phase.get("objective") or phase.get("name") or "", ""]
+    deadlines = plan_execution.confirmed_deadlines(project.get("facts") or db.list_facts(project["id"])) if project.get("id") else []
+    if deadlines:
+        out += ["**Confirmed deadlines**"]
+        for item in deadlines:
+            details = " · ".join(x for x in (item["consequence"], item["fallback"]) if x)
+            out.append(f"- {item['date']} — {item['label']}" + (f" · {details}" if details else ""))
+        out.append("")
+    if goal.get("success"):
+        out += ["**Success criteria**"] + [f"- {criterion}" for criterion in goal["success"]] + [""]
+    if focus["next_actions"]:
+        out += ["**Next actions**"]
+        for action in focus["next_actions"]:
+            waits = f" — waiting for {', '.join(action['unmet'])}" if action["unmet"] else ""
+            out.append(f"- {action['label']}{st(action['key'])}{waits}{L(action.get('evidence'), emap)}")
+        out.append("")
+    urgent = [(i, d) for i, d in enumerate(p.get("decisions") or []) if d.get("when") == "now"
+              and items.get(f"decisions.{i}", {}).get("status") not in ("complete", "done")]
+    if urgent:
+        out += ["**Decisions needed**"]
+        out += [f"- {d.get('decision')}{L(d.get('evidence'), emap)}" for _, d in urgent]
+        out.append("")
     an = p.get("analysis") or {}
     if an:
         out += ["## 0. Where you stand — situation analysis", an.get("situation", ""), ""]

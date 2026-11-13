@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from neurosearch import db, plan_narrative, planner
+from tests.test_core import H
 
 
 @pytest.fixture
@@ -189,3 +190,94 @@ def test_accepted_via_the_existing_api_route_carries_full_provenance(s56_db, mon
     assert body["applied_plan_id"] is None   # the route only decides status -- apply is a separate step
 
     assert client.post("/api/plan-updates/999999", json={"status": "accepted"}).status_code == 404
+
+
+def test_plan_actions_share_progress_and_follow_a_legacy_reorder(s56_db):
+    from fastapi.testclient import TestClient
+    from neurosearch.api import app
+
+    pid = db.create_project("Workshop plan progress")["id"]
+    phase = {"name": "Registration", "outcome": "Open registration",
+             "tasks": [{"task": "Confirm the room"}, {"task": "Set the ticket price"}]}
+    plan = {"first_steps": [{"action": "Confirm the room"}], "this_week": [{"action": "Confirm the room"}],
+            "phases": [phase]}
+    original = db.save_plan(pid, plan, {})
+    db.set_plan_status(original["id"], "started")
+    db.set_item_status(original["id"], "this_week.0", "complete", "Room held until Friday")
+
+    client = TestClient(app)
+    data = client.get(f"/api/projects/{pid}/plan", headers=H).json()
+    assert data["execution"]["phase"]["outcome"] == "Open registration"
+    assert [item["label"] for item in data["execution"]["next_actions"]] == ["Set the ticket price"]
+    assert data["plan"]["items"]["first_steps.0"] == data["plan"]["items"]["phases.0.tasks.0"]
+
+    new = {**plan, "phases": [{**phase, "tasks": list(reversed(phase["tasks"]))}]}
+    revised = db.save_plan(pid, new, {}, carry_statuses_from=original["id"])
+    assert revised["status"] == "started"
+    assert revised["items"]["phases.0.tasks.1"] == {"status": "complete", "note": "Room held until Friday"}
+    assert "phases.0.tasks.0" not in revised["items"]
+
+    ambiguous = {**new, "phases": [{**phase, "tasks": [{"task": "Confirm the room"}] * 2}]}
+    pending = db.save_plan(pid, ambiguous, {}, carry_statuses_from=revised["id"])
+    assert pending["items"] == {}
+    assert pending["plan"]["_progress_review"] == [{"label": "Confirm the room", "status": "complete"}]
+
+
+def test_model_update_passage_must_be_in_included_source_and_flags_revision(s56_db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from neurosearch import providers
+    from neurosearch.api import app
+
+    pid = db.create_project("Workshop evidence")["id"]
+    db.save_plan(pid, {"first_steps": [{"action": "Pay deposit today"}]}, {})
+    sid = db.upsert_source(platform="youtube", external_id="plan-quote", url="https://www.youtube.com/watch?v=plan-quote",
+                           title="Venue agreement", status="ready")["id"]
+    quote = "The deposit is due only after the attendance minimum is met"
+    db.replace_transcript(sid, [{"start": 30, "end": 37, "text": quote}], [])
+    db.add_project_sources(pid, [sid])
+
+    def suggest(*args, **kwargs):
+        assert quote in kwargs["messages"][0]["content"]
+        return {"updates": [
+            {"section": "first_steps.0.action", "previous": "Pay deposit today", "proposed": "Wait to pay the deposit",
+             "reason": f'The agreement says "{quote}".'},
+            {"section": "Budget", "previous": "", "proposed": "Lower budget",
+             "reason": 'The agreement says "The venue has waived all fees for the entire year".'},
+        ]}
+
+    monkeypatch.setattr(providers, "invoke_structured", suggest)
+    client = TestClient(app)
+    response = client.post(f"/api/projects/{pid}/plan/check-updates", headers=H)
+    assert response.status_code == 200, response.text
+    updates = {u["section"]: u for u in response.json()["updates"]}
+    [passage] = updates["first_steps.0.action"]["verified_evidence"]
+    assert passage["excerpt"] == quote and passage["link"].endswith("&t=30s") and not passage["stale"]
+    assert "verified_evidence" not in updates["Budget"]
+    db.replace_transcript(sid, [{"start": 40, "end": 47, "text": "Different payment terms apply."}], [])
+    latest = client.get(f"/api/projects/{pid}/plan", headers=H).json()["plan"]
+    [updated] = next(u for u in latest["updates"] if u["section"] == "first_steps.0.action")["verified_evidence"]
+    assert updated["stale"]
+
+
+def test_recorded_decision_and_confirmed_deadline_reach_the_plan_and_export(s56_db):
+    from fastapi.testclient import TestClient
+    from neurosearch.api import app
+
+    pid = db.create_project("Registration milestone")["id"]
+    plan = db.save_plan(pid, {"decisions": [{"decision": "Set the ticket price", "when": "now"}],
+                             "phases": [{"name": "Registration", "outcome": "Open registration",
+                                         "tasks": [{"task": "Publish the page"}]}]}, {})
+    client = TestClient(app)
+    client.post(f"/api/projects/{pid}/facts", headers=H, json={"kind": "deadline", "content":
+                '{"date":"2027-02-01","label":"Venue hold expires","fallback":"Confirm backup room"}'})
+    route = f"/api/plans/{plan['id']}/decisions/0"
+    payload = {"choice": "$35", "reason": "Matches the pilot budget"}
+    assert client.post(route, headers=H, json=payload).status_code == 200
+    assert client.post(route, headers=H, json=payload).status_code == 409
+    result = client.get(f"/api/projects/{pid}/plan", headers=H).json()
+    assert result["plan"]["items"]["decisions.0"]["status"] == "complete"
+    assert result["deadlines"][0]["fallback"] == "Confirm backup room"
+    assert sum(f["kind"] == "decision" and "Matches the pilot budget" in f["content"] for f in db.list_facts(pid)) == 1
+    md = client.get(f"/api/projects/{pid}/plan.md", headers=H).text
+    assert md.index("Next milestone") < md.index("First steps")
+    assert "Venue hold expires" in md and "Decisions needed" not in md

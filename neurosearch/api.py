@@ -2595,7 +2595,7 @@ class BuildIn(BaseModel):
 
 @app.get("/api/projects/{project_id}/plan", dependencies=[Depends(require_auth)])
 def api_plan(project_id: str) -> dict[str, Any]:
-    from . import planner
+    from . import plan_execution, planner
     plan = db.latest_plan(project_id)
     versions = db.list_plans(project_id)
     if plan:
@@ -2604,7 +2604,10 @@ def api_plan(project_id: str) -> dict[str, Any]:
     for v in versions:                                  # older versions are superseded, never "current"
         v["label"] = "current" if plan and v["id"] == plan["id"] else "superseded"
     return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions,
-            "can_apply_exact": bool(plan and planner.exact_edits(plan))}
+            "can_apply_exact": bool(plan and planner.exact_edits(plan)),
+            "execution": plan_execution.execution_view(plan["plan"], plan["items"]) if plan else None,
+            "deadlines": plan_execution.confirmed_deadlines(db.list_facts(project_id)) if plan else [],
+            "applied_updates": db.applied_plan_updates(project_id) if plan else []}
 
 
 @app.get("/api/projects/{project_id}/staleness", dependencies=[Depends(require_auth)])
@@ -2797,7 +2800,12 @@ async def api_plan_check(project_id: str) -> dict[str, Any]:
         ups = await anyio.to_thread.run_sync(lambda: planner.suggest_updates(project_id))
     except providers.OutputError as e:          # typed: the model's output could not be used — say so, never "no updates"
         raise HTTPException(status_code=502, detail=f"Master Planner could not check for updates: {e}") from e
-    return {"updates": ups, "plan": db.latest_plan(project_id)}
+    from . import plan_narrative
+    plan = db.latest_plan(project_id)
+    if plan:
+        plan_narrative.attach_update_evidence(project_id, plan["updates"])
+    plan_narrative.attach_update_evidence(project_id, ups)
+    return {"updates": ups, "plan": plan}
 
 
 class UpdateStatusIn(BaseModel):
@@ -2835,7 +2843,39 @@ class ItemIn(BaseModel):
 
 @app.put("/api/plans/{plan_id}/items/{key}", dependencies=[Depends(require_auth)])
 def api_plan_item(plan_id: str, key: str, body: ItemIn) -> dict[str, Any]:
-    db.set_item_status(plan_id, key, body.status, body.note)
+    try:
+        db.set_item_status(plan_id, key, body.status, body.note)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"ok": True}
+
+
+class PlanDecisionIn(BaseModel):
+    choice: str = Field(min_length=1, max_length=500)
+    reason: str = Field(default="", max_length=1000)
+
+
+@app.post("/api/plans/{plan_id}/decisions/{index}", dependencies=[Depends(require_auth)])
+def api_plan_decision(plan_id: str, index: int, body: PlanDecisionIn) -> dict[str, Any]:
+    choice = body.choice.strip()
+    if not choice:
+        raise HTTPException(422, "Enter your decision.")
+    key = f"decisions.{index}"
+    with db.batch():
+        db.connect().execute("UPDATE plans SET id=id WHERE id=?", (plan_id,))
+        plan = db.get_plan(plan_id)
+        decisions = (plan or {}).get("plan", {}).get("decisions") or []
+        if not 0 <= index < len(decisions):
+            raise HTTPException(404, "Decision not found.")
+        if db.latest_plan(plan["project_id"])["id"] != plan_id:
+            raise HTTPException(409, "The plan changed. Reload before recording a decision.")
+        if plan["items"].get(key, {}).get("status") in ("complete", "done"):
+            raise HTTPException(409, "This decision is already marked complete.")
+        text = f"Decision: {decisions[index]['decision']}\nChoice: {choice}"
+        if reason := body.reason.strip():
+            text += f"\nReason: {reason}"
+        db.add_fact(plan["project_id"], "decision", text)
+        db.set_item_status(plan_id, key, "complete", text)
     return {"ok": True}
 
 
