@@ -179,3 +179,11 @@ New collection requests prioritize their first three items. Direct
 small link requests, browser-session imports and queued uploads also
 get priority. A four-project queue replay measured earlier first starts
 and earlier first transcripts. Results and limitations are in the handoff.
+
+## 2026-11-12 — Earlier YouTube collection cutoff (0.64.23)
+
+Collection items with valid publication dates before the cutoff can be
+skipped during listing using the existing batched metadata. Skipped
+sources stay available for Ingest anyway. A four-project replay estimated
+that p90 collection completion fell from 17m 25s to 11m 26s. The Sources
+add endpoint now gives small direct imports the existing priority lane.

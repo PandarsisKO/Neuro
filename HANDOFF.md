@@ -5194,3 +5194,49 @@ All 2,707 pytest cases passed in six module shards. Tier 1 and
 `release-check --no-pytest` passed on the runtime candidate with a
 private data directory. Reports:
 `evals/release/release-check-0.64.22-09d911a-20261112-194304.{json,txt}`.
+
+### 2026-11-12 — Apply YouTube collection cutoff during listing (0.64.23)
+
+Base `eb1d529`, runtime candidate `a5d5bf3`, isolated worktree
+`/private/tmp/neuro-ingest-listing-cutoff`. A private copy of the 19:45
+verified backup showed 482 captioned YouTube source jobs across four
+projects. Median elapsed time to metadata completion was 55.57 s,
+including any wait for the site lock. The caption interval was 0.33 s,
+chunking was 0.01 s, and the interval from chunks to ready was 0.67 s.
+Only one job in the cohort used audio transcription. It spent 41.67 s
+downloading audio and 170.67 s between audio completion and the saved
+transcript, so it does not establish a transcription baseline.
+
+Another 207 jobs across the same four projects ended at the date cutoff,
+using 11,467 worker-seconds. All 207 stored listing dates matched the
+later per-video metadata and were before the cutoff. On the newest
+50-job batch, 33 jobs ended this way. New collection items with valid
+dates from the existing batched metadata can now go directly into the
+existing skipped-source state, preserving available title, description,
+creator, date and thumbnail. They stay visible in Sources and eligible
+for Ingest anyway. Missing or invalid dates still go through per-video
+metadata, and a source already shared with another project keeps its state.
+Approval and automatic import use the same cutoff. Source add through
+`/api/projects/{project_id}/add` now also applies the direct-request
+priority that already existed on `/api/ingest`.
+
+Replayed 690 completed jobs from 25 collections on three workers, using
+historical arrivals and fixed final-attempt durations. Both arms used
+0.64.22 first-wave ordering. Removing the 207 confirmed cutoff jobs
+moved median collection completion from 565 s to 430 s and p90 from
+1,045 s to 686 s. The replay excludes listing latency and assumes fixed
+worker service times. Post-0.64.22 live queue checks had no eligible new
+ingest jobs, so the live timing comparison awaits a new collection.
+
+The compound Claim experiment used hand-written searches for nine of the
+prepared cases. Against the same eight-passage budget, one search found
+one of 22 recorded support excerpts and the existing whole-Claim wording
+found zero. The check required the same source and a matching normalized
+quote. It measures recovery of stored support excerpts. Independent
+precedent and equivalence require separate review. The sample did not
+justify a retrieval default change. Private traces stay out of Git.
+
+All 2,710 pytest cases passed across six module shards. Tier 1 and
+`release-check --no-pytest` passed at `a5d5bf3` using private data.
+Reports:
+`evals/release/release-check-0.64.23-a5d5bf3-20261112-195530.{json,txt}`.
