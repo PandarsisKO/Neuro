@@ -141,6 +141,9 @@ def work_unit_key(project: dict[str, Any], src: dict[str, Any], window: str, ind
         "facts_revision": db.facts_revision(project["id"]),
         "depth": depth,
     }
+    if providers.on_device_active():
+        request["execution"]["ollama_model"] = c.on_device_model
+        return db._sha("work-unit-v1", request)
     from . import chatgpt_plan
     if (model := chatgpt_plan.model_for(c.task)) and providers.current_policy() != "local_only":
         request["execution"]["chatgpt_plan_model"] = model
@@ -541,7 +544,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     head = _head(project, src)
     windows = _windows(segs, src["platform"], source_id, window_chars=DEEP_WINDOW_CHARS if depth == "deep" else WINDOW_CHARS)
     from .jobs import Yield, check_cancel, crash_point
-    kept, pf_summary = window_plan(project, src, windows)
+    kept, pf_summary = (set(range(len(windows))), None) if providers.on_device_active() else window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
     found = 0
     last_routing: str | None = None
@@ -642,7 +645,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
 
     from . import concurrency
     from .jobs import current_job
-    max_workers = concurrency.limit_for("findings.extract") if current_job()[0] else 1
+    # Mac concurrency is bounded across jobs. Within a job, finish one window at a time.
+    max_workers = concurrency.limit_for("findings.extract") if current_job()[0] and not providers.on_device_active() else 1
     from . import usage
     completed_units = concurrency.bounded_map(
         _run_window, items, max_workers=max_workers, completed=_completed,
@@ -661,7 +665,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
                                "completed compatible windows are durably kept; retrying now under the current inputs")
     if probe is not None:
         pf_summary = {**(pf_summary or {}), "substance_probe": probe}
-    return materialize(project_id, source_id, results, model=models[-1] if models else _last_model.get("model"), transport="interactive",
+    return materialize(project_id, source_id, results, model=models[-1] if models else _last_model.get("model"),
+                       transport="ollama" if providers.on_device_active() else "interactive",
                        max_findings=max_findings, prefilter=pf_summary, depth=depth, routing=last_routing,
                        r6_wave=r6_wave, r6_provisional=r6_provisional)
 
@@ -741,10 +746,11 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
             from .chatgpt_plan import PlanWait, model_for
-            from .jobs import Yield
-            from .providers import ProviderError
+            from .jobs import Cancelled, MacFindingsWait, Paused, Yield
+            from .providers import OutputError, ProviderError, on_device_active
             from .usage import BudgetPaused
-            if (isinstance(e, (Yield, BudgetPaused, ProviderUnavailable, PlanWait))
+            if (isinstance(e, (Yield, BudgetPaused, ProviderUnavailable, PlanWait, Cancelled, MacFindingsWait, Paused))
+                    or (on_device_active() and isinstance(e, (ProviderError, OutputError)))
                     or (model_for("findings.extract") and isinstance(e, ProviderError)
                         and e.error_type in ("LOCAL_LIMIT", "RATE_LIMIT", "SPEND_CAP", "BILLING"))):
                 # L-12/L-14 (EXECUTION-LADDER.md): jobs.execute() already requeues THIS SAME job on any of these

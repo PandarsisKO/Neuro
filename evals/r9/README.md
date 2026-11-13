@@ -31,3 +31,26 @@ budget (70,000 by default), sets a 32,768-token context and a 256-token output c
 `prompt_eval_count`, `prompt_eval_duration`, `eval_duration`, and `total_duration`. It also records whether the response
 is valid JSON with the required `findings` and `claims` arrays. The reported token count is the acceptance evidence;
 adjust `--target-chars` and rerun if a model's tokenizer lands materially away from 15,000 tokens.
+
+### Findings, Claims and throughput on the Mac
+
+`research_probe.py` uses the production task prompts and schemas. The Findings
+probe runs all eight applicable golden sources through the production
+materializer and compares the result with the historical Findings baseline.
+The Claims probe checks all 16 candidate IDs, both intended merges, text
+qualifiers, requirement attribution, and whether a market quote describes a
+single instance. Inspect the proposed evidence targets before admitting a model.
+
+Run the probe from the repository root with the desired Ollama model already
+installed. For single-server throughput, start a loopback test server with
+`OLLAMA_NUM_PARALLEL=2`. The model architecture may still limit the server to one
+slot. Run both throughput arms against the same server with the same context and
+keep-alive, and confirm both slots actually ran in the server log. To compare
+two independent runners, start a second loopback server and pass
+`--second-port`. Both arms unload their models after the measurement.
+
+```sh
+PYTHONPATH=. .venv/bin/python evals/r9/research_probe.py gemma4:26b --mode findings --out /tmp/findings.json
+PYTHONPATH=. .venv/bin/python evals/r9/research_probe.py gemma4:26b --mode throughput --workers 1 --out /tmp/serial.json
+PYTHONPATH=. .venv/bin/python evals/r9/research_probe.py gemma4:26b --mode throughput --workers 2 --out /tmp/parallel.json
+```

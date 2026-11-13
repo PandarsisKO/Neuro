@@ -15,6 +15,7 @@ os.environ["PYTHON_DOTENV_DISABLED"] = "true"
 # `settings.ai_profile = "local"` explicitly.
 os.environ["NEUROSEARCH_AI_PROFILE"] = "cloud"
 os.environ["NEUROSEARCH_MAC_PROFILES"] = "0"
+os.environ["NEUROSEARCH_MAC_FINDINGS"] = "0"
 
 # A developer .env may be experimenting with features that the release contract
 # requires off.  Collection must begin from the production-safe defaults;

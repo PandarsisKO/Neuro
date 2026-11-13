@@ -473,7 +473,7 @@ def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]],
     c = C.contract(task)
     if not c.schema:
         raise C.ContractError(f"{task}: invoke_structured() needs a contract with a schema")
-    if getattr(_policy_tl, "on_device", False):
+    if on_device_active():
         resp = invoke(task, system=system, messages=messages)
         _tl.resp = resp
         usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
@@ -633,18 +633,23 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     from . import chatgpt_plan as plan, contracts, db
     from .breakers import ProviderUnavailable, get as breaker_get
 
-    if getattr(_policy_tl, "on_device", False):
+    if on_device_active():
         from . import jobs, ollama
-        if db.mac_work_paused() or db.background_paused() or not settings.mac_profiles:
+        jobs.check_cancel()
+        if task == "findings.extract":
+            if db.mac_work_paused() or db.background_paused() or not settings.mac_findings or db.kv_get("queue_paused") == "1":
+                raise jobs.MacFindingsWait("Completed windows kept · waiting for Mac work")
+        elif db.mac_work_paused() or db.background_paused() or not settings.mac_profiles:
             raise jobs.Yield("Completed profiles kept · waiting for background work to resume")
         c = contracts.contract(task)
         if not c.on_device_model or not c.schema or tools or stream or on_text or extra or max_output_tokens:
             raise contracts.ContractError(f"{task}: on-device route requires its declared text contract")
         _tl.task = task
-        _tl.route = {"executed_by": "ollama", "reason": "mac_source_profiles", "fallback_reason": None}
+        _tl.route = {"executed_by": "ollama", "reason": "mac_queue_fallback" if task == "findings.extract" else "mac_source_profiles", "fallback_reason": None}
         result = _Ledgered(ollama.create, "ollama", task, policy={"max_attempts": 1, "backoff": []},
                            operation="ollama:chat")(model=c.on_device_model, system=system, messages=messages,
-                                                    schema=c.schema, max_tokens=c.max_output_tokens, timeout=c.timeout)
+                                                    schema=c.schema, max_tokens=c.max_output_tokens,
+                                                    timeout=240 if task == "findings.extract" else c.timeout)
         _accumulate_route()
         if result.model != c.on_device_model:
             routing_for(task, result.model)
@@ -812,6 +817,10 @@ def policy_context(policy: str):
         yield
     finally:
         _policy_tl.policy = before
+
+
+def on_device_active() -> bool:
+    return bool(getattr(_policy_tl, "on_device", False))
 
 
 @_contextlib.contextmanager

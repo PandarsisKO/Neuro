@@ -117,3 +117,10 @@ Pause Mac work is on the project list and in the project sidebar. It stops
 admission, lets the current source profile finish, and keeps the pause across
 restarts. The model unloads after each profile. Claude and ChatGPT can still
 process their own queues. Claims normalization remains on its existing route.
+
+## 2026-11-12 — Mac Findings overflow (0.64.15)
+
+Gemma 4 26B can take up to two ordinary Findings jobs waiting on a
+spending limit or ChatGPT's occupied slot. It shares the existing job
+queue and Pause Mac work control. Claims still uses the subscribed
+providers because the tested local models failed qualifier checks.

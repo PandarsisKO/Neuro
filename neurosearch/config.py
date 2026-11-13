@@ -51,6 +51,8 @@ def float_env(name: str, default: float) -> float:
 class Settings:
     mac_profiles: bool = field(default_factory=lambda: _env("NEUROSEARCH_MAC_PROFILES", "1" if sys.platform == "darwin" else "0") in ("1", "true", "yes"))
 
+    mac_findings: bool = field(default_factory=lambda: _env("NEUROSEARCH_MAC_FINDINGS", "0") in ("1", "true", "yes"))
+
     # Storage
     data_dir: Path = field(default_factory=lambda: Path(_env("NEUROSEARCH_DATA_DIR", "./data")).resolve())
 

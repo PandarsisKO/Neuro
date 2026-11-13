@@ -8,8 +8,8 @@ function renderMacWork(status) {
     button.disabled = macWorkSaving || (status.paused && status.running);
     button.textContent = status.paused ? (status.running ? 'Pausing Mac work…' : 'Resume Mac work') : 'Pause Mac work';
     button.title = status.paused
-      ? (status.running ? 'Finishing the current profile before releasing the GPU' : 'Mac work is paused. Click to resume source profiling.')
-      : 'Pause source profiling on this Mac. Claude and ChatGPT can keep working.';
+      ? (status.running ? 'Finishing the current requests before releasing the GPU' : 'Mac work is paused. Click to resume on-device processing.')
+      : 'Pause on-device work. Claude and ChatGPT can keep working.';
   });
   clearTimeout(macWorkTimer);
   if (status.paused && status.running && !macWorkSaving) {
@@ -27,7 +27,7 @@ globalThis.toggleMacWork = async function toggleMacWork() {
   renderMacWork(macWork);
   try {
     macWork = await post('/api/mac-work', { paused: !macWork.paused });
-    toast(macWork.paused ? (macWork.running ? 'Mac work will pause after the current source profile.' : 'Mac work paused.') : 'Mac work resumed.');
+    toast(macWork.paused ? (macWork.running ? 'Mac work will pause after the current requests finish.' : 'Mac work paused.') : 'Mac work resumed.');
   } catch (error) {
     toast(error.message || error, 'err');
   } finally {

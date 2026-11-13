@@ -59,6 +59,10 @@ class Paused(RuntimeError):
     job goes back to the queue held until Resume, and re-running continues from its last completed stage."""
 
 
+class MacFindingsWait(RuntimeError):
+    """Return the same Findings job to the queue with completed windows intact."""
+
+
 class Yield(Exception):
     """A long job voluntarily gives its worker back at a safe boundary, with durable progress already written.
 
@@ -295,7 +299,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     media.set_progress_hook(progress)
     kind = job["kind"]
     from . import usage
-    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover", "t1_embed_derived"):
+    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover", "t1_embed_derived") and not providers.on_device_active():
         usage.guard()   # cheap check first; transcription/findings re-check with a size-based estimate
     if kind == "ingest_url":
         ext = payload.get("_external_result") or {}
@@ -446,12 +450,17 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     providers.set_policy(job.get("execution_policy") or "local_preferred")
     providers.reset_job_route()
     after_done = False
+    mac_findings = job.get("kind") == "suggest_findings" and str(job.get("worker_id") or "").endswith(db.MAC_FINDINGS_WORKER_SUFFIX)
     try:
         from . import ledger
         # P11 (Kyle's ruling 2): a job's writes are Neuro's own work; the person/request that queued it is its cause
         with ledger.acting("system", surface="job", request_id=f"job:{jid}", originating_actor_id=job.get("origin_actor_id"),
                            originating_request_id=job.get("origin_request_id")):
-            result = run_job(job)
+            if mac_findings:
+                with providers.on_device():
+                    result = run_job(job)
+            else:
+                result = run_job(job)
         _record_execution(jid)
         # 2026-09-15 -- `message` used to be the literal string "done" no matter what happened, so a real
         # no-op (every source already current, or an in-flight batch -- findings.py's `_skipped()`) was
@@ -493,13 +502,26 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         from .media import RateLimited, rate_limit_status
         from .usage import BudgetPaused
         sid = (job.get("payload") or {}).get("source_id")
+        if isinstance(e, MacFindingsWait):
+            _record_execution(jid)
+            db.requeue_job(jid, wait_reason="mac_findings", message=f"paused: {e}")
+            return "queued"
+        from .breakers import ProviderUnavailable
+        if mac_findings and (
+            isinstance(e, ProviderUnavailable) and e.operation == "ollama:chat"
+            or isinstance(e, providers.ProviderError) and e.operation == "ollama:chat"
+            and e.error_type in providers.TRANSIENT_TYPES | {"LOCAL_UNAVAILABLE"}
+        ):
+            _record_execution(jid)
+            db.requeue_job(jid, delay=60, wait_reason="mac_findings", message="paused: waiting for the Mac Findings model")
+            return "queued"
         if isinstance(e, Yield):
             _record_execution(jid)
             # wait_reason="yield" is what lets the panel say "waiting to resume" instead of "queued" for a job
             # that kept its progress (Kyle, 2026-09-29: a queued job with a 60% bar "is pretty ambiguous").
             # claim_job clears wait_reason when the job is picked up again, so the marker lives exactly as long
             # as the wait does. requeue_job records the "yielded" event itself.
-            db.requeue_job(jid, delay=0, message=e.message, wait_reason="yield")
+            db.requeue_job(jid, delay=0, message=e.message, wait_reason="mac_findings" if mac_findings else "yield")
             return "queued"
         if isinstance(e, BudgetPaused):
             db.requeue_job(jid, delay=min(e.wait, 3600), message=f"paused: {e}", wait_reason="budget")
@@ -637,9 +659,14 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[s
                                                 ("rank_proposed", "rank.relevance")) if plan.model_for(task))
         fallback_kinds = (*enabled, "extract_claims") if plan.model_for("claims.extract") else enabled
         alternates = fallback_kinds if fallback_kinds and plan.ready() else ()
-        job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
-                           chatgpt_busy=plan.busy(),
-                           **({"anthropic_alternates": alternates} if alternates else {}))
+        chatgpt_busy = plan.busy()
+        job = None
+        if kinds and "suggest_findings" in kinds and (policies is None or "local_preferred" in policies):
+            job = db.claim_mac_findings(wid, lanes=lanes, chatgpt_busy=chatgpt_busy)
+        if not job:
+            job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
+                               chatgpt_busy=chatgpt_busy,
+                               **({"anthropic_alternates": alternates} if alternates else {}))
         parallel = False
         if not job and chatgpt_overflow and enabled and alternates and settings.chatgpt_plan_parallel and not plan.busy():
             job = db.claim_job(enabled, worker_id=wid, policies=("local_preferred",), lanes=lanes)

@@ -1,4 +1,4 @@
-"""Loopback text transport for the task router. One profile request, no tools or cloud."""
+"""Loopback text transport for the task router. Structured text, with no tool access."""
 from types import SimpleNamespace
 
 import httpx
@@ -13,9 +13,12 @@ class ModelUnavailable(RuntimeError):
 
 
 def create(*, model, system, messages, schema, max_tokens, timeout):
+    if isinstance(system, list):
+        system = "\n".join(block["text"] for block in system)
+    context = 32768 if schema == "findings-v2" else 8192
     body = {"model": model, "messages": [{"role": "system", "content": system}, *messages],
             "format": schemas.get(schema), "think": False, "stream": False, "keep_alive": 0,
-            "options": {"temperature": 0, "num_ctx": 8192, "num_predict": max_tokens}}
+            "options": {"temperature": 0, "num_ctx": context, "num_predict": max_tokens}}
     # Ignore system proxy variables; only the loopback runtime can receive source text.
     with httpx.Client(base_url=ORIGIN, trust_env=False, timeout=httpx.Timeout(timeout or 120, connect=2)) as client:
         response = client.post("/api/chat", json=body)

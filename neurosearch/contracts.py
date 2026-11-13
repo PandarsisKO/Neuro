@@ -155,7 +155,7 @@ def _base() -> dict[str, InferenceContract]:
                           notes="short/medium/long rewrite of a finished answer OR of a whole conversation, for sharing; two audiences (cited | plain, 0.60.0) — never a new research pass"),
         # migrated E2.2 (0.18.0-e2.3): 4.6-vs-5 comparison on the Golden findings workload passed — thinking explicitly off,
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
-        InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, local_capable=True, reversible=False,
+        InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, local_capable=True, reversible=False, on_device_model="gemma4:26b",
                           tier_reason="irreversible", gate="quote validator (every quote must appear verbatim in the transcript)", thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, batch_allowed=True, schema="findings-v2",
                           notes="per transcript window; quote validator gates the output; Sonnet 5 since E2.2"),
         # I2 (0.22.0): candidate-only listwise reranker — one attempt, short timeout, tiny output; any failure → the RRF ordering
@@ -397,8 +397,9 @@ def validate(c: InferenceContract) -> None:
         raise ContractError(f"{c.task}: max_attempts must be ≥ 1")
     if c.max_output_ceiling is not None and c.max_output_ceiling < c.max_output_tokens:
         raise ContractError(f"{c.task}: max_output_ceiling {c.max_output_ceiling} is below max_output_tokens {c.max_output_tokens}")
-    if c.on_device_model and (not c.reversible or not c.schema or c.interactive or c.thinking != "disabled"):
-        raise ContractError(f"{c.task}: on-device tasks must be reversible, structured and noninteractive")
+    if c.on_device_model and (not c.schema or c.interactive or c.thinking != "disabled"
+                              or (not c.reversible and c.task != "findings.extract")):
+        raise ContractError(f"{c.task}: on-device tasks require an admitted noninteractive text workflow")
     if c.schema:
         from . import schemas
         if c.provider != "anthropic":

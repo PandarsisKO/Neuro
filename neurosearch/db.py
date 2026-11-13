@@ -2888,8 +2888,9 @@ def set_job_policy(job_id: str, policy: str) -> dict[str, Any] | None:
     assert policy in EXECUTION_POLICIES, policy
     with tx() as conn:
         conn.execute("UPDATE jobs SET execution_policy=?, updated_at=?, "
-                     "wait_reason=CASE WHEN wait_reason='chatgpt_slot' THEN NULL ELSE wait_reason END, "
-                     "message=CASE WHEN wait_reason='chatgpt_slot' OR message=? THEN NULL ELSE message END "
+                     "not_before=CASE WHEN wait_reason='mac_findings' THEN NULL ELSE not_before END, "
+                     "wait_reason=CASE WHEN wait_reason IN ('chatgpt_slot','mac_findings') THEN NULL ELSE wait_reason END, "
+                     "message=CASE WHEN wait_reason IN ('chatgpt_slot','mac_findings') OR message=? THEN NULL ELSE message END "
                      "WHERE id=?", (policy, now(), LEGACY_CHATGPT_BUSY_MESSAGE, job_id))
         job_event(job_id, "policy", conn=conn, policy=policy)
     return get_job(job_id)
@@ -3123,6 +3124,16 @@ ACCOUNT_HELD_POLICIES = ("api_requested", "api_only")
 
 MAC_PROFILE_JOB = "enrich_profiles_batch"
 MAC_PROFILE_FILTER = "kind='enrich_profiles_batch' AND json_extract(payload, '$.on_device')=1"
+MAC_FINDINGS_WORKER_SUFFIX = ":mac-findings"
+MAC_FINDINGS_RUNNING = "kind='suggest_findings' AND worker_id LIKE '%:mac-findings'"
+MAC_FINDINGS_SLOTS = 2
+
+
+def claim_mac_findings(worker_id: str, *, lanes: tuple[str, ...] | None, chatgpt_busy: bool) -> dict[str, Any] | None:
+    if not settings.mac_findings or settings.fake_ai or mac_work_paused() or background_paused() or kv_get("queue_paused") == "1":
+        return None
+    return claim_job(("suggest_findings",), worker_id=worker_id + MAC_FINDINGS_WORKER_SUFFIX,
+                     policies=("local_preferred",), lanes=lanes, chatgpt_busy=chatgpt_busy, mac_findings=True)
 
 
 def active_profile_batch() -> dict[str, Any] | None:
@@ -3138,9 +3149,9 @@ def mac_work_paused() -> bool:
 def mac_work_status() -> dict[str, bool]:
     row = connect().execute(
         "SELECT (SELECT value FROM kv WHERE key='mac_work:paused') AS paused, "
-        f"EXISTS(SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER}) AS running"
+        f"EXISTS(SELECT 1 FROM jobs WHERE status='running' AND (({MAC_PROFILE_FILTER}) OR ({MAC_FINDINGS_RUNNING}))) AS running"
     ).fetchone()
-    return {"enabled": settings.mac_profiles and not settings.fake_ai,
+    return {"enabled": (settings.mac_profiles or settings.mac_findings) and not settings.fake_ai,
             "paused": row["paused"] == "1", "running": bool(row["running"])}
 
 
@@ -3171,7 +3182,8 @@ def set_background_paused(paused: bool) -> dict[str, Any]:
 
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
               exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None,
-              anthropic_alternates: tuple[str, ...] = (), chatgpt_busy: bool = False) -> dict[str, Any] | None:
+              anthropic_alternates: tuple[str, ...] = (), chatgpt_busy: bool = False,
+              mac_findings: bool = False) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
     Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
     L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
@@ -3187,9 +3199,24 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
                          (now(), now(), cancelled["id"]))
             job_event(cancelled["id"], "cancelled", conn=conn, was="queued")
             _release_source_after_cancel(conn, cancelled)
-        q = "SELECT id, blocked_by, dependency_policy, cancel_requested_at FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
-        args: list[Any] = [now()]
-        if chatgpt_busy:
+        q = "SELECT id, blocked_by, dependency_policy, cancel_requested_at FROM jobs WHERE status='queued'"
+        args: list[Any] = []
+        if mac_findings:
+            # Budget waits and ChatGPT slot waits have no bearing on $0 Mac execution.
+            q += """ AND ((wait_reason='mac_findings' AND (not_before IS NULL OR not_before<=?))
+                        OR wait_reason='budget'
+                        OR (? AND (wait_reason='chatgpt_slot' OR message=?)))"""
+            args.extend((now(), chatgpt_busy, LEGACY_CHATGPT_BUSY_MESSAGE))
+            q += " AND json_extract(payload, '$.r6_wave') IS NULL"
+            q += " AND json_extract(payload, '$.substance_floor') IS NULL"
+            q += f" AND (SELECT COUNT(*) FROM jobs WHERE status='running' AND {MAC_FINDINGS_RUNNING}) < ?"
+            args.append(MAC_FINDINGS_SLOTS)
+        else:
+            q += " AND (not_before IS NULL OR not_before<=?)"
+            args.append(now())
+            if settings.mac_findings:
+                q += " AND wait_reason IS NOT 'mac_findings'"
+        if chatgpt_busy and not mac_findings:
             q += " AND wait_reason IS NOT 'chatgpt_slot' AND message IS NOT ?"
             args.append(LEGACY_CHATGPT_BUSY_MESSAGE)
         if kinds:
@@ -3234,7 +3261,7 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
                 q += f" OR kind IN ({','.join('?' for _ in anthropic_alternates)})"
                 args += list(anthropic_alternates)
             q += ")"
-        if float(kv_get("usage:rate_blocked_until") or 0) > now():
+        if not mac_findings and float(kv_get("usage:rate_blocked_until") or 0) > now():
             # The spend-RATE ceiling (usage.SPEND_RATE_CEILING). Holds paid background only: jobs whose execution
             # policy forces the API, and claim extraction. Chat, ingestion, transcription and every local job are
             # untouched — a spending spike must never take away what the user is sitting in front of.
@@ -3268,16 +3295,22 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             return None
         run_id = new_id()
         t = now()
+        mac_guard = ""
+        if mac_findings:
+            mac_guard = (
+                " AND NOT EXISTS (SELECT 1 FROM kv WHERE key IN ('mac_work:paused','background_paused','queue_paused') AND value='1')"
+                f" AND (SELECT COUNT(*) FROM jobs WHERE status='running' AND {MAC_FINDINGS_RUNNING}) < {MAC_FINDINGS_SLOTS}"
+            )
         cur = conn.execute(
             "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, updated_at=?, not_before=NULL, wait_reason=NULL, wait_operation=NULL, bumped_at=NULL, "
                      # Kyle, live: an extract_claims job showed "paused: the account's credit balance is too low" while it was
                      # actually RUNNING and making successful calls. Claiming cleared not_before/wait_reason but left the
                      # message from when it was parked, so the panel kept showing a resolved error as if it were current.
-                     "message=CASE WHEN wait_reason='chatgpt_slot' OR wait_operation IS NOT NULL OR message LIKE 'paused:%' THEN NULL ELSE message END "
+                     "message=CASE WHEN wait_reason IN ('chatgpt_slot','mac_findings') OR wait_operation IS NOT NULL OR message LIKE 'paused:%' THEN NULL ELSE message END "
             "WHERE id=? AND status='queued' "
             f"AND (NOT COALESCE(({MAC_PROFILE_FILTER}),0) OR ("
             "COALESCE((SELECT value FROM kv WHERE key='mac_work:paused'),'0')!='1' "
-            f"AND NOT EXISTS (SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER})))",
+            f"AND NOT EXISTS (SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER})))" + mac_guard,
             (t, run_id, worker_id, t, t, t + lease_seconds, t, row["id"])
         )
         if cur.rowcount != 1:
@@ -3306,8 +3339,10 @@ def recover_expired_leases(all_running: bool = False) -> list[str]:
         for r in conn.execute(q, () if all_running else (t,)).fetchall():
             job_event(r["id"], "lease_expired", run_id=r["run_id"], conn=conn, worker_id=r["worker_id"], at_startup=all_running)
             mark_ambiguous_invocations(r["id"], r["run_id"], conn=conn)
+            was_mac_findings = r["kind"] == "suggest_findings" and (r["worker_id"] or "").endswith(MAC_FINDINGS_WORKER_SUFFIX)
             conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, "
-                         "message=?, updated_at=? WHERE id=?", ("recovered: worker lease expired — resuming from the last completed stage", t, r["id"]))
+                         "wait_reason=CASE WHEN ? THEN 'mac_findings' ELSE wait_reason END, message=?, updated_at=? WHERE id=?",
+                         (was_mac_findings, "recovered: worker lease expired — resuming from the last completed stage", t, r["id"]))
             job_event(r["id"], "recovered", conn=conn)
             out.append(r["id"])
     return out
@@ -3328,6 +3363,10 @@ def derived_status(j: dict[str, Any]) -> str:
             return "paused"                                    # S86: held by the person until they press Resume
         if j.get("kind") == MAC_PROFILE_JOB and (j.get("payload") or {}).get("on_device") and mac_work_paused():
             return "mac_paused"
+        if j.get("wait_reason") == "mac_findings":
+            if mac_work_paused():
+                return "mac_paused"
+            return "provider_wait" if (j.get("not_before") or 0) > now() else "resuming"
         if j.get("wait_reason") == "yield":
             return "resuming"                                  # gave its worker back at a safe point; progress kept; next in line
         if j.get("wait_reason") == "chatgpt_slot" or (

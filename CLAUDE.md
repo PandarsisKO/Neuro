@@ -149,3 +149,13 @@ re-embed the live corpus until versioned migration/backfill gates exist. R9(b) i
 short classification; Qwen3 8B, Qwen3 14B and gpt-oss-20b rejected on the measured gate). R9(c)'s long-window
 findings/claims benchmark is explicitly deferred with a numeric revisit trigger; follow `PRODUCT-SCHEDULER.md` and
 the newest State-of-the-App before continuing T1.
+
+**Mac Findings overflow (0.64.15).** On hosts explicitly enabled with
+`NEUROSEARCH_MAC_FINDINGS=1`, the existing analysis workers can take up to
+two ordinary Findings jobs waiting on budget or ChatGPT capacity. The
+same jobs use pinned Gemma 4 26B, the existing quote validator and $0
+provider ledger. Completed windows have distinct on-device cache keys.
+Pause Mac work holds new calls and waits for the running work to drain.
+The paused run stays on the Mac route when resumed. Explicit API jobs,
+provider batches, Fast/Warm work and Claims use their existing routing.
+See `evals/r9/mac-research-models-20261112.json`.

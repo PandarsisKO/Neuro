@@ -2503,3 +2503,20 @@ Qwen3.5 9B missed the Findings quote and evidence gates and assigned the
 wrong requirement source in Claims. See the November 12 entry in
 `docs/R9-ADMISSION-2026-09-11.md` and the associated scorecard. The pilot
 made no runtime or spending-policy changes.
+
+### Mac research model comparison — 2026-11-12
+
+Gemma 4 26B found all ten golden evidence checks with 49/49 valid quotes
+and one missing summary on the irrelevant vlog. Qwen 3.6 35B also met
+the Findings quality gates, with 43/43 valid quotes. Its serial runner
+competed with other tests, so do not compare its elapsed time directly
+with Gemma's. Two warm Findings requests on Gemma took 19.92 s serial
+and 18.54 s together. Two Claims groups took 142.32 s serial and 57.54 s
+together, but both parallel outputs failed requirement attribution.
+Neither larger Qwen passed Claims either, including the 35B follow-up
+with explicit attribution instructions. The 27B Findings run was stopped
+after one window. Gemma is admitted as overflow for reviewable Findings
+during a hold. Claims model selection remains open. The 10.9 s historical
+API target still applies to replacing the normal route, where requests
+do not already have to wait. Evidence:
+`evals/r9/mac-research-models-20261112.json`.

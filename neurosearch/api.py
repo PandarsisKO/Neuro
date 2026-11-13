@@ -1600,10 +1600,10 @@ def api_mac_work_status() -> dict[str, bool]:
 @app.post("/api/mac-work", dependencies=[Depends(require_auth)])
 def api_mac_work(body: MacWorkIn) -> dict[str, bool]:
     from . import library
-    if not library.mac_profiles_enabled():
-        raise HTTPException(409, "On-device source profiling is unavailable")
+    if not db.mac_work_status()["enabled"]:
+        raise HTTPException(409, "Mac work is unavailable")
     db.kv_set("mac_work:paused", "1" if body.paused else None)
-    if not body.paused:
+    if not body.paused and library.mac_profiles_enabled():
         library.maybe_queue_batch()
     return db.mac_work_status()
 
