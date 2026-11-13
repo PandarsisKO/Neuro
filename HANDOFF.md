@@ -5427,3 +5427,25 @@ separate source record from the same domain with no canonical Work
 association, so independent provenance remains unverified. This audit
 used the existing Claim Challenge origin rule. It does not substitute
 for blind human labels or validate a production false-positive rate.
+
+### 2026-11-13 — Claim Challenge provenance (0.64.29)
+
+Base `e615204`, candidate `9ba449f`, isolated worktree
+`/private/tmp/neuro-claim-challenge-provenance`. Search, saved review and
+download distinguish equivalent wording from provenance. Passages show
+an already cited origin, a different recorded Work, or unverified
+independence. A different Work still does not establish independent
+corroboration. Saved judgments are retained and the origin comparison
+is refreshed against current cited support. Claim status, retrieval,
+promotion and provider routing are unchanged.
+
+The third assistant-labeled equivalent in the existing six-project
+review came from a distinct YouTube video with a different video ID
+and recorded date from both supporting videos. The shared URL path was
+YouTube's watch route. The local provenance still did not establish
+where the assertion originated. Independent human labels remain pending.
+
+All 2,725 tests passed across six shards. Tier 1 and release-check passed.
+Desktop Chrome verified all three origin labels, save, reopen and export
+against an isolated project.
+Release report: `evals/release/release-check-0.64.29-9ba449f-20261113-083925.json`.
