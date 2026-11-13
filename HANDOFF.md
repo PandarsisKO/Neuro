@@ -5359,3 +5359,25 @@ reload hit a disk I/O error during startup. Removed only completed test
 directories and restarted the existing server LaunchAgent. Authenticated
 checks confirmed 0.64.26, the matching Plan script, both saved plans, both
 available earlier versions, and zero expired job leases.
+
+### 2026-11-12 — Master Plan activity since last review (0.64.27 candidate)
+
+Base `37144d3`, runtime candidate `52878ec`. The Master Plan reads its
+activity from the existing project change ledger. The summary links to
+recorded decisions, task status changes, versions, cited sources and
+findings, and evidence for Claims linked to the plan. Transcript
+revisions now use that same ledger. The first visit establishes a
+baseline. The browser remembers a review per project and advances it
+only when the user finishes reviewing the returned pages. The full
+plan remains on the page.
+
+The 41 affected tests, desktop Chrome interaction check, Tier 1 and
+release check passed. Report:
+`evals/release/release-check-0.64.27-52878ec-20261112-222120.{json,txt}`.
+The worktree and test data are on the archive volume because the
+startup disk had under 200 MiB free. No live deployment was attempted.
+
+All 2,722 tests passed across six shards after rerunning the shard
+whose local provider timeout probe failed under concurrent test load.
+The probe's entire module also passed in isolation. The final decision
+link adjustment passed the affected suite and release check.
