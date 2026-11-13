@@ -108,7 +108,7 @@ try {
   assert.match(outcome.textContent, /insufficient/);
   const assessment = panel.querySelector('[data-challenge-passage]');
   for (const [choice, expected] of [
-    ['irrelevant', /insufficient/], ['qualification', /Novelty remains unassessed/], ['contradiction', /Novelty remains unassessed/], ['equivalent', /Equivalent assertion reviewed in the project/],
+    ['irrelevant', /insufficient/], ['qualification', /Novelty remains unassessed/], ['contradiction', /Novelty remains unassessed/], ['equivalent', /Source independence is unverified/],
   ]) {
     assessment.value = choice;
     assessment.dispatchEvent(new window.Event('change'));
@@ -116,7 +116,9 @@ try {
   }
 
   assert.match(window.claimChallengeSummary({ project: { passages: [] } }), /insufficient/);
-  assert.match(window.claimChallengeSummary({ library: { passages: [{ assessment: 'equivalent' }] } }), /reviewed in the library/);
+  assert.match(window.claimChallengeSummary({ library: { passages: [
+    { assessment: 'equivalent', origin_status: 'different_recorded_work' }
+  ] } }), /different recorded work.*Independent corroboration remains unverified/);
   assert.match(window.claimChallengeSummary({ project: { passages: [
     { assessment: 'equivalent', same_origin_as_support: true }
   ] } }), /already cited origin/);
@@ -130,6 +132,7 @@ try {
   panel.querySelector('[data-challenge-save]').click();
   await new Promise(setImmediate);
   assert.match(panel.querySelector('[data-challenge-save-status]').textContent, /Assessment saved/);
+  assert.match(panel.querySelector('[data-saved-challenge]').textContent, /Source independence unverified/);
   savedReview.scopes.project.passages[0].changed = true;
   await window.showClaimEvidence('claim');
   await new Promise(setImmediate);

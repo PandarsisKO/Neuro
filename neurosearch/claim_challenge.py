@@ -5,9 +5,10 @@ import hashlib
 import json
 import time
 from collections import Counter
+from functools import cache
 from itertools import zip_longest
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from . import claims, db, library, search, works
 from .config import settings
@@ -41,6 +42,35 @@ def _same_search(review: dict[str, Any], queries: list[str], semantic: bool, sco
             and bool(review.get("semantic_requested")) == semantic and set(review["scopes"]) == set(scopes))
 
 
+def _passage_origin(claim: dict[str, Any]) -> Callable[[dict[str, Any]], tuple[tuple[str, str], str]]:
+    """Compare with current cited support. Separate source records alone carry no lineage proof."""
+    @cache
+    def lineage(source_id: str) -> str | None:
+        return (works.lineage_of(source_id) or {}).get("work_id")
+
+    def origin(row: dict[str, Any]) -> tuple[str, str]:
+        return claims.evidence_origin(row, lineage(row["source_id"]))
+
+    support = claims.cited_evidence(claim["evidence"])["support"]
+    cited_sources = {row["source_id"] for row in support}
+    cited_origins = {origin(row) for row in support}
+    all_support_has_work = bool(cited_origins) and all(kind == "lineage" for kind, _ in cited_origins)
+
+    def compare(passage: dict[str, Any]) -> tuple[tuple[str, str], str]:
+        key = origin(passage)
+        if passage["source_id"] in cited_sources or key in cited_origins:
+            return key, "already_cited"
+        if key[0] == "lineage" and all_support_has_work:
+            return key, "different_recorded_work"
+        return key, "unverified"
+
+    return compare
+
+
+def _origin_fields(key: tuple[str, str], status: str) -> dict[str, Any]:
+    return {"origin": key[1], "same_origin_as_support": status == "already_cited", "origin_status": status}
+
+
 def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic: bool = False,
          include_library: bool = False, precedent: str = "", counter: str = "", full: bool = False) -> dict[str, Any] | None:
     claim = claims.get(claim_id)
@@ -61,15 +91,7 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
     hybrid = bool(semantic and settings.embeddings_enabled)
     retrieval = {"embeddings": hybrid, "model": settings.embedding_model if hybrid else None,
                  "vectors": str(db.chunk_embedding_revision()) if hybrid else None}
-    lineage: dict[str, str | None] = {}
-
-    def origin(row: dict[str, Any]) -> tuple[str, str]:
-        sid = row["source_id"]
-        if sid not in lineage:
-            lineage[sid] = (works.lineage_of(sid) or {}).get("work_id")
-        return claims.evidence_origin(row, lineage[sid])
-
-    cited = {origin(row) for row in claims.cited_evidence(claim["evidence"])["support"]}
+    compare_origin = _passage_origin(claim)
     shown_passages: set[tuple[tuple[str, str], str]] = set()
     shown_chunks: set[int] = set()
     results: dict[str, Any] = {}
@@ -116,7 +138,7 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
         # Give each query a turn before reading further down another query's results.
         # Distinct passages can share a Work; repeated text from that Work cannot.
         for hit in (hit for row in query_hits for hit in row if hit is not None):
-            key = origin(hit)
+            key, status = compare_origin(hit)
             passage_key = (key, _fingerprint(" ".join(hit["text"][:1800].casefold().split())))
             if hit["chunk_id"] in shown_chunks or passage_key in shown_passages or origins[key] >= PASSAGES_PER_ORIGIN:
                 continue
@@ -128,7 +150,7 @@ def find(project_id: str, claim_id: str, query: str, alternate: str, *, semantic
                              "excerpt_truncated": hit.get("excerpt_truncated", len(hit["text"]) > 1800),
                              "fingerprint": hit.get("fingerprint") or _fingerprint(hit["text"]),
                              "source_revision": db.source_revision(hit["source_id"], persist=False),
-                             "origin": key[1], "same_origin_as_support": key in cited,
+                             **_origin_fields(key, status),
                              "assessment": saved_hit["assessment"] if saved_hit else ""})
             if len(passages) == PASSAGES_PER_SCOPE:
                 break
@@ -180,8 +202,7 @@ def save_review(project_id: str, claim_id: str, review: dict[str, Any]) -> dict[
         raise ValueError("Passages must be unique.")
     chunks = db.get_chunks_by_ids([p["chunk_id"] for p in selected])
     revisions = {sid: db.source_revision(sid, persist=False) for sid in {p["source_id"] for p in selected}}
-    cited_origins = {claims.evidence_origin(e, (works.lineage_of(e["source_id"]) or {}).get("work_id"))
-                     for e in claims.cited_evidence(claim["evidence"])["support"]}
+    compare_origin = _passage_origin(claim)
     for scope, group in review["scopes"].items():
         allowed = project_sources if scope == "project" else library_sources
         snapshot = db.searchable_source_snapshot(list(allowed))
@@ -198,10 +219,8 @@ def save_review(project_id: str, claim_id: str, review: dict[str, Any]) -> dict[
                     or _fingerprint(row["text"]) != p["fingerprint"] or revisions[p["source_id"]] != p["source_revision"]):
                 raise ValueError("A reviewed passage changed. Search again before saving.")
             hit = search.hit_from_chunk(row, 0)
-            sid = hit["source_id"]
-            origin = claims.evidence_origin(hit, (works.lineage_of(sid) or {}).get("work_id"))
             saved.append({**hit, **p, "text": hit["text"][:1800], "excerpt_truncated": len(hit["text"]) > 1800,
-                          "origin": origin[1], "same_origin_as_support": origin in cited_origins})
+                          **_origin_fields(*compare_origin(hit))})
         group["passages"] = saved
         old_group = prior["scopes"][scope] if prior else {}
         old_snapshot = old_group.get("source_snapshot")
@@ -235,6 +254,7 @@ def load_review(project_id: str, claim: dict[str, Any]) -> dict[str, Any] | None
     review = json.loads(row["review"])
     review["saved_at"] = row["saved_at"]
     review["claim_changed"] = (review["text"], review["qualifiers"]) != (claim["text"], claim.get("qualifiers") or {})
+    compare_origin = _passage_origin(claim)
     project_sources = set(db.project_source_ids(project_id))
     library_sources = set(library.library_scope(project_id)) if "library" in review["scopes"] else set()
     selected = [p for group in review["scopes"].values() for p in _saved_passages(group)]
@@ -250,4 +270,5 @@ def load_review(project_id: str, claim: dict[str, Any]) -> dict[str, Any] | None
             p["changed"] = (p["source_id"] not in allowed or not chunk or chunk["source_id"] != p["source_id"]
                             or _fingerprint(chunk["text"]) != p["fingerprint"]
                             or revisions[p["source_id"]] != p["source_revision"])
+            p.update(_origin_fields(*compare_origin(p)))
     return review

@@ -432,12 +432,16 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
   wireClaimChallenge(panel, projectId, claimId);
 }
 globalThis.claimChallengeSummary = function claimChallengeSummary(groups) {
-  const reviewed = group => [...(group?.passages || []), ...(group?.earlier_assessments || [])].filter(p => !p.changed);
-  const equivalent = scope => reviewed(groups[scope]).some(p => p.assessment === 'equivalent' && !p.same_origin_as_support);
-  const passages = Object.values(groups).flatMap(reviewed);
-  if (equivalent('project')) return 'Equivalent assertion reviewed in the project.';
-  if (equivalent('library')) return 'Equivalent assertion reviewed in the library.';
-  if (passages.some(p => p.assessment === 'equivalent')) return 'Equivalent wording reviewed from an already cited origin.';
+  const passages = Object.values(groups).flatMap(group => [...group.passages, ...(group.earlier_assessments || [])])
+    .filter(p => !p.changed);
+  const equivalents = passages.filter(p => p.assessment === 'equivalent');
+  if (equivalents.some(p => p.origin_status === 'different_recorded_work')) {
+    return 'Equivalent assertion reviewed in a different recorded work. Independent corroboration remains unverified.';
+  }
+  if (equivalents.some(p => p.origin_status !== 'already_cited' && !p.same_origin_as_support)) {
+    return 'Equivalent assertion reviewed. Source independence is unverified.';
+  }
+  if (equivalents.length) return 'Equivalent assertion reviewed from an already cited origin.';
   if (passages.some(p => p.assessment === 'qualification' || p.assessment === 'contradiction')) {
     return 'The review found exceptions or contrary results. Novelty remains unassessed.';
   }
@@ -446,6 +450,11 @@ globalThis.claimChallengeSummary = function claimChallengeSummary(groups) {
 globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, claimId) {
   const form = panel.querySelector('[data-claim-challenge]');
   const results = panel.querySelector('[data-challenge-results]');
+  const originBadge = p => {
+    if (p.origin_status === 'already_cited' || p.same_origin_as_support) return '<span class="tag">Already cited origin</span>';
+    if (p.origin_status === 'different_recorded_work') return '<span class="tag">Different recorded work</span>';
+    return p.assessment === 'equivalent' ? '<span class="tag">Source independence unverified</span>' : '';
+  };
   const intent = { equivalent: 'Same assertion and scope', contradiction: 'Opposite result, same scope',
     qualification: 'Exception or different scope', irrelevant: 'Unrelated', uncertain: 'Unclear' };
   const saved = panel.querySelector('[data-saved-challenge]');
@@ -460,8 +469,9 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
     saved.innerHTML = `<details><summary>Last saved assessment · ${esc(new Date(review.saved_at * 1000).toLocaleDateString())}</summary>
       ${changed ? '<p class="status-warn">The Claim, reviewed passages, or searched collection changed. Run a fresh search before relying on this assessment.</p>' : ''}
       <p class="muted">Searched ${esc(new Date(review.searched_at).toLocaleString())} for ${review.queries.map(esc).join(' · ')}. ${esc(coverage)}.</p>
-      <p>${esc(claimChallengeSummary(review.scopes))}</p>
+      <p>${esc(review.claim_changed ? 'The saved judgments apply to the earlier Claim.' : claimChallengeSummary(review.scopes))}</p>
       ${passages.map(p => `<div class="kn"><div class="grow min-w-0"><b>${esc(intent[p.assessment] || 'Unreviewed')}</b> · ${claimEvidenceLink(p)}
+        ${originBadge(p)}
         ${p.scope === 'library' ? '<span class="tag">Library lead at review time</span>' : ''}
         ${p.changed ? '<span class="tag status-warn">Passage changed</span>' : ''}
         <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote></div></div>`).join('')}
@@ -522,7 +532,7 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       ${coverage(group) ? `<p class="muted">${esc(coverage(group))}</p>` : ''}
       ${scope === 'library' ? '<p class="muted">These sources are outside the project. Attach a source before using it as project evidence.</p>' : ''}
       ${group.passages.map(p => `<div class="kn"><div class="grow min-w-0">
-        ${claimEvidenceLink(p)}${p.same_origin_as_support ? ' <span class="tag">Already cited origin</span>' : ''}
+        ${claimEvidenceLink(p)} ${originBadge(p)}
         ${originCounts.get(p.origin || p.source_id) > 1 ? ' <span class="tag">Shared source origin</span>' : ''}
         <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote>
         <label>Passage assessment <select class="w-auto" data-challenge-passage="${esc(p.chunk_id)}">

@@ -49,6 +49,8 @@ def test_challenge_retrieves_alternate_wording_and_isolates_library(client, monk
     hits = {p["source_id"]: p for p in result["scopes"]["project"]["passages"]}
     assert hits.keys() == {initial, paraphrase}
     assert hits[initial]["same_origin_as_support"]
+    assert hits[initial]["origin_status"] == "already_cited"
+    assert hits[paraphrase]["origin_status"] == "unverified"
     assert hits[paraphrase]["link"].endswith("&t=40s")
 
     result = client.post(path, json={**body, "library": True}, headers=H).json()
@@ -147,6 +149,37 @@ def test_saved_challenge_reopens_and_flags_revised_evidence(client):
     result = client.get(path + "/review", headers=H).json()["review"]
     assert result["scopes"]["project"]["passages"][0]["changed"]
     assert client.put(path + "/review", json=found, headers=H).status_code == 409
+
+
+def test_challenge_origin_tracks_current_works_without_rewriting_judgments(client):
+    pid = db.create_project("Provenance review")["id"]
+    claim = claims.add_claim(pid, "Roof vents lower storage temperatures.")
+    cited = _source(pid, "challenge-provenance-cited", claim["text"])
+    match = _source(pid, "challenge-provenance-match", claim["text"])
+    cited_work, _ = works.ensure_work("other", "Ventilation report A")
+    match_work, _ = works.ensure_work("other", "Ventilation report B")
+    works.link_source(cited, cited_work["id"])
+    works.link_source(match, match_work["id"])
+    path = f"/api/projects/{pid}/claims/{claim['id']}/challenge"
+    result = client.post(path, headers=H, json={}).json()
+    passage = next(p for p in result["scopes"]["project"]["passages"] if p["source_id"] == match)
+    assert passage["origin_status"] == "unverified"
+    passage["assessment"] = "equivalent"
+    passage["origin_status"] = "already_cited"  # client metadata is never accepted as provenance
+    saved = client.put(path + "/review", headers=H, json=result)
+    assert saved.status_code == 200, saved.text
+
+    def stored_match():
+        review = client.get(path + "/review", headers=H).json()["review"]
+        return next(p for p in review["scopes"]["project"]["passages"] if p["source_id"] == match)
+
+    assert stored_match()["origin_status"] == "unverified"
+    claims.add_evidence(claim["id"], cited, excerpt=claim["text"], locator="0:40")
+    assert stored_match()["origin_status"] == "different_recorded_work"
+    claims.add_evidence(claim["id"], match, excerpt=claim["text"], locator="0:40")
+    stored = stored_match()
+    assert stored["origin_status"] == "already_cited"
+    assert stored["assessment"] == "equivalent" and not stored["changed"]
 
 
 def test_pending_plan_proposal_shows_recorded_claim_and_passage(client):
