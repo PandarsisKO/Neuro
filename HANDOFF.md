@@ -4976,3 +4976,39 @@ between ingest completion and the final Findings start, with budget,
 provider and ChatGPT capacity waits in all five histories. A seven-day
 window had 87 comparable pairs, still from that project. Treat these as
 a batch diagnosis, and repeat across projects before changing admission.
+
+The Mac reloaded 0.64.17 from published `b8c76b7`. Health reported no
+expired leases at the activation check.
+
+The ingestion join was then tightened to require that the cited Finding
+was written during the matched job's recorded execution. The 30-day
+sample covered 338 completed paths in four projects (19, 49, 87 and 183).
+Overall queue-entry-to-Finding time was 373 s median and 878 s p90.
+Ingestion queue wait was 208 s median. Median total time ranged from
+202 to 550 s by project. The five slowest matched paths still shared
+the recent Findings holds. These figures cover completed paths with
+a quoted Finding and exclude in-flight, unsuccessful and uncited work.
+No admission rule was changed on the strength of this measurement.
+
+### 2026-11-12 — Saved Claim challenges and evidence on Plan proposals (0.64.18)
+
+Runtime candidate `12cce75`. The existing Claim challenge flow now
+saves the latest explicitly submitted manual assessment on the Claim.
+It stores search wording, date, scope, reviewed passages and gaps.
+The server resolves excerpts and locators from the project or library
+source and verifies the searched revision. Reopening the review
+flags changes to the Claim or passages. Library leads remain leads
+and the review does not alter linked evidence or Claim status.
+
+Master Plan proposal cards with recorded Claim provenance show the
+Claim and a preview of its located supporting, qualifying or contrary
+passages. The existing evidence preview supplies revision flags.
+Proposals without a recorded Claim link say so. The model-generated
+update path still does not record item-level source provenance.
+
+The browser harness covered saving and reopening a review, revised
+passages and links on Plan cards. Chrome fixture previews were
+inspected at 500 px and 1,050 px. The deterministic release check
+including Tier 1 passed. See
+`evals/release/release-check-0.64.18-12cce75-20261112-182652.{json,txt}`.
+The full suite passed all 2,694 tests across six shards.
