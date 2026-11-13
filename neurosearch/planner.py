@@ -6,6 +6,8 @@ carry statuses, evidence references, a basis (research / user / planner / estima
 """
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import logging
 import re
@@ -382,34 +384,87 @@ UPDATE_SYSTEM = """You are Master Planner reviewing whether NEW research changes
 against the plan and list only changes that matter (a changed recommendation, a resolved open question, a new
 blocking dependency, a materially different cost or risk). Do not rewrite for style. Output ONLY JSON:
 {"updates": [{"section": str, "previous": str, "proposed": str, "reason": str}]}
-Return {"updates": []} if nothing material changed."""
+For a simple wording edit use a dot path from EXACT EDIT PATHS as section. Copy the current string exactly into
+previous and put the complete replacement string in proposed. Otherwise use a section label for a broader change.
+In reason, quote the specific new evidence that justifies the proposal. Return {"updates": []} if nothing material changed."""
+
+
+_EXACT_EDIT_PATH = re.compile(
+    r"(?:first_steps\.\d+\.(?:action|detail)|phases\.\d+\.tasks\.\d+\.(?:task|detail)|"
+    r"this_week\.\d+\.(?:why|time)|dependencies\.\d+\.note|"
+    r"risks\.\d+\.mitigation|gotchas\.\d+\.avoid|open_questions\.\d+\.why)"
+)
+
+
+def _exact_edit_paths(plan: dict[str, Any], prefix: str = "") -> dict[str, str]:
+    if isinstance(plan, str):
+        return {prefix: plan} if _EXACT_EDIT_PATH.fullmatch(prefix) else {}
+    children = plan.items() if isinstance(plan, dict) else enumerate(plan) if isinstance(plan, list) else ()
+    paths = {}
+    for key, value in children:
+        if not str(key).startswith("_"):
+            paths.update(_exact_edit_paths(value, f"{prefix}.{key}" if prefix else str(key)))
+    return paths
+
+
+def _update_identity(update: dict[str, Any]) -> tuple[str, str, str]:
+    return tuple(" ".join((update.get(k) or "").casefold().split()) for k in ("section", "previous", "proposed"))
+
+
+def _quoted_evidence(reason: str, material: str) -> set[str]:
+    # Require a verbatim, substantive quotation from the exact text shown to the reviewer.
+    normalized = " ".join(material.casefold().split())
+    return {quote for raw in re.findall(r'"([^"]+)"|“([^”]+)”', reason or "")
+            if len(quote := " ".join((raw[0] or raw[1]).casefold().split())) >= 24 and quote in normalized}
 
 
 def suggest_updates(project_id: str) -> list[dict[str, Any]]:
+    with db.work_unit_lock(f"planner-check:{project_id}"):
+        return _suggest_updates(project_id)
+
+
+def _suggest_updates(project_id: str) -> list[dict[str, Any]]:
     plan = db.latest_plan(project_id)
     if not plan:
         return []
-    since = plan["created_at"]
+    since = plan["plan"].get("_research_checked_since", plan["created_at"])
     conn = db.connect()
-    new_notes = [dict(r) for r in conn.execute("SELECT content FROM project_notes WHERE project_id=? AND created_at>? AND status<>'reserve'", (project_id, since)).fetchall()]
-    new_facts = [dict(r) for r in conn.execute("SELECT kind, content FROM project_facts WHERE project_id=? AND created_at>?", (project_id, since)).fetchall()]
+    new_notes = [dict(r) for r in conn.execute(
+        "SELECT content FROM project_notes WHERE project_id=? AND created_at>? AND status<>'reserve' ORDER BY id",
+        (project_id, since)).fetchall()]
+    new_facts = [dict(r) for r in conn.execute(
+        "SELECT kind, content FROM project_facts WHERE project_id=? AND created_at>? ORDER BY id",
+        (project_id, since)).fetchall()]
     new_msgs = [dict(r) for r in conn.execute(
         """SELECT m.role, m.content FROM messages m JOIN conversations c ON c.id=m.conversation_id
            WHERE c.project_id=? AND m.created_at>? ORDER BY m.id""", (project_id, since)).fetchall()]
-    sids = set(db.project_source_ids(project_id))
-    new_srcs = [s for s in db.list_sources(limit=100000) if s["id"] in sids and s["created_at"] > since]
-    if not (new_notes or new_facts or new_msgs or new_srcs):
-        db.add_plan_updates(plan["id"], [])
-        return []
+    source_ids = db.project_source_ids(project_id)
+    new_srcs = conn.execute(
+        """SELECT id,title FROM sources WHERE id IN (SELECT value FROM json_each(?))
+           AND (MAX(created_at, updated_at)>? OR id IN (
+               SELECT object_id FROM project_change_events
+               WHERE project_id=? AND event_type='source_attached' AND created_at>?))
+           ORDER BY id""", (json.dumps(source_ids), since, project_id, since)).fetchall()
     material = ["NEW FINDINGS:"] + [f"- {n['content'][:1000]}" for n in new_notes]
     material += ["NEW USER FACTS:"] + [f"- [{f['kind']}] {f['content']}" for f in new_facts]
     material += ["NEW SOURCES:"] + [f"- {s['title']}: " + " ".join(x['text'] for x in db.get_segments(s['id'])[:30])[:600] for s in new_srcs]
     material += ["NEW CONVERSATION:"] + [f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1200]}" for m in new_msgs[-40:]]
+    evidence = "\n".join(material)[:40000]
     plan_json = {k: v for k, v in plan["plan"].items() if not k.startswith("_")}
-    user = "CURRENT PLAN:\n" + json.dumps(plan_json)[:30000] + "\n\n" + "\n".join(material)[:40000] + "\n\nList the suggested updates now."
-    from . import providers, usage
+    paths = ", ".join(_exact_edit_paths(plan_json))
+    user = "CURRENT PLAN:\n" + json.dumps(plan_json)[:30000] + f"\n\nEXACT EDIT PATHS: {paths}\n\n" + evidence + "\n\nList the suggested updates now."
+    from . import providers
     from .contracts import contract
-    if contract("planner.update").schema:
+    cfg = contract("planner.update")
+    digest = hashlib.sha256(repr((UPDATE_SYSTEM, user, cfg, settings.fake_ai, settings.ai_profile,
+                                  settings.claude_code_model, providers.current_policy())).encode()).hexdigest()
+    key = f"planner:checked:{plan['id']}"
+    receipt = json.loads(db.kv_get(key) or "{}")
+    if receipt.get("digest") == digest:
+        return _pending_model_updates(plan["id"])
+    if not (new_notes or new_facts or new_msgs or new_srcs):
+        return _record_plan_check(plan, key, digest, evidence, [])
+    if cfg.schema:
         # Mission F (F3): schema-enforced, fully validated. A model output we cannot understand is a typed failure that
         # propagates to the caller — it is never turned into an innocent "no updates".
         import time as _time
@@ -435,8 +490,41 @@ def suggest_updates(project_id: str) -> list[dict[str, Any]]:
             _observe(event="parse", task="planner.update", ok=False, repaired=False, error=str(exc)[:200])
             raise RuntimeError(f"planner.update: could not understand the model's output ({exc}); no updates were recorded") from exc
     updates = [u for u in updates if isinstance(u, dict) and u.get("proposed")]
-    db.add_plan_updates(plan["id"], updates)
-    return updates
+    return _record_plan_check(plan, key, digest, evidence, updates)
+
+
+def _pending_model_updates(plan_id: str) -> list[dict[str, Any]]:
+    return [u for u in (db.get_plan(plan_id) or {}).get("updates", [])
+            if u["origin"] is None and u["status"] == "pending"]
+
+
+def _record_plan_check(plan: dict, key: str, digest: str, evidence: str, updates: list[dict]) -> list[dict]:
+    with db.batch():
+        conn = db.connect()
+        # Take the write lock before reading current decisions; a review may have completed during the model call.
+        conn.execute("UPDATE plans SET id=id WHERE id=?", (plan["id"],))
+        current = db.latest_plan(plan["project_id"])
+        if not current or current["id"] != plan["id"]:
+            return []
+        decided = {}
+        for row in current["updates"]:
+            if row["status"] in ("accepted", "rejected") and row["origin"] is None:
+                decided[_update_identity(row)] = row
+        proposed = []
+        seen = set()
+        for update in updates:
+            identity = _update_identity(update)
+            decision = decided.get(identity)
+            prior_material = (db.kv_get(f"planner:decision-evidence:{decision['id']}") or evidence) if decision else evidence
+            grounded = _quoted_evidence(update.get("reason"), evidence)
+            new_grounded = {q for q in grounded if q not in " ".join(prior_material.casefold().split())}
+            if identity in seen or (decision and (decision["status"] == "accepted" or not new_grounded)):
+                continue
+            seen.add(identity)
+            proposed.append(update)
+        db.add_plan_updates(plan["id"], proposed)
+        db.kv_set(key, json.dumps({"digest": digest, "evidence": evidence}))
+    return _pending_model_updates(plan["id"])
 
 
 def _legacy_update_parse(raw: str) -> dict[str, Any]:
@@ -453,6 +541,58 @@ def _legacy_update_parse(raw: str) -> dict[str, Any]:
     raise ValueError("no JSON in output")
 
 
+def exact_edits(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    paths = _exact_edit_paths(plan["plan"])
+    accepted = [u for u in plan["updates"] if u["status"] == "accepted" and not u["applied_plan_id"]]
+    if len({u["section"] for u in accepted}) != len(accepted):
+        return []
+    if any(u["origin"] is not None or u["section"] not in paths or paths[u["section"]] != u["previous"]
+           or not u["proposed"].strip() or u["proposed"] == u["previous"] for u in accepted):
+        return []
+    return accepted
+
+
+def apply_exact_edits(project_id: str, plan_id: str) -> dict[str, Any]:
+    with db.batch():
+        conn = db.connect()
+        conn.execute("UPDATE plans SET id=id WHERE id=? AND project_id=?", (plan_id, project_id))
+        plan = db.latest_plan(project_id)
+        if not plan or plan["id"] != plan_id:
+            raise ValueError("The current plan changed. Reload it before applying edits.")
+        updates = exact_edits(plan)
+        if not updates:
+            raise ValueError("The accepted changes do not match individual fields in this plan.")
+        revised = copy.deepcopy(plan["plan"])
+        revised.setdefault("_research_checked_since", plan["created_at"])
+        for update in updates:
+            path = update["section"].split(".")
+            item = revised
+            for part in path[:-1]:
+                item = item[int(part)] if isinstance(item, list) else item[part]
+            item[path[-1]] = update["proposed"]
+        provenance = {k: plan[k] for k in ("model", "prompt_version", "brief_revision", "facts_revision",
+                                           "source_set_revision", "routing")}
+        new = db.save_plan(project_id, revised, plan["snapshot"], carry_statuses_from=plan_id, provenance=provenance)
+        db.set_plan_status(new["id"], plan["status"])
+        conn.executemany("UPDATE plan_updates SET applied_plan_id=? WHERE id=?", [(new["id"], u["id"]) for u in updates])
+        # A pending proposal or rejection on the previous version remains attributable to that version.
+        # Preserve decisions for subsequent checks on the new version, and keep pending work visible.
+        conn.execute(
+            """INSERT INTO plan_updates
+               (plan_id, section, previous, proposed, reason, origin, claim_id, tension_id, created_at,
+                status, decided_at, decided_by, decision_reason)
+               SELECT ?, section, previous, proposed, reason, origin, claim_id, tension_id, created_at,
+                      status, decided_at, decided_by, decision_reason
+               FROM plan_updates WHERE plan_id=? AND status IN ('pending','rejected') ORDER BY id""",
+            (new["id"], plan_id))
+        for old, carried in zip([u for u in sorted(plan["updates"], key=lambda u: u["id"]) if u["status"] in ("pending", "rejected")],
+                                sorted(db.get_plan(new["id"])["updates"], key=lambda u: u["id"]), strict=True):
+            evidence = db.kv_get(f"planner:decision-evidence:{old['id']}")
+            if evidence:
+                db.kv_set(f"planner:decision-evidence:{carried['id']}", evidence)
+        return db.get_plan(new["id"])
+
+
 def apply_accepted_updates(project_id: str) -> dict[str, Any]:
     """Regenerate the plan folding in every accepted (and rejecting pending-but-rejected) update.
 
@@ -463,7 +603,7 @@ def apply_accepted_updates(project_id: str) -> dict[str, Any]:
     plan = db.latest_plan(project_id)
     if not plan:
         raise RuntimeError("no plan yet")
-    accepted = [u for u in plan["updates"] if u["status"] == "accepted"]
+    accepted = [u for u in plan["updates"] if u["status"] == "accepted" and not u["applied_plan_id"]]
     rejected = [u for u in plan["updates"] if u["status"] == "rejected"]
     instr = []
     if accepted:

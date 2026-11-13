@@ -1312,6 +1312,7 @@ MIGRATIONS = [
     ("plan_updates", "tension_id", "ALTER TABLE plan_updates ADD COLUMN tension_id TEXT"),
     ("plan_updates", "decided_at", "ALTER TABLE plan_updates ADD COLUMN decided_at REAL"),
     ("plan_updates", "decided_by", "ALTER TABLE plan_updates ADD COLUMN decided_by TEXT"),
+    ("plan_updates", "decision_reason", "ALTER TABLE plan_updates ADD COLUMN decision_reason TEXT"),
     ("plan_updates", "applied_plan_id", "ALTER TABLE plan_updates ADD COLUMN applied_plan_id TEXT"),
     # CR8 product decision (Kyle, 2026-09-16): "primary for this project" is a property of the project<->
     # collection RELATIONSHIP, never the global collection -- the same reservoir can be primary for one
@@ -2210,6 +2211,20 @@ def source_revision(source_id: str, *, persist: bool = True) -> str | None:
     return rev
 
 
+def searchable_source_snapshot(source_ids: list[str], *, profiles: bool = False) -> dict[str, list]:
+    """Ordered membership and chunk identities for an existing retrieval scope."""
+    profile_column = (""", (SELECT enriched_at FROM source_profiles
+                             WHERE source_id=s.id AND enriched_status='current')""" if profiles else "")
+    rows = connect().execute(
+        f"""SELECT s.id, s.revision,
+                   (SELECT MIN(id) FROM chunks WHERE source_id=s.id),
+                   (SELECT MAX(id) FROM chunks WHERE source_id=s.id), s.updated_at{profile_column}
+            FROM sources s WHERE s.id IN (SELECT value FROM json_each(?)) ORDER BY s.id""",
+        (json.dumps(source_ids),),
+    )
+    return {r[0]: list(r)[1:] for r in rows}
+
+
 def get_segments(source_id: str) -> list[dict[str, Any]]:
     return [dict(r) for r in connect().execute(
         "SELECT idx, start, end, text FROM segments WHERE source_id=? ORDER BY idx", (source_id,)
@@ -2687,6 +2702,18 @@ def project_usage_revision(project_id: str) -> str:
     return project_notes_revision(project_id) + "|" + "|".join(str(x) for x in r)
 
 
+def target_candidate_revision(project_id: str) -> str:
+    """Candidate recall reads global metadata and this project's candidate and source relationships."""
+    row = connect().execute(
+        """SELECT (SELECT COUNT(*) || ':' || COALESCE(MAX(last_seen_at),0) FROM candidates),
+                  (SELECT COUNT(*) || ':' || COALESCE(MAX(updated_at),0) FROM candidate_projects WHERE project_id=?),
+                  (SELECT COALESCE(json_group_array(source_id), '[]') FROM
+                    (SELECT source_id FROM project_sources WHERE project_id=? AND excluded=0 ORDER BY source_id))""",
+        (project_id, project_id),
+    ).fetchone()
+    return "|".join(row)
+
+
 def project_pool_revision(project_id: str) -> str:
     """The fingerprint of the known-but-uncaptured pool ALONE (0.63.20).
 
@@ -2918,7 +2945,8 @@ def set_job_execution(job_id: str, executed_by: str | None, fallback_reason: str
 
 def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, dependency_policy: str = "ALL_SUCCESS",
                dedupe_key: str | None = None, execution_policy: str = "local_preferred", lane: str = "normal",
-               not_before: float | None = None, job_id: str | None = None) -> dict[str, Any]:
+               not_before: float | None = None, job_id: str | None = None, *,
+               coalesce_until: float | None = None) -> dict[str, Any]:
     """blocked_by: job ids that must finish before this one can be claimed (see dependency_policy). dedupe_key (natural
     identity of the work; default from dedupe_key_for) makes a second identical request while the first is still
     active return the existing job instead of a duplicate.
@@ -2942,12 +2970,19 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
     blocked_by = list(dict.fromkeys(blocked_by)) if blocked_by else None      # de-duplicated, order kept
     if not_before is not None:
         payload = {**payload, "_scheduled_for": not_before}
+    # An internal coalescing window keeps the first deadline and allows a successor to a running job.
+    eligible_at = not_before if not_before is not None else coalesce_until
+    wait_reason = "scheduled" if not_before is not None else "coalescing" if coalesce_until is not None else None
+    wait_message = ("scheduled — runs when the worker is next available, no earlier than the requested time"
+                    if not_before is not None else
+                    "Waiting briefly to combine research map updates" if coalesce_until is not None else None)
     with tx() as conn:
         if blocked_by:
             _check_no_cycle(conn, None, blocked_by)
         if key:
-            marks = ",".join("?" for _ in JOB_ACTIVE)
-            ex = conn.execute(f"SELECT id FROM jobs WHERE dedupe_key=? AND status IN ({marks}) ORDER BY created_at LIMIT 1", (key, *JOB_ACTIVE)).fetchone()
+            active = ("queued",) if coalesce_until is not None else JOB_ACTIVE
+            marks = ",".join("?" for _ in active)
+            ex = conn.execute(f"SELECT id FROM jobs WHERE dedupe_key=? AND status IN ({marks}) ORDER BY created_at LIMIT 1", (key, *active)).fetchone()
             if ex:
                 job_event(ex["id"], "deduplicated", conn=conn, kind=kind)
                 return get_job(ex["id"])  # type: ignore[return-value]
@@ -2961,12 +2996,12 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
              f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else
-             (f"scheduled — runs when the worker is next available, no earlier than the requested time" if not_before is not None else None),
+             wait_message,
              dependency_policy, key, execution_policy,
              lane if lane in ("normal", "slow", "priority", "low") else "normal",
-             not_before, "scheduled" if not_before is not None else None, o_actor, o_req),
+             eligible_at, wait_reason, o_actor, o_req),
         )
-        job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key, not_before=not_before)
+        job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key, not_before=eligible_at)
     return get_job(jid)  # type: ignore[return-value]
 
 
@@ -3409,7 +3444,7 @@ def derived_status(j: dict[str, Any]) -> str:
             return "chatgpt_wait"
         if j.get("not_before") and j["not_before"] > now():
             return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait",
-                    "scheduled": "scheduled"}.get(j.get("wait_reason") or "", "retry_wait")   # L-40: a caller's schedule is not a retry
+                    "scheduled": "scheduled", "coalescing": "queued"}.get(j.get("wait_reason") or "", "retry_wait")   # L-40: a caller's schedule is not a retry
         return "queued"
     if st == "running" and j.get("cancel_requested_at"):
         return "cancelling"
@@ -5535,13 +5570,20 @@ def add_plan_updates(plan_id: str, updates: list[dict[str, Any]], origin: str | 
               u.get("claim_id"), u.get("tension_id"), now()) for u in updates])
 
 
-def set_update_status(update_id: int, status: str, decided_by: str = "user") -> dict[str, Any] | None:
+def set_update_status(update_id: int, status: str, decided_by: str = "user", decision_reason: str | None = None) -> dict[str, Any] | None:
     """LP5: stamps `decided_at`/`decided_by` the moment a pending row is accepted or rejected -- never on a
     re-read, so a row's provenance reflects the actual decision moment, not whenever it was last fetched."""
-    with tx() as conn:
-        conn.execute("UPDATE plan_updates SET status=?, decided_at=?, decided_by=? WHERE id=?",
-                     (status, now(), decided_by, update_id))
+    with batch():
+        conn = connect()
+        conn.execute("UPDATE plan_updates SET status=?, decided_at=?, decided_by=?, decision_reason=? "
+                     "WHERE id=? AND applied_plan_id IS NULL AND status<>?",
+                     (status, now(), decided_by, decision_reason, update_id, status))
         row = conn.execute("SELECT * FROM plan_updates WHERE id=?", (update_id,)).fetchone()
+        if row and status == "rejected" and row["status"] == status and row["origin"] is None:
+            evidence_key = f"planner:decision-evidence:{update_id}"
+            receipt = json.loads(kv_get(f"planner:checked:{row['plan_id']}") or "{}")
+            if receipt.get("evidence") and kv_get(evidence_key) is None:
+                kv_set(evidence_key, receipt["evidence"])
         return dict(row) if row else None
 
 

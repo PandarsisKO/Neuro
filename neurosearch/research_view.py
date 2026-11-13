@@ -483,8 +483,10 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
         importance = d["importance"].get(c.get("id") or "", 3) if c else (5 if t.get("origin") == "user" else 3)
         planner = bool(c) and c["id"] in d["planner"]
         known = d["known"].get(t["id"], 0)
-        esc = (t.get("last_escalation") or {}).get("steps") or []
-        looked = [s["step"] for s in esc]
+        escalation = t.get("last_escalation") or {}
+        esc = escalation.get("steps") or []
+        previous_external = (escalation.get("last_external") or {}).get("steps") or []
+        looked = list(dict.fromkeys(s["step"] for s in esc + previous_external))
         score = 0
         if t["status"] == "open":
             score = BASE[f"question:{t['sufficiency']}"] + IMPORTANCE_WEIGHT * importance + (PLANNER_BONUS if planner else 0) \
@@ -497,13 +499,17 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
         # the rule from `external` alone to every optional step, because the new `catalogue` step is skipped for any
         # question that does not ask for expert or authoritative evidence.
         OPTIONAL = ("external", "catalogue")
-        ran = {x.get("step") for x in esc if x.get("run")}
+        ran = {x.get("step") for x in esc + previous_external if x.get("run")}
         already = [{"project_evidence": "This project", "global_library": "Your library",
                     "candidate_index": "Previously seen sources", "external": "The web",
                     "catalogue": "Research catalogues"}.get(s, s)
                    for s in looked if not (s in OPTIONAL and s not in ran)]
         actions = [{"label": "Search my existing research", "endpoint": f"/api/targets/{t['id']}/pursue", "body": {"external": False}, "cost": "$0",
                     "help": "Checks this project, your global library, and previously seen sources. No web search."}]
+        if esc:
+            actions.append({"label": "Search everything again", "endpoint": f"/api/targets/{t['id']}/pursue",
+                            "body": {"external": False, "full": True}, "cost": "$0",
+                            "help": "Refresh every local search stage. No web search."})
         if known:
             actions.append({"label": f"Check {min(known, 3)} promising source{'s' if min(known, 3) != 1 else ''}", "endpoint": f"/api/targets/{t['id']}/capture-best", "body": {"n": min(known, 3)}, "cost": "$0 (browser capture when needed)",
                             "help": "Attaches copies you already own; otherwise captures the source through the normal path — your browser when the server cannot read it."})

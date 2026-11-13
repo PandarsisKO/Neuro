@@ -154,3 +154,13 @@ searchable-source coverage. Saved assessments flag changes to the
 searched collection. The review reports human passage judgments
 and leaves novelty unassessed when no equivalent is confirmed.
 An 11-case blind review is prepared across six projects.
+
+## 2026-11-12 — Reuse completed research work (0.64.20)
+
+Bulk Claims jobs combine map refreshes across passes. Claim Challenge and
+Evidence Targets reuse recorded search work while the corresponding inputs
+remain current and expose a full-search action. The Source drawer explains
+whether work is waiting, failed, finished with zero findings or ready to start.
+Master Plan checks retain completed results and rejection reasons. Accepted
+exact wording edits can save a new version with execution status and notes
+intact. Repeated query embeddings reuse a bounded local cache.

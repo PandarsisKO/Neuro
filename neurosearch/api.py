@@ -2600,7 +2600,8 @@ def api_plan(project_id: str) -> dict[str, Any]:
         plan_narrative.attach_update_evidence(project_id, plan["updates"])
     for v in versions:                                  # older versions are superseded, never "current"
         v["label"] = "current" if plan and v["id"] == plan["id"] else "superseded"
-    return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions}
+    return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions,
+            "can_apply_exact": bool(plan and planner.exact_edits(plan))}
 
 
 @app.get("/api/projects/{project_id}/staleness", dependencies=[Depends(require_auth)])
@@ -2797,20 +2798,30 @@ async def api_plan_check(project_id: str) -> dict[str, Any]:
 
 
 class UpdateStatusIn(BaseModel):
-    status: str  # accepted | rejected
+    status: Literal["accepted", "rejected"]
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 @app.post("/api/plan-updates/{update_id}", dependencies=[Depends(require_auth)])
 def api_plan_update_status(update_id: int, body: UpdateStatusIn) -> dict[str, Any]:
-    row = db.set_update_status(update_id, body.status)
+    row = db.set_update_status(update_id, body.status, decision_reason=body.reason)
     if not row:
         raise HTTPException(404)
     return row
 
 
+class ApplyPlanIn(BaseModel):
+    exact_plan_id: str | None = None
+
+
 @app.post("/api/projects/{project_id}/plan/apply", dependencies=[Depends(require_auth)])
-async def api_plan_apply(project_id: str) -> dict[str, Any]:
+async def api_plan_apply(project_id: str, body: ApplyPlanIn | None = None) -> dict[str, Any]:
     from . import planner
+    if body and body.exact_plan_id:
+        try:
+            return await anyio.to_thread.run_sync(lambda: planner.apply_exact_edits(project_id, body.exact_plan_id))
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
     return await anyio.to_thread.run_sync(lambda: planner.apply_accepted_updates(project_id))
 
 
@@ -3271,6 +3282,7 @@ class ClaimChallengeIn(BaseModel):
     counter: str = Field("", max_length=500)
     semantic: bool = False
     library: bool = False
+    full: bool = False
 
 
 @app.post("/api/projects/{project_id}/claims/{claim_id}/challenge", dependencies=[Depends(require_auth)])
@@ -3279,7 +3291,7 @@ def api_claim_challenge(project_id: str, claim_id: str, body: ClaimChallengeIn) 
     from . import claim_challenge
     result = claim_challenge.find(project_id, claim_id, body.q, body.alternate,
                                   semantic=body.semantic, include_library=body.library,
-                                  precedent=body.precedent, counter=body.counter)
+                                  precedent=body.precedent, counter=body.counter, full=body.full)
     if result is None:
         raise HTTPException(404, "claim not found in project")
     return result
@@ -3298,6 +3310,11 @@ class ChallengeScopeIn(BaseModel):
     searchable_sources: int | None = Field(default=None, ge=0)
     scope_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     passages: list[ChallengePassageIn] = Field(max_length=8)
+    method: Literal["keyword", "hybrid", "mixed"] | None = None
+    search_mode: Literal["full", "added", "resumed"] | None = None
+    searched_sources: int | None = Field(default=None, ge=0)
+    searched_at: datetime | None = None
+    previous_searched_at: datetime | None = None
 
 
 class ChallengeReviewIn(BaseModel):
@@ -3307,8 +3324,16 @@ class ChallengeReviewIn(BaseModel):
     queries: list[Annotated[str, Field(max_length=500)]] = Field(min_length=1, max_length=4)
     method: Literal["keyword", "hybrid", "mixed"]
     semantic_requested: bool = False
+    retrieval: dict[str, str | bool | None] | None = None
     scopes: dict[Literal["project", "library"], ChallengeScopeIn]
     remaining_gaps: str = Field("", max_length=500)
+
+
+def _challenge_review_response(review: dict[str, Any] | None) -> dict[str, Any]:
+    if review:
+        review = {**review, "scopes": {scope: {k: v for k, v in group.items() if k != "source_snapshot"}
+                                      for scope, group in review["scopes"].items()}}
+    return {"review": review}
 
 
 @app.get("/api/projects/{project_id}/claims/{claim_id}/challenge/review", dependencies=[Depends(require_auth)])
@@ -3317,14 +3342,14 @@ def api_saved_claim_challenge(project_id: str, claim_id: str) -> dict[str, Any]:
     claim = claims.get(claim_id)
     if not claim or claim["project_id"] != project_id:
         raise HTTPException(404, "claim not found in project")
-    return {"review": claim_challenge.load_review(project_id, claim)}
+    return _challenge_review_response(claim_challenge.load_review(project_id, claim))
 
 
 @app.put("/api/projects/{project_id}/claims/{claim_id}/challenge/review", dependencies=[Depends(require_auth)])
 def api_save_claim_challenge(project_id: str, claim_id: str, body: ChallengeReviewIn) -> dict[str, Any]:
     from . import claim_challenge
     try:
-        return {"review": claim_challenge.save_review(project_id, claim_id, body.model_dump(mode="json"))}
+        return _challenge_review_response(claim_challenge.save_review(project_id, claim_id, body.model_dump(mode="json")))
     except LookupError as e:
         raise HTTPException(404, str(e)) from e
     except ValueError as e:
@@ -3429,11 +3454,12 @@ def api_targets_list(project_id: str, status: str | None = None, origin: str | N
     if q:
         ql = q.lower()
         rows = [t for t in rows if ql in (t.get("question") or "").lower()]
-    return {"total": len(rows), "targets": rows[:limit]}
+    return {"total": len(rows), "targets": [knowledge.public_target(t) for t in rows[:limit]]}
 
 
 class PursueIn(BaseModel):
-    external: bool = False       # step 4 (a web Discover job) only when asked
+    external: bool = False       # a web Discover job only when asked
+    full: bool = False
 
 
 @app.post("/api/targets/{target_id}/pursue", dependencies=[Depends(require_auth)])
@@ -3442,7 +3468,7 @@ async def api_target_pursue(target_id: str, body: PursueIn) -> dict[str, Any]:
     from . import knowledge
     if not knowledge.get_target(target_id):
         raise HTTPException(404)
-    return await anyio.to_thread.run_sync(lambda: knowledge.pursue(target_id, external=body.external))
+    return await anyio.to_thread.run_sync(lambda: knowledge.pursue(target_id, external=body.external, full=body.full))
 
 
 class TargetStatusIn(BaseModel):

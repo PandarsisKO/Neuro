@@ -205,6 +205,52 @@ def used_in(project_id: str, source_id: str) -> dict[str, Any]:
     return {"plan": {"version": version, "uses": plan_uses[:12]}, "chat": chat_uses[:12]}
 
 
+def _drawer_read_status(project_id: str, src: dict, analysis: dict | None) -> dict:
+    sid = src["id"]
+    attached = sid in db.project_source_ids(project_id, ready_only=False)
+    if not attached:
+        return {"state": "outside_project"}
+    status = src["status"]
+    if status != "ready":
+        state = ("waiting_for_source" if status in ("pending", "processing", "transcribing", "ingesting")
+                 else "source_unavailable")
+        retryable = status == "failed" and not db.failure_is_permanent(src.get("error_class"))
+        return {"state": state, "detail": src.get("error"), "action": "retry_source" if retryable else None}
+    conn = db.connect()
+    rows = conn.execute(
+        """SELECT j.id,j.kind,j.status,j.message,j.result,j.finished_at,j.created_at
+           FROM jobs j WHERE j.project_id=? AND j.kind IN ('suggest_findings','suggest_findings_batch')
+           AND EXISTS (SELECT 1 FROM json_each(j.payload,'$.source_ids') WHERE value=?)
+           ORDER BY j.created_at DESC""", (project_id, sid),
+    )
+    for row in rows:
+        if row["status"] == "cancelled":
+            continue
+        if analysis and row["status"] in ("done", "failed") and row["created_at"] < (analysis.get("updated_at") or 0):
+            break
+        result = json.loads(row["result"] or "{}")
+        batch = conn.execute(
+            "SELECT status FROM batch_items WHERE job_id=? AND source_id=? ORDER BY cohort_no DESC LIMIT 1",
+            (row["id"], sid),
+        ).fetchone() if row["kind"] == "suggest_findings_batch" else None
+        if batch and batch["status"] == "materialized":
+            break
+        if row["status"] in db.JOB_ACTIVE:
+            return {"state": "reading" if row["status"] in ("running", "external_pending") else "queued",
+                    "detail": row["message"], "job_id": row["id"]}
+        if (row["status"] == "failed" or sid in (result.get("failed_source_ids") or [])
+                or (result.get("sources") == result.get("failed") == 1)
+                or (batch and batch["status"] in ("errored", "expired", "canceled"))):
+            return {"state": "read_failed", "action": "suggest", "job_id": row["id"]}
+        if row["status"] == "done":
+            break
+    if analysis:
+        return {"state": "read"}
+    if not conn.execute("SELECT 1 FROM segments WHERE source_id=? LIMIT 1", (sid,)).fetchone():
+        return {"state": "no_text"}
+    return {"state": "unread", "action": "suggest"}
+
+
 def digest(project_id: str, source_id: str) -> dict[str, Any]:
     """One source, everything it gave this project: value, its findings by status (with what used each), the Claims they
     became, where it shows up, and its staleness tier with the one-source actions. $0, no model call."""
@@ -235,12 +281,14 @@ def digest(project_id: str, source_id: str) -> dict[str, Any]:
     # never surface as evidence on this project's copy of the same (dedup-shared) source. Newest-first, one shown.
     captures = db.get_capture_events_for_source(source_id, project_id=project_id)
     latest_capture = captures[0] if captures else None
+    analysis = db.get_analysis(project_id, source_id, "summary")
     return {"source": {"id": source_id, "title": src.get("title") or src["url"], "url": src["url"], "platform": src["platform"], "channel": src.get("channel"),
                        "published_at": src.get("published_at"), "duration": src.get("duration"), "status": src["status"],
-                       "long": findings_mod.is_long(src), "depth": (db.get_analysis(project_id, source_id, "summary") or {}).get("depth"),
-                       "summary": (db.get_analysis(project_id, source_id, "summary") or {}).get("summary")},
+                       "long": findings_mod.is_long(src), "depth": (analysis or {}).get("depth"),
+                       "summary": (analysis or {}).get("summary")},
             "value": {"score": v["value_score"], "label": v["label"], "why": v["why"], "matters": v["matters"], "never_used": v["never_used"],
                       "priority": v["priority"], "findings": v["findings"], "importance": v["importance"], "claims": v["claims"], "used": v["used"]},
+            "read_status": _drawer_read_status(project_id, src, analysis),
             "findings": by_status, "findings_total": fq["total"], "claims": claims_rows,
             "used_in": used_in(project_id, source_id),
             "staleness": {"status": st.get("status"), "reasons": st.get("reasons") or [], "tier": tier, "estimate": st.get("estimate"),

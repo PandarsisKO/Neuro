@@ -16,6 +16,7 @@ import time
 from typing import Any, Callable
 
 from . import claims, db
+from .config import settings
 
 log = logging.getLogger("neurosearch.knowledge")
 
@@ -240,33 +241,86 @@ def rerank_candidates(tg: dict[str, Any], limit: int = CANDIDATE_RERANK_LIMIT) -
     return out[:limit]
 
 
-def pursue(target_id: str, *, external: bool = False, resurface: bool = True) -> dict[str, Any]:
-    """The mandated order for a new Evidence Target. Steps 1–3 cost nothing but an embeddings micro-call in step 2; step 4
-    (external Discover) only when asked. Nothing found here becomes project evidence: library suggestions are attach
-    proposals and candidates are metadata — the project boundary is crossed only by an explicit Add."""
+def _pursuit_sources(step: str, snapshot: dict, prior: dict, run) -> dict[str, Any]:
+    old = prior.get("snapshot")
+    if old == snapshot:
+        return {**prior, "search_mode": "reused"}
+    added_only = old is not None and all(snapshot.get(sid) == entry for sid, entry in old.items())
+    source_ids = [sid for sid in snapshot if not added_only or sid not in old]
+    data = run(source_ids)
+    batch_found = data["found"]
+    if added_only:
+        key, cap = ("top", 3) if step == "project_evidence" else ("suggestions", 6)
+        data[key] = (data[key] + prior[key])[:cap]
+        data["found"] += prior["found"]
+    return {"step": step, **data, "snapshot": snapshot, "checked_at": time.time(),
+            "search_mode": "added" if added_only else "full", "searched_sources": len(source_ids),
+            "new_found": batch_found, "previous_checked_at": prior.get("checked_at") if added_only else None}
+
+
+def pursue(target_id: str, *, external: bool = False, resurface: bool = True, full: bool = False) -> dict[str, Any]:
+    """Search the existing project, library and index before any explicitly requested external search."""
+    with db.work_unit_lock(f"evidence-target:{target_id}"):
+        return _pursue(target_id, external=external, resurface=resurface, full=full)
+
+
+def _pursue(target_id: str, *, external: bool, resurface: bool, full: bool) -> dict[str, Any]:
     from . import candidates, library, search
     tg = get_target(target_id)
     if not tg:
         raise ValueError("unknown target")
     pid, q = tg["project_id"], tg["question"]
     steps: list[dict[str, Any]] = []
-    project = db.get_project(pid) or {}
-    # 1 — current project evidence
-    hits = search.search(q, limit=8, source_ids=project.get("source_ids") or []) if project.get("source_ids") else []
-    steps.append({"step": "project_evidence", "found": len(hits), "top": [{"source_id": h["source_id"], "title": h.get("title"), "timestamp": h.get("timestamp")} for h in hits[:3]]})
-    # 2 — global library (never attached)
-    lib = library.recall(pid, q, limit=6, reason=f"evidence target: {q[:100]}")
-    steps.append({"step": "global_library", "found": len(lib["suggestions"]),
-                  "suggestions": [{"source_id": s["source_id"], "title": s["title"], "coverage": s.get("coverage"), "evidence_class": s.get("evidence_class")} for s in lib["suggestions"]]})
-    # 3 — candidate index, reranked against the target
-    ranked = rerank_candidates(tg)
-    resurfaced = [r for r in ranked if r.get("resurfaced")]
-    if resurface and resurfaced:
-        candidates.mark(pid, [r["id"] for r in resurfaced], "available", reason=f"resurfaced for evidence target: {q[:80]}")
-    steps.append({"step": "candidate_index", "found": len(ranked), "resurfaced": len(resurfaced),
-                  "candidates": [{"id": r["id"], "title": r.get("title"), "state": r.get("state"), "target_score": r["target_score"], "evidence_class": r.get("evidence_class"), "resurfaced": r.get("resurfaced")} for r in ranked[:8]]})
-    for r in ranked[:8]:                                                   # B3: the gap remembers what could fill it (durable, not a JSON trail)
-        candidates.link(r["id"], pid, "evidence_target", target_id, relevance=int(round(100 * float(r["target_score"]))), why=f"matches the open question: {q[:120]}")
+    # If vectors or the retrieval settings change, local stages need to be searched again.
+    retrieval = [1, settings.fake_ai, settings.embeddings_enabled,
+                 settings.embedding_model if settings.embeddings_enabled else None,
+                 db.chunk_embedding_revision() if settings.embeddings_enabled else None,
+                 settings.retrieval_rerank]
+    saved = tg.get("last_escalation") or {}
+    prior = {s["step"]: s for s in saved.get("steps", [])} if not full and saved.get("question") == q else {}
+    project_ids = db.project_source_ids(pid)
+    project_snapshot = db.searchable_source_snapshot(project_ids)
+    library_snapshot = db.searchable_source_snapshot(library.library_scope(pid), profiles=True)
+    project_prior = prior.get("project_evidence", {}) if saved.get("retrieval") == retrieval else {}
+    library_prior = prior.get("global_library", {}) if saved.get("retrieval") == retrieval else {}
+
+    def project_search(ids, keyword_only=False):
+        retrieve = search.search_fts if keyword_only else search.search
+        hits = retrieve(q, limit=8, source_ids=ids, **({} if keyword_only else {"strict": True})) if ids else []
+        return {"found": len(hits), "top": [{k: h.get(k) for k in ("source_id", "title", "timestamp")} for h in hits[:3]]}
+
+    def library_search(ids, keyword_only=False):
+        lib = library.recall(pid, q, limit=6, reason=f"evidence target: {q[:100]}", source_ids=ids,
+                             strict=True, keyword_only=keyword_only)
+        return {"found": len(lib["suggestions"]), "suggestions": [
+            {k: s.get(k) for k in ("source_id", "title", "coverage", "evidence_class")} for s in lib["suggestions"]]}
+
+    for name, snapshot, previous, run in (("project_evidence", project_snapshot, project_prior, project_search),
+                                          ("global_library", library_snapshot, library_prior, library_search)):
+        try:
+            steps.append(_pursuit_sources(name, snapshot, previous, run))
+        except search.RetrievalUnavailable:
+            # Keep serving keyword results during provider outages. The next pass retries hybrid retrieval.
+            steps.append({"step": name, **run(list(snapshot), keyword_only=True), "search_mode": "keyword_fallback",
+                          "checked_at": time.time(), "previous_checked_at": previous.get("checked_at")})
+
+    pref = tg.get("preferred_classes") or []
+    index_revision = [1, db.target_candidate_revision(pid), pref, resurface]
+    index_prior = prior.get("candidate_index", {})
+    if index_prior.get("revision") == index_revision:
+        steps.append({**index_prior, "search_mode": "reused"})
+    else:
+        ranked = rerank_candidates(tg)
+        resurfaced = [r for r in ranked if r.get("resurfaced")]
+        if resurface and resurfaced:
+            candidates.mark(pid, [r["id"] for r in resurfaced], "available", reason=f"resurfaced for evidence target: {q[:80]}")
+        steps.append({"step": "candidate_index", "found": len(ranked), "resurfaced": len(resurfaced) if resurface else 0,
+                      "candidates": [{k: r.get(k) for k in ("id", "title", "state", "target_score", "evidence_class", "resurfaced")}
+                                     for r in ranked[:8]], "revision": index_revision,
+                      "search_mode": "full", "checked_at": time.time()})
+        for r in ranked[:8]:
+            candidates.link(r["id"], pid, "evidence_target", target_id, relevance=int(round(100 * float(r["target_score"]))),
+                            why=f"matches the open question: {q[:120]}")
     # Where to look, from what this project has already measured about each master source (C2, 0.58.3). $0 and
     # database-only, so it is safe here where `pursue(external=False)` promises no WEB SEARCH.
     #
@@ -293,13 +347,29 @@ def pursue(target_id: str, *, external: bool = False, resurface: bool = True) ->
         job = db.create_job("discover", {"project_id": pid, "refine": q, "mode": "web_first"})
         ext.update(run=True, job_id=job["id"])
     steps.append(ext)
-    rec = {"at": time.time(), "steps": steps,
+    previous_external = saved.get("last_external")
+    if not previous_external and any(s.get("run") for s in saved.get("steps", []) if s["step"] in ("catalogue", "external")):
+        previous_external = {"at": saved["at"], "steps": [s for s in saved["steps"] if s["step"] in ("catalogue", "external")]}
+    rec = {"at": time.time(), "steps": steps, "question": q, "retrieval": retrieval,
+           "last_external": ({"at": time.time(), "steps": [s for s in steps if s["step"] in ("catalogue", "external")]}
+                             if external else previous_external),
            "where_to_look": [{k: r[k] for k in ("creator", "untapped", "read", "findings", "per_source", "why", "action")}
                              for r in look["rows"]]}
     with db.tx() as conn:
         conn.execute("UPDATE project_evidence_targets SET last_escalation=?, updated_at=? WHERE id=?", (json.dumps(rec), time.time(), target_id))
     db.kv_bump("research:targets_pursued")
-    return {"target": get_target(target_id), "escalation": rec}
+    return {"target": public_target(get_target(target_id)), "escalation": public_escalation(rec)}
+
+
+def public_escalation(receipt: dict[str, Any]) -> dict[str, Any]:
+    return {**receipt, "steps": [{k: v for k, v in step.items() if k not in ("snapshot", "revision")}
+                                for step in receipt.get("steps", [])]}
+
+
+def public_target(target: dict[str, Any]) -> dict[str, Any]:
+    if target and target.get("last_escalation"):
+        return {**target, "last_escalation": public_escalation(target["last_escalation"])}
+    return target
 
 
 # ---------------------------------------------------------------- tensions
@@ -783,7 +853,7 @@ def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]
     for c in all_claims:
         k = c.get("freshness_status") or "uncertain"
         freshness_counts[k] = freshness_counts.get(k, 0) + 1
-    return {"map": m, "claims": page, "claims_truncated": len(page) < len(all_claims), "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "freshness_counts": freshness_counts, "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
+    return {"map": m, "claims": page, "claims_truncated": len(page) < len(all_claims), "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "freshness_counts": freshness_counts, "targets": [public_target(t) for t in targets_all[:STATE_MAX_LIST]], "tensions": tensions_all[:STATE_MAX_LIST],
             "claim_stats": claims.stats(project_id)}
 
 

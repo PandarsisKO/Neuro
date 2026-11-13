@@ -766,4 +766,5 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
                 raise
             log.warning("suggest failed for %s: %s", sid, e)
             failed.append(sid)
-    return {"sources": len(ids), "done": done, "failed": len(failed), "skipped": skipped}
+    return {"sources": len(ids), "done": done, "failed": len(failed), "skipped": skipped,
+            **({"failed_source_ids": failed} if failed else {})}

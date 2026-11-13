@@ -1100,7 +1100,8 @@ def estimate_api_work(payload: dict[str, Any]) -> tuple[int, float]:
 
 
 def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transport: str = "interactive",
-            progress: Any = None, max_groups: int | None = None) -> dict[str, Any]:
+            progress: Any = None, max_groups: int | None = None,
+            on_write: Any = None) -> dict[str, Any]:
     """Normalize a bounded group of candidates with ONE structured call per EXTRACT_GROUP. Idempotent: a group whose
     extraction_hash is already stamped on its claims is skipped without spend.
 
@@ -1220,48 +1221,51 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                 "routing": saved_routing or providers.routing_json("claims.extract", model), "transport": transport}
         by_id = {c["id"]: c for c in group}
         t = time.time()
-        with db.tx() as conn:
-            for item in parsed.get("claims", []):
-                cid = item.get("id")
-                if cid not in by_id:
-                    continue
-                merge = item.get("merge_into")
-                if merge and merge in by_id and merge != cid:
-                    n_sup = conn.execute("UPDATE project_claims SET status='superseded', superseded_by=?, normalized=1, normalized_at=?, extraction_hash=?, updated_at=? WHERE id=? AND status='proposed'", (merge, t, ih, t, cid)).rowcount
-                    conn.execute("UPDATE claim_evidence SET claim_id=? WHERE claim_id=?", (merge, cid))
-                    if n_sup:
+        with db.batch():
+            with db.tx() as conn:
+                for item in parsed.get("claims", []):
+                    cid = item.get("id")
+                    if cid not in by_id:
+                        continue
+                    merge = item.get("merge_into")
+                    if merge and merge in by_id and merge != cid:
+                        n_sup = conn.execute("UPDATE project_claims SET status='superseded', superseded_by=?, normalized=1, normalized_at=?, extraction_hash=?, updated_at=? WHERE id=? AND status='proposed'", (merge, t, ih, t, cid)).rowcount
+                        conn.execute("UPDATE claim_evidence SET claim_id=? WHERE claim_id=?", (merge, cid))
+                        if n_sup:
+                            from . import ledger
+                            ledger.record(conn, by_id[cid].get("project_id"), event_type="claim_status_changed", object_type="claim", object_id=cid,
+                                          before={"status": "proposed"}, after={"status": "superseded", "superseded_by": merge})
+                        continue
+                    ctype = item.get("claim_type") if item.get("claim_type") in TYPES else by_id[cid]["claim_type"]
+                    fresh = item.get("freshness_class") if item.get("freshness_class") in FRESHNESS else by_id[cid]["freshness_class"]
+                    conn.execute("UPDATE project_claims SET text=?, claim_type=?, qualifiers=?, topic=?, freshness_class=?, normalized=1, normalized_at=?, extraction_hash=?, model=?, prompt_version=?, "
+                                 "schema_version=?, routing=?, transport=?, updated_at=? WHERE id=?",
+                                 ((item.get("text") or by_id[cid]["text"]).strip(), ctype, json.dumps(item.get("qualifiers") or {}), (item.get("topic") or by_id[cid]["topic"] or "")[:80].lower(),
+                                  fresh, t, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
+                    new_text = (item.get("text") or by_id[cid]["text"]).strip()
+                    if new_text != (by_id[cid]["text"] or "").strip():
                         from . import ledger
-                        ledger.record(conn, by_id[cid].get("project_id"), event_type="claim_status_changed", object_type="claim", object_id=cid,
-                                      before={"status": "proposed"}, after={"status": "superseded", "superseded_by": merge})
-                    continue
-                ctype = item.get("claim_type") if item.get("claim_type") in TYPES else by_id[cid]["claim_type"]
-                fresh = item.get("freshness_class") if item.get("freshness_class") in FRESHNESS else by_id[cid]["freshness_class"]
-                conn.execute("UPDATE project_claims SET text=?, claim_type=?, qualifiers=?, topic=?, freshness_class=?, normalized=1, normalized_at=?, extraction_hash=?, model=?, prompt_version=?, "
-                             "schema_version=?, routing=?, transport=?, updated_at=? WHERE id=?",
-                             ((item.get("text") or by_id[cid]["text"]).strip(), ctype, json.dumps(item.get("qualifiers") or {}), (item.get("topic") or by_id[cid]["topic"] or "")[:80].lower(),
-                              fresh, t, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
-                new_text = (item.get("text") or by_id[cid]["text"]).strip()
-                if new_text != (by_id[cid]["text"] or "").strip():
-                    from . import ledger
-                    ledger.record(conn, by_id[cid].get("project_id"), event_type="claim_statement_changed", object_type="claim", object_id=cid,
-                                  before={"text": (by_id[cid]["text"] or "")[:500]}, after={"text": new_text[:500]})
-                normalized += 1
-        from . import knowledge
-        # requirement provenance → the decomposition target ($0): a requirement the evidence attributes to a seller/listing
-        # (or cannot attribute) is not yet known to be a legal, licensing or service-performance rule — open the governing
-        # question rather than corroborating the listing
-        for item in parsed.get("claims", []):
-            q = item.get("qualifiers") or {}
-            cid = item.get("id")
-            if cid in by_id and q.get("imposed_by") in ("seller_or_listing", "unclear") and re.search(r"\b(must|required?|requires|needs? to|only)\b", (item.get("text") or "").lower()):
-                where = q.get("jurisdiction") or "the relevant jurisdiction"
-                knowledge.add_target(project_id, f"Is this a legal ownership, professional licensing or service-performance requirement in {where}, or only the seller's/listing's preference: {(item.get('text') or by_id[cid]['text'])[:140]}",
-                                     topic=(item.get("topic") or by_id[cid]["topic"]), claim_id=cid, sufficiency="governing",
-                                     preferred_classes=["authoritative", "expert"], closure="one current primary source (statute, board rule or licensing regulation) that either imposes the requirement or shows it is not imposed", origin="model", provenance=prov)
-        for tgt in parsed.get("targets", [])[:3]:
-            if knowledge.add_target(project_id, tgt.get("question") or "", topic=tgt.get("topic"), sufficiency=tgt.get("sufficiency") or "corroborative",
-                                    preferred_classes=tgt.get("preferred_classes") or [], closure=tgt.get("closure"), origin="model", provenance=prov):
-                targets += 1
+                        ledger.record(conn, by_id[cid].get("project_id"), event_type="claim_statement_changed", object_type="claim", object_id=cid,
+                                      before={"text": (by_id[cid]["text"] or "")[:500]}, after={"text": new_text[:500]})
+                    normalized += 1
+            from . import knowledge
+            # requirement provenance → the decomposition target ($0): a requirement the evidence attributes to a seller/listing
+            # (or cannot attribute) is not yet known to be a legal, licensing or service-performance rule — open the governing
+            # question rather than corroborating the listing
+            for item in parsed.get("claims", []):
+                q = item.get("qualifiers") or {}
+                cid = item.get("id")
+                if cid in by_id and q.get("imposed_by") in ("seller_or_listing", "unclear") and re.search(r"\b(must|required?|requires|needs? to|only)\b", (item.get("text") or "").lower()):
+                    where = q.get("jurisdiction") or "the relevant jurisdiction"
+                    knowledge.add_target(project_id, f"Is this a legal ownership, professional licensing or service-performance requirement in {where}, or only the seller's/listing's preference: {(item.get('text') or by_id[cid]['text'])[:140]}",
+                                         topic=(item.get("topic") or by_id[cid]["topic"]), claim_id=cid, sufficiency="governing",
+                                         preferred_classes=["authoritative", "expert"], closure="one current primary source (statute, board rule or licensing regulation) that either imposes the requirement or shows it is not imposed", origin="model", provenance=prov)
+            for tgt in parsed.get("targets", [])[:3]:
+                if knowledge.add_target(project_id, tgt.get("question") or "", topic=tgt.get("topic"), sufficiency=tgt.get("sufficiency") or "corroborative",
+                                        preferred_classes=tgt.get("preferred_classes") or [], closure=tgt.get("closure"), origin="model", provenance=prov):
+                    targets += 1
+            if on_write:
+                on_write()
     for n, c in enumerate(cands):
         if transport == "job" and n % EXTRACT_GROUP == 0:
             from .jobs import check_cancel
@@ -1463,18 +1467,17 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     ids = set(payload.get("claim_ids") or [])
     cands = [c for c in unnormalized(pid) if c["id"] in ids] if ids else None
     if ids and not cands:
+        _refresh_extracted_map(pid)
         return {"normalized": 0, "targets": 0, "calls": 0, "note": "already normalized by an earlier pass"}
     # The bulk pass yields after GROUPS_PER_RUN. A priority pass has a fixed, bounded set and runs to the end.
+    if not ids:
+        _defer_extraction_refresh(pid)
     res = extract(pid, cands=cands, transport="job", progress=progress,
-                  max_groups=None if ids else GROUPS_PER_RUN)
-    from . import knowledge
+                  max_groups=None if ids else GROUPS_PER_RUN, on_write=lambda: _defer_extraction_refresh(pid))
     written = res.get("normalized", 0)
-    if progress:
-        progress(None if res.get("more") else 0.95, f"Updating the research map · {written} claims written")
-    # The refresh is the long tail of this job on a big project; every phase it reports is a heartbeat, so the panel
-    # keeps saying what it is doing instead of "quiet for 26m" (Kyle's screenshot, 2026-09-29).
-    knowledge.refresh(pid, progress=(lambda m: progress(None, f"Updating the research map · {m}")) if progress else None)
     if res.get("more"):
+        if progress:
+            progress(None, f"{written} claims written · research map refresh queued")
         # 0.55.1: use the SHARED yield rather than leaning on maybe_extract happening to re-trigger. Everything
         # this run normalized is already stamped with its extraction_hash, so the requeued job resumes at the
         # first unfinished group and re-does nothing.
@@ -1482,6 +1485,10 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
         log.info("claims: yielding the worker after %d group(s), %d candidate(s) still to normalize for %s",
                  res.get("calls", 0), res.get("remaining", 0), pid[:8])
         raise Yield(f"normalized {res.get('normalized', 0)} — paused so other work can run, {res.get('remaining', 0)} to go")
+    if progress:
+        progress(0.95, f"Updating the research map · {written} claims written")
+    _refresh_extracted_map(pid, progress=(lambda m: progress(None, f"Updating the research map · {m}")) if progress else None,
+                           final=True)
     return res
 
 
@@ -1655,8 +1662,40 @@ def maybe_refresh(project_id: str) -> str | None:
         return None
 
 
+EXTRACTION_REFRESH_WINDOW_S = 180
+
+
+def _defer_extraction_refresh(project_id: str) -> None:
+    with db.batch():
+        conn = db.connect()
+        # Write first so the marker and deduplicated queue insert share the write transaction.
+        conn.execute("INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                     (f"claims:map_dirty:{project_id}", str(time.time())))
+        db.create_job("refresh_research", {"project_id": project_id, "after_extraction": True},
+                      lane="low", execution_policy="local_only",
+                      dedupe_key=f"refresh_research:extract:{project_id}",
+                      coalesce_until=time.time() + EXTRACTION_REFRESH_WINDOW_S)
+
+
+def _refresh_extracted_map(project_id: str, progress: Any = None, *, final: bool = False) -> bool:
+    from . import knowledge
+
+    with db.work_unit_lock(f"claims:extraction_map:{project_id}"):
+        started = time.time()
+        dirty = float(db.kv_get(f"claims:map_dirty:{project_id}") or 0)
+        covered = float(db.kv_get(f"claims:map_covered:{project_id}") or 0)
+        if not final and covered >= dirty:
+            return False
+        knowledge.refresh(project_id, progress=progress)
+        db.kv_set(f"claims:map_covered:{project_id}", str(started))
+        return True
+
+
 def run_refresh_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     pid = payload["project_id"]
+    if payload.get("after_extraction"):
+        refreshed = _refresh_extracted_map(pid, progress=(lambda m: progress(None, m)) if progress else None)
+        return {"project_id": pid, "refreshed": refreshed}
     if progress:
         progress(0.1, "bringing the research state up to date…")
     out = ensure(pid)

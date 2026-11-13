@@ -1505,7 +1505,8 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     # to catch. Cost of the feature: ~341 more input tokens on every chat call, about 5.8%.
     assert v["answer"]["calls"] == 34 and tot(v["answer"]) == 211650 and v["findings"]["calls"] == 9 and tot(v["findings"]) == 30297
     assert v["plan"]["calls"] == 2 and tot(v["plan"]) == 11026 and v["plan"]["cache_read"] == 4412
-    assert sum(tot(t) for t in v.values()) == 277869
+    # Exact query embeddings reuse 355 input tokens on this fixture. Generation stays frozen above.
+    assert sum(tot(t) for t in v.values()) == 277514
     assert v["answer"]["cache_read"] > 0                                     # the stable chat prefix is reused across questions
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
     assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000

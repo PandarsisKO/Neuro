@@ -5067,3 +5067,27 @@ Research JavaScript. An authenticated keyword challenge ran three
 queries and returned eight passages from a scope with 19 searchable
 sources. Health reported zero expired leases. The blind review form
 is at `/private/tmp/ns-challenge-blind-review/review.html` on this Mac.
+
+### 2026-11-12 — Reuse research work across projects (0.64.20)
+
+Base `cc3ecd6`, isolated worktree `/private/tmp/neuro-reuse-work`.
+The Claims bulk worker writes a dirty marker with each materialized group
+and uses the existing refresh queue with a three-minute eligibility window.
+A completed extraction refreshes immediately and covers an older queued pass.
+Saved Claim Challenge reviews retain exact matching judgments and search
+additions first, with an explicit full search and bounded coverage.
+
+Evidence Target receipts reuse the project, library and candidate stages
+independently. Source additions are searched separately when the previous
+scope is still current, and a full refresh and web search remain explicit
+actions. Exact query embeddings use a 256-entry in-process cache. The
+frozen fake Tier 1 corpus uses 355 fewer embedding input tokens, with
+the same answer, findings and Plan generation token totals.
+
+The Source drawer uses project-scoped read status and offers the matching
+retry or findings action. Master Plan checks remember completed inputs,
+including empty outcomes, and preserve rejection reasons. A previously
+rejected equivalent proposal needs a new verbatim evidence quotation in
+its rationale to reappear. The exact-edit option is limited to matching
+fields and creates a version that carries execution status and notes.
+Broader changes use the existing Plan rebuild.

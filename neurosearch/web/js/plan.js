@@ -62,19 +62,25 @@ globalThis.planUpdateEvidence = function planUpdateEvidence(update) {
 }
 globalThis.renderPlan = function renderPlan(r) {
   const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
-  const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted');
+  const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted' && !u.applied_plan_id);
+  const rejected = pl.updates.filter(u => u.status === 'rejected');
   const an = p.analysis || {}, facts = (state.project.facts || []);
   let h = `<div class="row mb-3"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
-    <button class="small" onclick="checkUpdates()">Check for updates</button>
+    <button class="small" onclick="checkUpdates(this)">Check for updates</button>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
   if (pending.length || accepted.length) {
     h += `<div class="banner"><b>Master Plan has ${pending.length} suggested update${pending.length === 1 ? '' : 's'}</b>` +
       pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>${planUpdateEvidence(u)}
         <div class="row" style="margin-top:6px"><button class="small primary" onclick="updStatus(${u.id},'accepted')">Accept change</button><button class="small" onclick="updStatus(${u.id},'rejected')">Keep current plan</button><button class="small ghost" onclick="researchThis(${JSON.stringify(u.section + ': ' + u.proposed + ' — is this right? What does the research say?').replace(/"/g, '&quot;')})">Research further</button></div></div>`).join('') +
-      (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
+      (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span>${r.can_apply_exact ? '<button class="small primary" onclick="applyUpdates(this, true)">Apply exact edits</button>' : ''}<button class="small" onclick="applyUpdates(this)">Rebuild with accepted changes</button></div>` : '') + `</div>`;
   }
 
+  if (rejected.length) {
+    h += `<details class="mb-3"><summary>Kept current plan (${rejected.length})</summary>
+      ${rejected.map(u => `<p><b>${esc(u.section)}</b> · ${esc(u.proposed)}
+        ${u.decision_reason ? `<br>Decision reason · ${esc(u.decision_reason)}` : ''}</p>`).join('')}</details>`;
+  }
   // ---------- START HERE: the short version ----------
   const rd = p.ready || {};
   const weekItem = (t, i) => { const done = planState.plan.items['this_week.' + i]?.status === 'complete';
@@ -212,13 +218,30 @@ globalThis.rebuildWithAnswers = async function rebuildWithAnswers() {
   await buildPlan('The user answered these questions — fold them in, drop the questions that are now answered, and ask the next most useful ones:\n' + answers.join('\n'));
 }
 
-globalThis.checkUpdates = async function checkUpdates() {
+globalThis.checkUpdates = async function checkUpdates(button) {
+  if (button) button.disabled = true;
   $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" id="chk"><span class="spin"></span> comparing new research against the plan…</div>');
-  try { const r = await post(`/api/projects/${state.project.id}/plan/check-updates`); await loadPlan(); if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted mb-2">No material changes — the plan still holds.</div>'); }
-  catch (e) { toast(e.message || e, 'err'); $('#chk')?.remove(); }
+  try {
+    const r = await post(`/api/projects/${state.project.id}/plan/check-updates`);
+    await loadPlan();
+    if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted mb-2">No new changes to review.</div>');
+  } catch (e) { toast(e.message || e, 'err'); $('#chk')?.remove(); }
+  finally { if (button) button.disabled = false; }
 }
-globalThis.updStatus = async function updStatus(id, status) { await post(`/api/plan-updates/${id}`, { status }); await loadPlan(); }
-globalThis.applyUpdates = async function applyUpdates() { $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding the plan with the accepted changes…</div>'); try { await post(`/api/projects/${state.project.id}/plan/apply`); } catch (e) { alert(e.message); } await loadPlan(); }
+globalThis.updStatus = async function updStatus(id, status) {
+  const reason = status === 'rejected' ? prompt('Why keep the current plan? (Optional)', '') : '';
+  if (reason === null) return;
+  await post(`/api/plan-updates/${id}`, { status, ...(reason ? { reason } : {}) });
+  await loadPlan();
+}
+globalThis.applyUpdates = async function applyUpdates(button, exact = false) {
+  if (button) button.disabled = true;
+  const projectId = state.project.id, planId = planState.plan.id;
+  $('#planWrap').insertAdjacentHTML('afterbegin', `<div class="muted"><span class="spin"></span> ${exact ? 'saving accepted edits…' : 'rebuilding with accepted changes…'}</div>`);
+  try { await post(`/api/projects/${projectId}/plan/apply`, exact ? { exact_plan_id: planId } : undefined); }
+  catch (e) { toast(e.message, 'err'); }
+  await loadPlan();
+}
 globalThis.startProject = async function startProject() { await post(`/api/plans/${planState.plan.id}/start`); await loadPlan(); }
 globalThis.researchThis = async function researchThis(q) {
   const c = await post('/api/conversations', { project_id: state.project.id, title: q.slice(0, 60) });

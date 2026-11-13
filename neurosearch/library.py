@@ -470,22 +470,30 @@ def library_scope(project_id: str | None) -> list[str]:
     return [s for s in ready if s not in mine]
 
 
-def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichment: bool = True, reason: str | None = None) -> dict[str, Any]:
+def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichment: bool = True, reason: str | None = None,
+           source_ids: list[str] | None = None, strict: bool = False, keyword_only: bool = False) -> dict[str, Any]:
     """Which sources the user ALREADY OWNS could answer `query`? Chunk-level retrieval first (nothing averaged away),
     then baseline/enriched profile term hits as ranking signal + explanation. Returns suggestions with provenance;
     marks the top unenriched hits as `wanted` (lazy enrichment) without ever waiting for it."""
     from . import perf
-    from .search import search
+    from .search import search, search_fts
     q = (query or "").strip()
     with perf.timed("recall.scope"):
         scope = library_scope(project_id)
+        if source_ids is not None:
+            requested = set(source_ids)
+            scope = [sid for sid in scope if sid in requested]
     if not q or not scope:
         return {"query": q, "suggestions": [], "scope": len(scope), "enrichment": {"wanted": 0}}
     # 0.62.1: the whole pass is staged in the timing ledger. Kyle measured a library-only Discover at **195 s**
     # with no model call, no web request and no dollars, against a UI that advertises about ten seconds — and the
     # only honest way to find that is to time the stages rather than reason about which one looks expensive.
     with perf.timed("recall.search"):
-        hits = search(q, limit=RECALL_CHUNKS, source_ids=scope, per_source_cap=PER_SOURCE_CHUNKS, reserve=0)
+        options = {"limit": RECALL_CHUNKS, "source_ids": scope, "per_source_cap": PER_SOURCE_CHUNKS, "reserve": 0}
+        if keyword_only:
+            hits = search_fts(q, **options)
+        else:
+            hits = search(q, **options, **({"strict": True} if strict else {}))
     qt = _tokens(q)
     with perf.timed("recall.anchor"):
         anchor = query_anchor(qt)

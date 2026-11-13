@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 
 import numpy as np
 
@@ -37,8 +38,20 @@ def embed_texts(texts: list[str], *, model: str | None = None) -> list[np.ndarra
     return out
 
 
+@lru_cache(maxsize=256)
+def _query_vector(text: str, model: str, context: tuple[str, bool]) -> np.ndarray:
+    return embed_texts([text], model=model)[0]
+
+
 def embed_query(text: str) -> np.ndarray:
-    return embed_texts([text])[0]
+    from hashlib import sha256
+
+    text = text[:8000]
+    model = settings.embedding_model
+    context = (str(getattr(db._local, "db_path", settings.db_path)), settings.fake_ai)
+    key = sha256(repr((text, model, context)).encode()).hexdigest()
+    with db.work_unit_lock(f"query-embedding:{key}"):
+        return _query_vector(text, model, context).copy()
 
 
 def embed_pending(limit: int = 5000, source_id: str | None = None) -> int:

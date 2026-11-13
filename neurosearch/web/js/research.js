@@ -85,7 +85,7 @@ globalThis.settleGap = async function settleGap(gap) {
 }
 // ---- S3: the source drawer — one place per source (value · findings · Claims · where used · staleness) ----
 globalThis.sourceDrawer = async function sourceDrawer(sid) {
-  $('#dlgBody').innerHTML = '<span class="spin"></span> reading everything this source gave…'; dlg.showModal();
+  $('#dlgBody').innerHTML = '<span class="spin"></span> reading everything this source gave…'; if (!dlg.open) dlg.showModal();
   let d; try { d = await api(`/api/projects/${state.project.id}/sources/${sid}/digest`); }
   catch (e) { $('#dlgBody').innerHTML = `<div class="muted">could not load: ${esc(e.message)}</div>`; return; }
   const s = d.source, v = d.value, st = d.staleness, u = d.used_in;
@@ -126,6 +126,21 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
   // any — project-scoped (sources_value.digest passes project_id through), so a capture from a different project
   // sharing this (dedup) source never shows here. The note is labelled as the user's own context, never merged
   // into "what it gave you" as if it were evidence itself.
+  const readStatus = d.read_status || {};
+  const readLabels = {
+    waiting_for_source: 'Waiting for the source to finish importing.',
+    queued: 'Findings are waiting in the queue.',
+    reading: 'Reading this source for findings.',
+    read: d.findings_total ? '' : 'Read complete. No findings were saved.',
+    source_unavailable: 'The source could not be read.',
+    read_failed: 'The findings read failed.',
+    no_text: 'There is no searchable text to read.',
+    unread: 'This project has not read the source for findings yet.',
+    outside_project: 'This source is outside this project.',
+  };
+  const readAction = readStatus.action === 'retry_source' ? 'Retry import'
+    : readStatus.action === 'suggest' ? (readStatus.state === 'read_failed' ? 'Retry findings' : 'Suggest findings') : '';
+  const readLine = readLabels[readStatus.state] || '';
   const cap = d.capture;
   const capModeWords = { full_page: 'the full page', visible_only: 'the visible area', partial_page: 'part of the page' };
   // A captured_at epoch is otherwise rendered in the browser's local clock with no indication of which clock it
@@ -173,7 +188,10 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
     ${group('suggested', 'Waiting for review')}
     ${group('reserve', 'Extracted beyond the cap', ' <span class="muted" style="font-weight:normal;font-size:12px">— lower importance, kept rather than thrown away</span>')}
     ${group('dismissed', 'Dismissed')}
-    ${d.findings_total ? '' : '<div class="muted" style="margin-top:10px">No findings from this source yet.</div>'}`;
+    ${readLine ? `<div class="muted mt-2" role="status">${esc(readLine)}
+      ${readStatus.detail ? `<span> · ${esc(readStatus.detail)}</span>` : ''}
+      ${readAction ? ` <button class="small" onclick="drawerReadAction('${sid}','${readStatus.action}')">${readAction}</button>` : ''}
+      </div>` : ''}`;
 }
 // E2 -- the archived copy. Deliberately NOT fetched when the drawer opens: it is the only thing in here that
 // reaches the public internet, and most of the time nobody wants it. The button is the consent.
@@ -215,6 +233,13 @@ globalThis.sourceArchived = async function sourceArchived(sid) {
 }
 globalThis.drawerBulk = async function drawerBulk(ids, status, sid) { if (!ids.length) return; await post('/api/notes/bulk-status', { note_ids: ids, status }); toast(`${status === 'approved' ? '✓ approved' : 'dismissed'} ${ids.length}`); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerNote = async function drawerNote(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
+globalThis.drawerReadAction = async function drawerReadAction(sid, action) {
+  try {
+    if (action === 'retry_source') await retry(sid);
+    else await suggestSource(sid);
+    await sourceDrawer(sid);
+  } catch (e) { toast(e.message, 'err'); }
+}
 globalThis.drawerRebuild = async function drawerRebuild(sid) { await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], source_ids: [sid], transport: 'interactive' }); toast('↻ queued'); dlg.close(); loadJobs(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerAccept = async function drawerAccept(sid) { await post(`/api/projects/${state.project.id}/staleness/accept`, { source_ids: [sid] }); toast('kept as still usable'); sourceDrawer(sid); loadStaleness(); }
 globalThis.askAboutSource = function askAboutSource(sid, title) {
@@ -395,7 +420,8 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
         <label>Exceptions or failures<input name="counter" maxlength="500" placeholder="When might this fail or give the opposite result?"></label>
         <label class="claim-search-choice"><input name="library" type="checkbox"> Include library leads</label>
         ${result.semantic_available ? '<label class="claim-search-choice"><input name="semantic" type="checkbox"> Search for similar wording using paid embeddings</label>' : ''}
-        <button class="small primary mt-2" type="submit">Search passages</button>
+        <button class="small primary mt-2" type="submit">Search or resume</button>
+        <button class="small ghost mt-2" type="submit" value="full">Search all passages again</button>
       </form>
       <div data-saved-challenge class="mt-2"></div>
       <div data-challenge-results class="mt-2"></div>
@@ -406,9 +432,9 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
   wireClaimChallenge(panel, projectId, claimId);
 }
 globalThis.claimChallengeSummary = function claimChallengeSummary(groups) {
-  const equivalent = scope => (groups[scope]?.passages || [])
-    .some(p => p.assessment === 'equivalent' && !p.same_origin_as_support);
-  const passages = Object.values(groups).flatMap(group => group.passages);
+  const reviewed = group => [...(group?.passages || []), ...(group?.earlier_assessments || [])].filter(p => !p.changed);
+  const equivalent = scope => reviewed(groups[scope]).some(p => p.assessment === 'equivalent' && !p.same_origin_as_support);
+  const passages = Object.values(groups).flatMap(reviewed);
   if (equivalent('project')) return 'Equivalent assertion reviewed in the project.';
   if (equivalent('library')) return 'Equivalent assertion reviewed in the library.';
   if (passages.some(p => p.assessment === 'equivalent')) return 'Equivalent wording reviewed from an already cited origin.';
@@ -428,7 +454,7 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
   const showSaved = review => {
     if (!saved || !review) return;
     const groups = Object.entries(review.scopes);
-    const passages = groups.flatMap(([scope, group]) => group.passages.map(p => ({ ...p, scope })));
+    const passages = groups.flatMap(([scope, group]) => [...group.passages, ...(group.earlier_assessments || [])].map(p => ({ ...p, scope })));
     const changed = review.claim_changed || passages.some(p => p.changed) || groups.some(([, group]) => group.scope_changed);
     const coverage = groups.map(([scope, group]) => `${group.passages.length} passages shown from ${group.sources_in_scope} ${scope} sources in scope`).join(' · ');
     saved.innerHTML = `<details><summary>Last saved assessment · ${esc(new Date(review.saved_at * 1000).toLocaleDateString())}</summary>
@@ -444,7 +470,18 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
   };
   let savedGeneration = 0;
   if (saved) api(reviewUrl).then(({ review }) => {
-    if (active() && !savedGeneration) showSaved(review);
+    if (active() && !savedGeneration) {
+      showSaved(review);
+      if (review && !review.claim_changed && !request && !form.matches(':focus-within')) {
+        const fields = ['query', 'alternate', 'precedent', 'counter'];
+        if (fields.slice(1).every(name => !form.elements[name].value) && !form.elements.library.checked
+            && !form.elements.semantic?.checked && form.elements.query.value === review.text.slice(0, 500)) {
+          fields.forEach((name, i) => { form.elements[name].value = review.queries[i] || ''; });
+          form.elements.library.checked = !!review.scopes.library;
+
+        }
+      }
+    }
   }).catch(() => { if (active() && !savedGeneration) saved.textContent = 'Could not load the saved assessment.'; });
   let request = 0;
   form.addEventListener('submit', async event => {
@@ -458,6 +495,7 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       counter: form.elements.counter.value.trim(),
       library: form.elements.library.checked,
       semantic: !!form.elements.semantic?.checked,
+      ...(event.submitter?.value === "full" ? { full: true } : {}),
     };
     results.innerHTML = listState('loading', { label: 'Searching for passages…' });
     let data;
@@ -477,21 +515,24 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
         originCounts.set(key, (originCounts.get(key) || 0) + 1);
       }
     }
+    const coverage = group => group.search_mode === 'resumed' ? 'Resumed the saved review for this collection.'
+      : group.search_mode === 'added' ? `Searched ${group.searched_sources} newly searchable sources. Earlier search ${new Date(group.previous_searched_at).toLocaleString()}.` : '';
     const passages = (scope, group) => `<h4 class="mt-3 mb-1">${scope === 'project' ? 'Project passages' : 'Library leads'}</h4>
       <div class="muted">${group.passages.length} of up to ${data.passage_limit_per_scope} passages shown · ${group.searchable_sources ?? group.sources_in_scope} of ${group.sources_in_scope} ready sources had searchable passages</div>
+      ${coverage(group) ? `<p class="muted">${esc(coverage(group))}</p>` : ''}
       ${scope === 'library' ? '<p class="muted">These sources are outside the project. Attach a source before using it as project evidence.</p>' : ''}
       ${group.passages.map(p => `<div class="kn"><div class="grow min-w-0">
         ${claimEvidenceLink(p)}${p.same_origin_as_support ? ' <span class="tag">Already cited origin</span>' : ''}
         ${originCounts.get(p.origin || p.source_id) > 1 ? ' <span class="tag">Shared source origin</span>' : ''}
         <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote>
         <label>Passage assessment <select class="w-auto" data-challenge-passage="${esc(p.chunk_id)}">
-          <option value="">Unreviewed</option>${Object.entries(intent).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
+          <option value="">Unreviewed</option>${Object.entries(intent).map(([value, label]) => `<option value="${value}" ${p.assessment === value ? 'selected' : ''}>${label}</option>`).join('')}
         </select></label>
       </div></div>`).join('') || '<p class="muted">No passages returned. Try different wording.</p>'}`;
     const methods = { keyword: 'Keyword search', hybrid: 'Keyword and similar wording search', mixed: 'Similar wording search available for part of the search' };
     results.innerHTML = `<p class="muted">${esc(checked)} · ${methods[data.method]}
       ${data.semantic_requested && data.method !== 'hybrid' ? ' · Keyword results used where similar wording search was unavailable.' : ''}</p>
-      <p class="muted">Searched ${data.queries.map(q => `“${esc(q)}”`).join(' and ')}. Results cover the highest-ranked passages shown below.</p>
+      <p class="muted">Searched ${data.queries.map(q => `“${esc(q)}”`).join(' and ')}. Results are limited to the passages shown.</p>
       <p class="muted">Compare what was measured, who it applies to, the conditions and the time period. Open the source if the excerpt leaves any of that unclear.</p>
       ${groups.map(([scope, group]) => passages(scope, group)).join('')}
       <p data-challenge-outcome role="status"></p>
@@ -499,6 +540,7 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       <button type="button" class="small primary mt-2" data-challenge-save>Save assessment</button>
       <button type="button" class="small ghost mt-2" data-challenge-download>Download assessment</button>
       <p data-challenge-save-status role="status"></p>`;
+    results.querySelector('[name="gaps"]').value = data.remaining_gaps || '';
     const selections = [...results.querySelectorAll('[data-challenge-passage]')];
     const outcome = results.querySelector('[data-challenge-outcome]');
     const assessedScopes = () => {
@@ -717,6 +759,14 @@ globalThis.resPursueMany = async function resPursueMany(i) {
   resSay(`checked this project, your library and previously seen sources — ${found} possible source${found === 1 ? '' : 's'} found. Nothing was attached; see each question.`);
   loadResearch();
 }
+function targetStepStatus(s) {
+  if (s.step === 'external') return s.run ? 'web search queued' : '';
+  if (s.step === 'catalogue' && !s.run) return '';
+  const stage = s.step.replaceAll('_', ' ');
+  if (s.search_mode === 'keyword_fallback') return `${stage}: ${s.found} from keyword search`;
+  if (s.search_mode === 'added') return `${stage}: ${s.new_found} new matches in ${s.searched_sources} added sources`;
+  return `${stage}: ${s.found}${s.search_mode === 'reused' ? ' from the last check' : ''}`;
+}
 globalThis.resQAct = async function resQAct(i, ai) {
   const q = RES.qs[i], a = (q.actions || [])[ai]; if (!q || !a) return;
   resSay(a.label + '…');
@@ -724,7 +774,7 @@ globalThis.resQAct = async function resQAct(i, ai) {
     const r = await post(a.endpoint, a.body || {});
     if (a.endpoint.endsWith('/pursue')) {
       const st = (r.escalation || {}).steps || [];
-      resSay(st.map(s => s.step === 'external' ? (s.run ? 'web search queued' : '') : `${s.step.replace('_', ' ')}: ${s.found}`).filter(Boolean).join(' · '));
+      resSay(st.map(targetStepStatus).filter(Boolean).join(' · '));
     } else if (a.endpoint.endsWith('/capture-best')) {
       const jobs_ = (r.started || []).filter(x => x.how === 'job').length, att = (r.started || []).length - jobs_;
       resSay(`${att ? att + ' attached from your library' : ''}${att && jobs_ ? ' · ' : ''}${jobs_ ? jobs_ + ' capture' + (jobs_ === 1 ? '' : 's') + ' queued' : ''}`); loadJobs();
@@ -760,7 +810,7 @@ globalThis.targetStatus = async function targetStatus(id, status) { await post(`
 globalThis.captureBest = async function captureBest(tid, n) { $('#resMsg').textContent = 'capturing…'; try { const r = await post(`/api/targets/${tid}/capture-best`, { n }); const jobs_ = r.started.filter(x => x.how === 'job').length, att = r.started.length - jobs_; $('#resMsg').textContent = `${att ? att + ' attached from the library' : ''}${att && jobs_ ? ' · ' : ''}${jobs_ ? jobs_ + ' capture' + (jobs_ === 1 ? '' : 's') + ' queued' + (r.started.some(x => x.acquisition_hint === 'browser_likely') ? ' (some will need your browser — see Sources → Browser capture)' : '') : ''}`; } catch (e) { $('#resMsg').textContent = e.message; } loadResearch(); loadJobs(); }
 globalThis.showKnown = async function showKnown(tid) { const k = await api(`/api/targets/${tid}/known`); $('#dlgBody').innerHTML = `<b>Known, not captured</b> <span class="muted">· ${k.known_uncaptured} source${k.known_uncaptured === 1 ? '' : 's'}${k.browser_likely ? ` · ${k.browser_likely} likely need your browser` : ''}</span>` + (k.best.map(b => `<div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><span class="grow"><a href="${esc(b.url)}" target="_blank">${esc(b.title || b.url)}</a> <span class="muted">· fit ${b.relevance ?? '?'}${b.num_comments ? ' · ' + b.num_comments + ' comments' : ''}${b.acquisition_hint === 'browser_likely' ? ' · browser capture likely' : ''}</span></span><button class="small ghost" onclick="post('/api/candidates/${b.candidate_id}/dismiss-link',{project_id:state.project.id,kind:'evidence_target',ref_id:'${tid}'}).then(()=>{dlg.close();loadResearch()})" title="Not useful for this question — the source stays known">Not for this</button></div>`).join('') || '<div class="muted">nothing linked yet — press Look on the question first</div>'); dlg.showModal(); }
 globalThis.addTarget = async function addTarget() { const q = $('#resTargetQ').value.trim(); if (!q) return; await post(`/api/projects/${state.project.id}/targets`, { question: q, sufficiency: $('#resTargetS').value }); $('#resTargetQ').value = ''; loadResearch(); }
-globalThis.pursueTarget = async function pursueTarget(id, external) { $('#resMsg').textContent = 'looking…'; try { const r = await post(`/api/targets/${id}/pursue`, { external }); const st = r.escalation.steps; $('#resMsg').textContent = st.map(s => s.step === 'external' ? (s.run ? 'web search queued' : '') : `${s.step.replace('_', ' ')}: ${s.found}`).filter(Boolean).join(' · '); } catch (e) { $('#resMsg').textContent = e.message; } loadResearch(); if (external) loadJobs(); }
+globalThis.pursueTarget = async function pursueTarget(id, external) { $('#resMsg').textContent = 'looking…'; try { const r = await post(`/api/targets/${id}/pursue`, { external }); const st = r.escalation.steps; $('#resMsg').textContent = st.map(targetStepStatus).filter(Boolean).join(' · '); } catch (e) { $('#resMsg').textContent = e.message; } loadResearch(); if (external) loadJobs(); }
 globalThis.renderResearchHeader = function renderResearchHeader(r) {
   const el = $('#discResearch'); if (!el) return;
   if (!r || !r.counts) { el.innerHTML = ''; return; }
