@@ -1,0 +1,11 @@
+Candidate ecb96a6, base d0a2a17, macOS arm64, Python 3.14.7. Private test databases, developer dotenv disabled by tests.
+Command: python -m pytest -q <sorted tests/test_*.py, assigned by file index modulo six>
+
+Shard 0: 460 passed, 1 warning in 60.87s (0:01:00)
+Shard 1: 447 passed, 1 warning in 73.23s (0:01:13)
+Shard 2: 399 passed, 1 warning in 41.68s
+Shard 3: 467 passed, 1 warning in 63.95s (0:01:03)
+Shard 4: 494 passed, 1 warning in 121.11s (0:02:01)
+Shard 5: 413 passed, 1 warning in 61.48s (0:01:01)
+
+Total: 2680 passed; all six exit codes 0.

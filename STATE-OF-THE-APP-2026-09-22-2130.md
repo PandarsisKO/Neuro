@@ -109,3 +109,11 @@ live queue recovery.
 Version **0.64.13** is live on the Mac. Jobs waiting for the connected
 ChatGPT plan's slot show “Queued for ChatGPT” and stay queued while the
 slot is occupied. The queue reports actual provider outages separately.
+
+## 2026-11-12 — Source profiles on this Mac (0.64.14)
+
+Requested source profiles default to Qwen3.5 9B on loopback Ollama on macOS.
+Pause Mac work is on the project list and in the project sidebar. It stops
+admission, lets the current source profile finish, and keeps the pause across
+restarts. The model unloads after each profile. Claude and ChatGPT can still
+process their own queues. Claims normalization remains on its existing route.

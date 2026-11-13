@@ -4855,3 +4855,24 @@ Fast-forwarded the Mac to the published `7c7b954`. The live app reloaded
 capacity waits stayed in the new state across three samples, with zero
 failed attempts and no extra worker claims during the sample. The active
 Claims queue had no paid API jobs. Startup reported zero expired leases.
+
+### 2026-11-12 — Default Mac work with a persistent pause (0.64.14)
+
+Base `d0a2a17`, runtime candidate `ecb96a6`, isolated worktree
+`/tmp/neurosearch-mac-profiles`. Kyle asked to run the local model by default
+with a pause button for video editing. Wanted source profiles reuse the
+library profile contract, provider ledger and durable profile queue.
+Qwen3.5 9B runs one source at a time on the Mac, charges $0 to the provider
+ledger, and never falls back to a cloud provider. Pause Mac work persists
+and holds new work; the current profile can finish and unload. The home
+header and project sidebar both show the control. Claims keeps its
+previous normalization route and evidence classification boundary.
+
+Four synthetic source profiles passed schema and preserved important scope.
+Chrome with real Ollama and private data verified pause during inference,
+saved output, persistence on navigation, and resume at desktop and narrow
+widths. No model remained loaded. Full pytest: 2680 passed in six shards.
+Tier 1 and release-check --no-pytest passed. Artifacts:
+`evals/release/mac-source-profile-pilot-20261112.jsonl`,
+`evals/release/mac-profiles-pytest-ecb96a6-20261112.txt` and
+`evals/release/release-check-0.64.14-ecb96a6-20261112-162346.{json,txt}`.

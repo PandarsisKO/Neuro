@@ -2471,3 +2471,28 @@ work alongside stage text and lease activity. A running job callback is
 scoped to its run. Harvest passes stop once the only remaining findings
 are intentionally ignored, and a subsequent request can check them again.
 The progress, tick, and harvest isolation gates cover these behaviors.
+
+## 0.64.14 — Source profiling on Kyle's Mac
+
+Kyle wants on-device work to run by default and a button to pause it before
+video editing. This admits only project-neutral source profiling in the
+existing source profile queue. Ollama 0.33.3 served Qwen3.5 9B (local model
+ID 56671c2ab938) over loopback on the M3 Max, with reasoning disabled and an
+8,192-token context. Four synthetic passages tested the production prompt
+and schema: a field log, a manufacturer manual, a single supplier quote,
+and an operator interview. All four were schema-valid in 8.51–10.71 s each.
+The profiles kept the dry/humid distinction, model-specific instructions,
+installation exclusion, and the interview's lack of measured savings.
+Outputs: `evals/release/mac-source-profile-pilot-20261112.jsonl`.
+
+The earlier gpt-oss:20b Claims smoke test returned schema-valid JSON but
+renamed all candidate IDs in one group and silently omitted a duplicate in
+both groups. Claims normalization and the long-window R9(c) gate remain
+separate. Source profiles generated on-device do not set Claims evidence
+class. Ollama failures never select a subscription or a paid route.
+
+Chrome against the isolated app and real Ollama confirmed default-on,
+pause during an active source profile, preservation of that profile, the
+paused state after navigation, and resume. After the drain, `ollama ps`
+showed no resident model. The worker admission condition serializes Mac
+batches even if two producers enqueue simultaneously.
