@@ -5329,3 +5329,25 @@ Plan, Research, and version scripts. Authenticated reads verified the
 execution view and milestone-first Markdown and HTML for both saved plans
 across seven projects. All six jobs from the pre-restart check were still
 present, with one running and five queued. No expired leases were reported.
+
+### 2026-11-12 — Full Master Plan and decision history (0.64.26 candidate)
+
+Base `be23472`, runtime candidate `4b7a9bb`, isolated worktree
+`/private/tmp/neuro-master-plan-full-view`. The milestone remains a
+summary. Section shortcuts scroll to the full plan, including completed
+and future phases, reasoning, alternatives, assumptions, costs, risks,
+evidence, and history. Recorded project decisions and reasons are
+visible after a rebuild even when the new plan omits the decision.
+History links to each saved plan and includes applied and rejected
+proposals across versions. Historical Claim links show current passage
+availability. Historical plan exports use saved content and item notes
+without incorporating current deadlines or facts.
+
+The 137-test baseline, 30 focused tests, and Tier 1 release check passed.
+Chrome checks covered 1,024, 390, and 320 px layouts and task progress.
+Read-only copies of both saved plans rendered all five and three phases,
+respectively. Release report:
+`evals/release/release-check-0.64.26-4b7a9bb-20261112-212728.{json,txt}`.
+The full rerun passed all 2,721 tests across six shards. The initial
+run hit a disk space limit. A byte-identical temporary copy of the
+19:45 backup was removed before rerunning with private test directories.
