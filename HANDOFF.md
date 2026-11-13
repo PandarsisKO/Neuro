@@ -5012,3 +5012,18 @@ inspected at 500 px and 1,050 px. The deterministic release check
 including Tier 1 passed. See
 `evals/release/release-check-0.64.18-12cce75-20261112-182652.{json,txt}`.
 The full suite passed all 2,694 tests across six shards.
+
+#### Live verification
+
+The Mac reloaded 0.64.18 from published `d1c656c`. The served Plan,
+Research and version scripts matched the checkout. Checked two saved
+plans and the saved-review route through the live API. Neither plan
+had a pending proposal with recorded Claim provenance, so that case
+and the save flow were exercised against isolated fixtures.
+
+The large-project baseline subsequently finished in 858.53 s versus
+78.70 s for the candidate. Claims, evidence targets, tensions and
+knowledge nodes matched exactly, excluding timestamps and embeddings,
+on all three tested projects. A separate full-scan comparison agreed
+with the indexed matcher on all 917 unlinked targets in the large
+project.

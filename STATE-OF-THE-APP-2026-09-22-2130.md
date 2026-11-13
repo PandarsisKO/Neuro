@@ -131,3 +131,17 @@ When Finding suggestions are ready and queued for the connected ChatGPT
 plan, they go ahead of Claims extraction on that plan. An in-flight
 request finishes. Claims can use Claude as usual, and eligible Findings
 can still run on the Mac in parallel.
+
+## 2026-11-12 — Faster research-map refresh (0.64.17)
+
+Evidence-target matching reuses a project lookup during a refresh.
+A large backup project went from 858.53 s to 78.70 s with matching
+research results. HANDOFF records the comparison across three
+projects and the ingestion-to-first-Finding baseline across four.
+
+## 2026-11-12 — Saved challenges and Plan evidence (0.64.18)
+
+Claim evidence can save and reopen the latest manual challenge
+assessment, with warnings when the Claim or reviewed passages have
+changed. Pending Master Plan updates with a recorded Claim link
+can show the Claim and its cited passages next to the proposed edit.
