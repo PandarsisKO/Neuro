@@ -353,6 +353,8 @@
   /* ---- plan ---- */
   .plan h2{margin-top:26px;font-size:17px;border-bottom:1px solid var(--line);padding-bottom:4px}
   .plan-header{flex-wrap:wrap}
+  .plan-header h2{min-width:16ch}
+  #planWrap #stalePlan{margin:0 0 12px}
   .plan-focus{margin:12px 0 18px}
   .plan-goal{font-size:18px;font-weight:600;margin:0 0 4px;max-width:65ch}
   .plan-approach{margin:5px 0 0}
@@ -363,13 +365,13 @@
   .plan-focus-grid.has-attention{grid-template-columns:repeat(2,minmax(0,1fr))}
   .plan-action{display:flex;align-items:flex-start;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
   .plan-action .body{flex:1 1 16ch;min-width:0;overflow-wrap:anywhere}
-  .plan-action select{max-width:100%;flex:0 0 auto}
+  .plan-action select{width:auto;max-width:100%;flex:0 0 auto}
   .plan-attention{border-top:1px solid var(--line);padding:8px 0}
   .plan-deadlines{margin:0 0 14px}
   .plan-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16ch),1fr));gap:8px;margin:8px 0;align-items:end}
   .plan-form label{min-width:0}
   .plan-changes{margin:0 0 10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
-  @media(max-width:760px){.plan-focus-grid.has-attention{grid-template-columns:minmax(0,1fr)}}
+  @media(max-width:760px){.plan-focus-grid.has-attention{grid-template-columns:minmax(0,1fr)}.plan-header h2{flex-basis:100%!important}}
   .refine{background:var(--banner);border:1px solid var(--banner-line);border-radius:12px;padding:12px 14px;margin:0 0 14px}
   .rq{padding:8px 0;border-top:1px solid var(--banner-line)}.rq.answered{opacity:.85}.rq .ans{color:var(--ok);margin-top:3px}
   .ptabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:6px 0 10px;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:2}

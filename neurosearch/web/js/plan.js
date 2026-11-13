@@ -15,6 +15,8 @@ globalThis.loadPlan = async function loadPlan() {
 }
 globalThis.renderNoPlan = function renderNoPlan() {
   const p = state.project;
+  const stale = $('#stalePlan');
+  if (stale && $('#planWrap').contains(stale)) $('#planWrap').after(stale);
   $('#planWrap').innerHTML = `<h2>Master Plan</h2>
     <div class="empty" style="margin-bottom:14px">Research answers <i>what do we need to know?</i> The Master Plan answers <i>given everything we know, how do we accomplish this?</i> — goal, recommended approach and alternatives, first steps you can start today, phases, dependencies, decisions (now vs later), tools, costs, risks with mitigations, beginner gotchas, what to ignore for now, open questions, and a ready-to-start checklist. Every recommendation is tied to its evidence and rated for confidence.</div>
     <div class="card"><b>Before building: tell the planner about the project</b>
@@ -217,7 +219,7 @@ globalThis.renderPlan = function renderPlan(r) {
     <button class="small" onclick="checkUpdates(this)">Check for updates</button>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
-  h += planFocus(r, E);
+  h += planFocus(r, E) + '<div data-plan-stale-slot></div>';
   if (pending.length || accepted.length) {
     h += `<details class="plan-changes" id="planChanges" ${r.showChanges ? 'open' : ''}><summary>Plan changes · ${pending.length} to review${accepted.length ? ` · ${accepted.length} ready to apply` : ''}</summary>` +
       pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>${planUpdateEvidence(u)}
@@ -350,7 +352,11 @@ globalThis.renderPlan = function renderPlan(r) {
     }
   }
   h += `</div>`;
-  $('#planWrap').innerHTML = h;
+  const stale = $('#stalePlan');
+  const wrap = $('#planWrap');
+  if (stale && wrap.contains(stale)) wrap.after(stale);
+  wrap.innerHTML = h;
+  if (stale) wrap.querySelector('[data-plan-stale-slot]').append(stale);
 }
 globalThis.filterEvidence = function filterEvidence(q) {
   q = q.trim().toLowerCase();
