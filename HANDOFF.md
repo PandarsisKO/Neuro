@@ -5098,3 +5098,10 @@ The Mac release check on runtime commit `4f7fff7` used a private data
 directory and `release-check --no-pytest` after the separate pytest run.
 The report records Tier 1, retrieval, Foundation and backup results in
 `evals/release/release-check-0.64.20-4f7fff7-20261112-190817.{json,txt}`.
+
+The Mac reloaded 0.64.20 after the fast-forward to published `3b31256`.
+The GitHub delivery check passed. Authenticated checks in two projects
+confirmed the Source drawer status, Plan edit availability, target
+response shape and keyword Claim Challenge. Served Plan, Research and
+version scripts matched the checkout. Health showed zero expired
+leases. The write flows were exercised in private test databases.
