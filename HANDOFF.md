@@ -5412,3 +5412,18 @@ the collapsed queue, mixed outcomes and both links with isolated data.
 Tier 1 and release-check passed. Independent Claim Challenge labels are
 still pending for the existing six-project review.
 Release report: `evals/release/release-check-0.64.28-4ef3ee1-20261113-082238.json`.
+
+### 2026-11-13 — Collection import readiness live and novelty lineage audit
+
+Published `40dfade` to GitHub main and passed the delivery check. The
+live app reported 0.64.28 with matching Sources assets. The jobs API
+responded in both modes across seven projects, with zero expired leases.
+The first tracked import was exercised on an isolated app instance.
+
+Checked the three equivalent passages from the existing blinded
+assistant review against a private copy of the verified 08:23 backup.
+Two shared the recorded origin of existing support. The third was a
+separate source record from the same domain with no canonical Work
+association, so independent provenance remains unverified. This audit
+used the existing Claim Challenge origin rule. It does not substitute
+for blind human labels or validate a production false-positive rate.
