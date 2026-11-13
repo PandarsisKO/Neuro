@@ -1055,6 +1055,9 @@ globalThis.collectionImportVisible = false;
 globalThis.renderCollectionImport = function renderCollectionImport(batch) {
   const slot = $('#collectionImport');
   if (!slot) return;
+  const revision = JSON.stringify(batch || null);
+  if (slot.dataset.revision === revision) return;
+  slot.dataset.revision = revision;
   slot.hidden = !batch;
   if (!batch) {
     slot.replaceChildren();

@@ -3167,7 +3167,8 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
     conn = connect()
     latest = conn.execute(
         """SELECT json_extract(payload, '$.collection_import_id') AS batch_id,
-                  json_extract(payload, '$.collection_id') AS collection_id
+                  json_extract(payload, '$.collection_id') AS collection_id,
+                  json_extract(payload, '$.collection_import_started') AS started
            FROM jobs WHERE json_extract(payload, '$.collection_import_project')=?
            ORDER BY json_extract(payload, '$.collection_import_started') DESC LIMIT 1""", (project_id,)).fetchone()
     if not latest:
@@ -3217,7 +3218,7 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
                      AND length(trim(json_extract(c.value, '$.snippet')))>0
                      AND length(trim(json_extract(c.value, '$.timestamp')))>0)
                ORDER BY n.created_at, n.id LIMIT 1""",
-            (project_id, min(row["created_at"] for row in rows), json.dumps(list(searchable)))).fetchone())
+            (project_id, latest["started"], json.dumps(list(searchable)))).fetchone())
 
     first_source = next(iter(searchable.items()), None)
     collection = conn.execute("SELECT title FROM collections WHERE id=?", (latest["collection_id"],)).fetchone()

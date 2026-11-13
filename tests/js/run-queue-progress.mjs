@@ -58,7 +58,10 @@ try {
   importBatch.source = { id: 'abc', title: 'Title' };
   importBatch.finding = { source_id: 'abc', status: 'suggested' };
   window.renderCollectionImport(importBatch);
-  importSlot.querySelector('[data-import-source]').click();
+  const sourceButton = importSlot.querySelector('[data-import-source]');
+  window.renderCollectionImport(importBatch);
+  assert.equal(importSlot.querySelector('[data-import-source]'), sourceButton);
+  sourceButton.click();
   assert.equal(opened, 'abc');
   importSlot.querySelector('[data-import-finding]').click();
   assert.deepEqual(opened, ['abc', 'suggested']);
