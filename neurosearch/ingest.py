@@ -150,6 +150,8 @@ def ingest_url(
         _cand.remember([{"external_id": e["id"], "url": e["url"], "title": e.get("title"), "description": e.get("description"), "duration": e.get("duration"),
                          "view_count": e.get("view_count"), "creator": info.get("title") if kind == "channel" else e.get("channel"), "published_at": e.get("published_at")}
                         for e in entries], "youtube", project_id, {"collection_id": coll["id"], "kind": kind, "title": coll.get("title")})
+        if not review or not proposed:
+            db.record_collection_cutoff(project_id, import_batch, coll["id"], before_cutoff)
         if review and proposed:
             db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "before_cutoff": before_cutoff, "newest_first": kind == "channel",
                                                           "project_id": project_id, "max_videos": mx, "ranked": False, "counts": counts}))
@@ -260,24 +262,29 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
     to them they never formed. A deliberate per-item skip IS that opinion, and is worth full weight."""
     from .jobs import FIRST_WAVE_RANKED
 
-    import json as _json
-    meta = {}
-    try:
-        meta = _json.loads(db.kv_get(f"review:{collection_id}") or "{}")
-    except ValueError:
-        pass
+    meta = db.review_meta(collection_id)
     pid = meta.get("project_id") or db.collection_project(collection_id)
     # relevance is project-relative: fetched WITH the project so the Candidate Index remembers each unchosen row's
     # score (before 2026-09-18 this was fetched first, without it, and every skipped candidate was filed scoreless)
-    rows = db.proposed_sources(collection_id, pid)
+    min_date = meta.get("min_date")
+    rows = db.proposed_sources(collection_id, pid, include_candidate_dates=bool(min_date))
     chosen = set(source_ids) if source_ids is not None else {r["id"] for r in rows}
     import_batch = _collection_import(pid)
-    started, dropped = 0, 0
+    date_skips: dict[str, tuple[str, str]] = {}
+    if min_date:
+        for row in rows:
+            if row["platform"] != "youtube" or row["id"] not in chosen:
+                continue
+            published = row.get("published_at") or row.get("candidate_published_at")
+            reason = _listing_cutoff_reason(published, min_date)
+            if reason:
+                date_skips[row["id"]] = (published, reason)
+    started, dropped, skipped_before_queue = 0, 0, 0
     if pid:
         # G3: skipped ≠ forgotten. The Candidate Index keeps every proposal with WHY it was not selected; chosen ones resolve to their source.
         from . import candidates as _cand
         rel = {r["id"]: (r.get("relevance"), r.get("relevance_why")) for r in rows}
-        _cand.mark_by_source(pid, [r["id"] for r in rows if r["id"] in chosen], "acquired", "selected in review", rel)
+        _cand.mark_by_source(pid, [r["id"] for r in rows if r["id"] in chosen and r["id"] not in date_skips], "acquired", "selected in review", rel)
         gated = [r for r in rows if r["id"] not in chosen and r.get("access_gate")]
         # deliberate, one-at-a-time rejections: the person's own verdict, never the ranker's
         deliberate = {r["id"] for r in rows if r["id"] in set(dismissed_ids or ()) and r["id"] not in chosen
@@ -328,7 +335,15 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
         for g in gated:                                            # remembered with its relevance; never ingestible as things stand
             _cand.mark_by_source(pid, [g["id"]], "needs_membership", _cand.GATE_LABEL.get(g["access_gate"], g["access_gate"]), rel)
     for r in rows:
-        if r["id"] in chosen:
+        if r["id"] in date_skips:
+            published, reason = date_skips[r["id"]]
+            with db.tx() as conn:
+                skipped_before_queue += conn.execute(
+                    """UPDATE sources SET published_at=?, status='skipped', error=?, updated_at=?
+                       WHERE id=? AND status='proposed'""",
+                    (published, reason, db.now(), r["id"]),
+                ).rowcount
+        elif r["id"] in chosen:
             db.set_source_status(r["id"], "pending")
             # proposed_sources returns the highest-ranked selections first. Give the collection a small
             # head start so a full approval cannot keep the next collection's first sources queued behind it.
@@ -348,8 +363,10 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
         else:
             db.delete_source(r["id"])
             dropped += 1
+    if started or skipped_before_queue:
+        db.record_collection_cutoff(pid, import_batch, collection_id, meta.get("before_cutoff", 0) + skipped_before_queue)
     db.kv_set(f"review:{collection_id}", None)
-    return {"collection_id": collection_id, "started": started, "dropped": dropped,
+    return {"collection_id": collection_id, "started": started, "dropped": dropped, "before_cutoff": skipped_before_queue,
             "dismissed": len(set(dismissed_ids or ()) - set(chosen))}
 
 

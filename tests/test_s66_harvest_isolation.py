@@ -344,6 +344,8 @@ def test_collection_uses_listing_cutoff_without_queueing_old_video(isolated, mon
         assert ingest.approve_proposed(result["collection_id"])["started"] == 3
     else:
         assert result["queued"] == 3
+    summary = api.api_project_jobs(project["id"], with_import=True)["collection_import"]
+    assert summary["skipped_before_queue"] == 1
     queued = [j for j in db.list_jobs() if j["kind"] == "ingest_source"]
     assert {j["payload"]["source_id"] for j in queued} == {
         db.find_source("youtube", entry["id"])["id"] for entry in videos[2:]
@@ -361,3 +363,44 @@ def test_sources_add_route_prioritizes_a_direct_url(isolated):
     add = api.api_add(project["id"], api.AddIn(input="https://example.com/article", action="page"))
     assert db.claim_job(kinds=("ingest_url", "ingest_source"))["id"] == add["jobs"][0]
     assert db.claim_job(kinds=("ingest_url", "ingest_source"))["id"] == earlier["id"]
+
+
+@pytest.mark.parametrize("include_unknown", [True, False])
+def test_approval_reuses_dates_from_legacy_candidate_records(isolated, monkeypatch, include_unknown):
+    from neurosearch import api, candidates, ingest
+
+    pid = db.create_project("Legacy review")["id"]
+    cid = db.upsert_collection("channel", "legacy-review", "https://www.youtube.com/@legacy-review", "Legacy review")["id"]
+    db.add_project_collections(pid, [cid])
+    items = [("old", None, "2023-12-31")]
+    if include_unknown:
+        items += [("unknown", None, None), ("invalid", None, "2023-02-31"),
+                  ("boundary", None, "2024-01-01"), ("new-source-date", "2024-02-01", "2023-01-01")]
+    sources = {}
+    for name, source_date, candidate_date in items:
+        url = f"https://www.youtube.com/watch?v={name}"
+        sources[name] = db.upsert_source(platform="youtube", external_id=name, url=url, status="proposed",
+                                         published_at=source_date)["id"]
+        db.link_source_collection(sources[name], cid)
+        candidates.remember([{"external_id": name, "url": url, "published_at": candidate_date}],
+                            "youtube", pid, {"collection_id": cid})
+    db.kv_set(f"review:{cid}", db.json.dumps({"project_id": pid, "min_date": "2024-01-01"}))
+    monkeypatch.setattr(ingest.media, "fetch_info", lambda *args, **kwargs: pytest.fail("unexpected per-video fetch"))
+
+    result = ingest.approve_proposed(cid, list(sources.values()))
+    assert result["before_cutoff"] == 1 and result["started"] == len(items) - 1
+    old = db.get_source(sources["old"])
+    assert old["status"] == "skipped" and old["published_at"] == "2023-12-31"
+    queued = db.list_jobs()
+    assert {j["payload"]["source_id"] for j in queued} == set(sources.values()) - {old["id"]}
+    batch = api.api_project_jobs(pid, with_import=True)["collection_import"]
+    assert batch["total"] == len(queued) and batch["skipped_before_queue"] == 1
+    if include_unknown:
+        job = next(j for j in queued if j["payload"]["source_id"] == sources["unknown"])
+        db.update_job(job["id"], status="done", result={"skipped": True, "reason": "published 2023-01-01, before cutoff 2024-01-01"})
+        batch = api.api_project_jobs(pid, with_import=True)["collection_import"]
+        assert batch["skipped_after_queue"] == 1 and batch["counts"]["skipped"] == 1
+    assert ingest.approve_proposed(cid, [old["id"]])["before_cutoff"] == 0
+    assert api.api_project_jobs(pid, with_import=True)["collection_import"]["skipped_before_queue"] == 1
+    retry = db.get_job(api.api_retry(old["id"])["job"])
+    assert retry["payload"]["source_id"] == old["id"] and "min_date" not in retry["payload"]

@@ -147,7 +147,7 @@ globalThis.rvStart = async function rvStart(id, btn) {
   if (btn) { btn.disabled = true; btn.textContent = `Starting ${ids.length}…`; }
   try {
     const r = await post(`/api/collections/${id}/approve`, { source_ids: ids });
-    toast(`▶ ${r.started} video${r.started === 1 ? '' : 's'} queued for transcript + findings${r.dropped ? ` · ${r.dropped} unticked ones dropped` : ''}`);
+    toast(`▶ ${r.started} video${r.started === 1 ? '' : 's'} queued for transcript + findings${r.before_cutoff ? ` · ${r.before_cutoff} skipped before the date cutoff` : ''}${r.dropped ? ` · ${r.dropped} unticked ones dropped` : ''}`);
     delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; globalThis.rvSig = null;
     loadReviews(); loadJobs(); loadSources();
   } catch (e) {
@@ -173,7 +173,7 @@ globalThis.rvFocus = function rvFocus(id) {
     })),
     onSubmit: async ({ keep, drop }) => {
       const r = await post(`/api/collections/${id}/approve`, { source_ids: keep, dismissed_ids: drop });
-      toast(`▶ ${r.started} queued${r.dismissed ? ` · ${r.dismissed} recorded as your own "no"` : ''}`);
+      toast(`▶ ${r.started} queued${r.before_cutoff ? ` · ${r.before_cutoff} skipped before the date cutoff` : ''}${r.dismissed ? ` · ${r.dismissed} recorded as your own "no"` : ''}`);
       delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; globalThis.rvSig = null;
       loadReviews(); loadJobs(); loadSources();
     },

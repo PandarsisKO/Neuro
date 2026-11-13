@@ -1083,10 +1083,11 @@ globalThis.renderCollectionImport = function renderCollectionImport(batch) {
   const c = batch.counts;
   const outcomes = [
     [c.queued, 'queued'], [c.running, 'processing'], [c.external_pending, 'waiting on external work'],
-    [c.shared, 'being imported elsewhere'], [c.failed, 'failed'], [c.skipped, 'skipped'], [c.cancelled, 'cancelled'],
+    [c.shared, 'being imported elsewhere'], [c.failed, 'failed'], [(c.skipped || 0) - (batch.skipped_after_queue || 0), 'skipped'], [c.cancelled, 'cancelled'],
+    [batch.skipped_before_queue, 'skipped before queueing (date cutoff)'], [batch.skipped_after_queue, 'skipped after checking metadata (date cutoff)'],
   ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
   slot.innerHTML = `<div class="row" style="align-items:baseline;flex-wrap:wrap;padding-bottom:4px">
-    <strong>${esc(batch.title)}</strong><span class="muted">${c.done} of ${batch.total} import jobs completed${outcomes.length ? ' · ' + outcomes.join(' · ') : ''}</span></div>
+    <strong>${esc(batch.title)}</strong><span class="muted">${batch.total ? `${c.done} of ${batch.total} import jobs completed` : 'No import jobs queued'}${outcomes.length ? ' · ' + outcomes.join(' · ') : ''}</span></div>
     <div class="row" style="align-items:baseline;flex-wrap:wrap;padding-bottom:8px">
       ${batch.source ? `<span>${batch.searchable} searchable</span><button type="button" class="small ghost" data-import-source="${esc(batch.source.id)}">Open ${esc(batch.source.title)}</button>`
         : '<span class="muted">No searchable sources yet</span>'}

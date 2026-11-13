@@ -3172,6 +3172,20 @@ def list_project_jobs(project_id: str, source_ids: Iterable[str], *, limit: int 
     return [row_to_dict(r) for r in out]  # type: ignore[misc]
 
 
+def record_collection_cutoff(project_id: str | None, batch: dict[str, Any], collection_id: str, skipped: int) -> None:
+    """Remember the newest batch's pre-queue skips, including batches with no jobs."""
+    if not project_id or not skipped:
+        return
+    key = f"collection_cutoff:{project_id}"
+    receipt = {"batch_id": batch["collection_import_id"], "collection_id": collection_id,
+               "started": batch["collection_import_started"], "skipped": skipped}
+    with tx() as conn:
+        conn.execute("""INSERT INTO kv (key, value) VALUES (?,?)
+                     ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                     WHERE json_extract(excluded.value, '$.started') >= json_extract(kv.value, '$.started')""",
+                     (key, json.dumps(receipt)))
+
+
 def latest_collection_import(project_id: str, project_sources: set[str]) -> dict[str, Any] | None:
     """Project-local readiness for the newest tracked collection import, using its full set of jobs."""
     conn = connect()
@@ -3181,12 +3195,17 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
                   json_extract(payload, '$.collection_import_started') AS started
            FROM jobs WHERE json_extract(payload, '$.collection_import_project')=?
            ORDER BY json_extract(payload, '$.collection_import_started') DESC LIMIT 1""", (project_id,)).fetchone()
+    cutoff = json.loads(kv_get(f"collection_cutoff:{project_id}") or "{}")
+    if cutoff and (not latest or cutoff["started"] > latest["started"]):
+        latest = cutoff
     if not latest:
         return None
+    skipped_before_queue = cutoff["skipped"] if cutoff.get("batch_id") == latest["batch_id"] else 0
 
     rows = conn.execute(
         """SELECT j.status, j.created_at, j.finished_at, s.id AS source_id, s.title, s.url, s.status AS source_status,
                   (s.status='ready' AND EXISTS(SELECT 1 FROM chunks WHERE source_id=s.id)) AS searchable,
+                  json_extract(j.result, '$.reason') LIKE 'published %, before cutoff %' AS before_cutoff,
                   CASE WHEN j.status='done' THEN
                     CASE WHEN json_extract(j.result, '$.skipped') THEN 'skipped'
                          WHEN json_extract(j.result, '$.failed') OR j.message LIKE 'dismissed — %' THEN 'failed'
@@ -3197,10 +3216,11 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
            WHERE json_extract(j.payload, '$.collection_import_id')=?
              AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id=j.id AND e.event_type='retried')
            ORDER BY j.finished_at NULLS LAST, j.id""", (latest["batch_id"],)).fetchall()
-    if not rows:
+    if not rows and not skipped_before_queue:
         return None
     counts = dict.fromkeys(("queued", "running", "external_pending", "done", "failed", "cancelled", "skipped", "shared"), 0)
     searchable = {}
+    skipped_after_queue = 0
     for row in rows:
         outcome = row["outcome"]
         if row["searchable"] and row["source_id"] in project_sources and outcome in ("done", "shared", *JOB_ACTIVE):
@@ -3211,8 +3231,10 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
             elif row["source_status"] in ("failed", "skipped"):
                 outcome = row["source_status"]
         counts[outcome] += 1
+        if outcome == "skipped" and row["before_cutoff"]:
+            skipped_after_queue += 1
     active = sum(counts[k] for k in JOB_ACTIVE)
-    last_finished = max((row["finished_at"] or row["created_at"]) for row in rows)
+    last_finished = max((row["finished_at"] or row["created_at"] for row in rows), default=latest["started"])
     if not active and last_finished < now() - 86400:
         return None
 
@@ -3234,6 +3256,7 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
     collection = conn.execute("SELECT title FROM collections WHERE id=?", (latest["collection_id"],)).fetchone()
     return {"title": (collection["title"] if collection else None) or "Collection import",
             "total": len(rows), "counts": counts, "searchable": len(searchable),
+            "skipped_before_queue": skipped_before_queue, "skipped_after_queue": skipped_after_queue,
             "source": {"id": first_source[0], "title": first_source[1]} if first_source else None,
             "finding": first_finding}
 
@@ -3899,15 +3922,18 @@ def skip_queued_siblings(collection_id: str, reason: str) -> int:
     return n
 
 
-def proposed_sources(collection_id: str, project_id: str | None = None) -> list[dict[str, Any]]:
+def proposed_sources(collection_id: str, project_id: str | None = None, *, include_candidate_dates: bool = False) -> list[dict[str, Any]]:
     """Proposed (unapproved) sources of a listing. Relevance is project-relative, so it comes from
     project_source_analysis for the given project (None → unranked order)."""
     if project_id is None:
         project_id = collection_project(collection_id)
+    candidate_date = ", c.published_at AS candidate_published_at" if include_candidate_dates else ""
+    candidate_join = "LEFT JOIN candidates c ON c.platform=s.platform AND c.external_id=s.external_id" if include_candidate_dates else ""
     out = []
     for r in connect().execute(
-            """SELECT s.*, a.relevance AS a_relevance, a.relevance_why AS a_relevance_why, a.updated_at AS a_relevance_at
+            f"""SELECT s.*{candidate_date}, a.relevance AS a_relevance, a.relevance_why AS a_relevance_why, a.updated_at AS a_relevance_at
                FROM sources s JOIN source_collections sc ON sc.source_id=s.id
+               {candidate_join}
                LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=? AND a.analysis_kind='relevance'
                WHERE sc.collection_id=? AND s.status='proposed'
                ORDER BY (s.access_gate IS NOT NULL), (a.relevance IS NULL), a.relevance DESC, s.created_at""", (project_id, collection_id)).fetchall():
