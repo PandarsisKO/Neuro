@@ -4884,3 +4884,24 @@ Published `0ea8617` to GitHub main and passed `tools/git_sync_check.py
 and unpaused. There were 56 wanted profiles before activation. A live
 profile reached `current` with model `qwen3.5:9b` and transport `ollama`,
 verified through the app API. The Mac queue was left enabled.
+
+### 2026-11-12 — Mac Findings overflow (0.64.15)
+
+Base `d462663`, tested candidate `13b7586`, isolated worktree
+`/tmp/neurosearch-local-research`. Gemma 4 26B passed the Findings quote
+and evidence gates. The 35B Qwen passed those gates but has one slot
+per Ollama runner and did not pass Claims. Gemma also failed Claims
+attribution. All model and concurrency results are recorded in
+`evals/r9/mac-research-models-20261112.json`.
+
+Existing analysis workers can claim at most two ordinary Findings jobs
+on the Mac when they are parked on budget or when ChatGPT is occupied.
+They preserve completed windows and respect the Mac pause. Two real
+Ollama jobs overlapped in a private database and saved suggestions at
+$0 while another job remained queued during the pause. The installed
+Ollama service confirmed two slots and unloaded on drain. The Mac
+deployment enables this route via `NEUROSEARCH_MAC_FINDINGS=1`.
+
+All 2682 pytest tests passed. Tier 1 and release-check passed.
+See `evals/release/mac-findings-pytest-13b7586-20261112.txt` and
+`evals/release/release-check-0.64.15-13b7586-20261112-172744.{json,txt}`.
