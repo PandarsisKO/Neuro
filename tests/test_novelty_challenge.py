@@ -117,3 +117,48 @@ def test_outlier_prompt_only_suppressed_by_current_equivalent_independent_suppor
     with db.tx() as conn:
         conn.execute("UPDATE claim_evidence SET stale=1 WHERE id=?", (evidence["id"],))
     assert outlier()
+
+
+def test_saved_challenge_reopens_and_flags_revised_evidence(client):
+    pid = db.create_project("Saved research challenge")["id"]
+    other = db.create_project("Other project")["id"]
+    claim = claims.add_claim(pid, "Roof vents lower storage temperatures.")
+    sid = _source(pid, "challenge-saved-vent", "Roof vents lower storage temperatures.")
+    path = f"/api/projects/{pid}/claims/{claim['id']}/challenge"
+    found = client.post(path, json={}, headers=H).json()
+    passage, = found["scopes"]["project"]["passages"]
+    passage.update(assessment="equivalent", text="Untrusted replacement")
+    found["remaining_gaps"] = "Check other climates"
+    saved = client.put(path + "/review", json=found, headers=H)
+    assert saved.status_code == 200, saved.text
+    result = client.get(path + "/review", headers=H).json()["review"]
+    stored, = result["scopes"]["project"]["passages"]
+    assert stored["assessment"] == "equivalent"
+    assert stored["text"] == "Roof vents lower storage temperatures."
+    assert result["remaining_gaps"] == "Check other climates"
+    assert not result["claim_changed"] and not stored["changed"]
+    assert not claims.get(claim["id"])["evidence"]
+    assert client.put(path.replace(pid, other) + "/review", json=found, headers=H).status_code == 404
+
+    revised = [{"start": 40, "end": 55, "text": "Roof vents increased storage temperatures."}]
+    db.replace_transcript(sid, revised, revised)
+    result = client.get(path + "/review", headers=H).json()["review"]
+    assert result["scopes"]["project"]["passages"][0]["changed"]
+    assert client.put(path + "/review", json=found, headers=H).status_code == 409
+
+
+def test_pending_plan_proposal_shows_recorded_claim_and_passage(client):
+    pid = db.create_project("Plan with evidence")["id"]
+    claim = claims.add_claim(pid, "Roof vents lower storage temperatures.")
+    sid = _source(pid, "plan-evidence-vent", claim["text"])
+    claims.add_evidence(claim["id"], sid, excerpt=claim["text"], locator="0:40")
+    plan = db.save_plan(pid, {}, {})
+    db.add_plan_updates(plan["id"], [
+        {"section": "ventilation", "proposed": "Add rooftop vents", "claim_id": claim["id"]},
+        {"section": "monitoring", "proposed": "Log daytime temperatures"},
+    ])
+    data = client.get(f"/api/projects/{pid}/plan", headers=H).json()
+    linked, unlinked = data["plan"]["updates"]
+    assert linked["claim_evidence"]["text"] == claim["text"]
+    assert linked["claim_evidence"]["supporting"][0]["locator"] == "0:40"
+    assert "claim_evidence" not in unlinked

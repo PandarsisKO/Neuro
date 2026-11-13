@@ -20,7 +20,8 @@ import secrets
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 import anyio
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -2594,6 +2595,9 @@ def api_plan(project_id: str) -> dict[str, Any]:
     from . import planner
     plan = db.latest_plan(project_id)
     versions = db.list_plans(project_id)
+    if plan:
+        from . import plan_narrative
+        plan_narrative.attach_update_evidence(project_id, plan["updates"])
     for v in versions:                                  # older versions are superseded, never "current"
         v["label"] = "current" if plan and v["id"] == plan["id"] else "superseded"
     return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions}
@@ -3276,6 +3280,50 @@ def api_claim_challenge(project_id: str, claim_id: str, body: ClaimChallengeIn) 
     if result is None:
         raise HTTPException(404, "claim not found in project")
     return result
+
+
+class ChallengePassageIn(BaseModel):
+    chunk_id: int
+    source_id: str = Field(max_length=100)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision: str | None = Field(max_length=100)
+    assessment: Literal["", "equivalent", "contradiction", "qualification", "irrelevant", "uncertain"]
+
+
+class ChallengeScopeIn(BaseModel):
+    sources_in_scope: int = Field(ge=0)
+    passages: list[ChallengePassageIn] = Field(max_length=8)
+
+
+class ChallengeReviewIn(BaseModel):
+    text: str = Field(max_length=16000)
+    qualifiers: dict[str, Any]
+    searched_at: datetime
+    queries: list[Annotated[str, Field(max_length=500)]] = Field(min_length=1, max_length=2)
+    method: Literal["keyword", "hybrid", "mixed"]
+    semantic_requested: bool = False
+    scopes: dict[Literal["project", "library"], ChallengeScopeIn]
+    remaining_gaps: str = Field("", max_length=500)
+
+
+@app.get("/api/projects/{project_id}/claims/{claim_id}/challenge/review", dependencies=[Depends(require_auth)])
+def api_saved_claim_challenge(project_id: str, claim_id: str) -> dict[str, Any]:
+    from . import claim_challenge, claims
+    claim = claims.get(claim_id)
+    if not claim or claim["project_id"] != project_id:
+        raise HTTPException(404, "claim not found in project")
+    return {"review": claim_challenge.load_review(project_id, claim)}
+
+
+@app.put("/api/projects/{project_id}/claims/{claim_id}/challenge/review", dependencies=[Depends(require_auth)])
+def api_save_claim_challenge(project_id: str, claim_id: str, body: ChallengeReviewIn) -> dict[str, Any]:
+    from . import claim_challenge
+    try:
+        return {"review": claim_challenge.save_review(project_id, claim_id, body.model_dump(mode="json"))}
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
 
 
 @app.get("/api/projects/{project_id}/research-needs", dependencies=[Depends(require_auth)])

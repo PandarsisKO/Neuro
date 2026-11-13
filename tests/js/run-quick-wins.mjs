@@ -26,8 +26,10 @@ const rows = [
 const meta = { ranked: true, ranking: false, max_videos: 2 };
 const review = { id: 'review', title: 'Listing', meta, proposed: rows };
 let evidenceCalls = 0;
+let savedReview = null;
 window.api = async url => {
   if (url.endsWith('/reviews')) return [review];
+  if (url.endsWith('/challenge/review')) return { review: savedReview };
   assert.match(url, /\/projects\/project\/claims\/claim\/evidence$/);
   evidenceCalls++;
   return {
@@ -112,6 +114,35 @@ try {
     assessment.dispatchEvent(new window.Event('change'));
     assert.match(outcome.textContent, expected);
   }
+
+  window.put = async (url, body) => {
+    assert.match(url, /challenge\/review$/);
+    assert.equal(body.scopes.project.passages[0].assessment, 'equivalent');
+    savedReview = { ...body, saved_at: 1794528000, claim_changed: false };
+    return { review: savedReview };
+  };
+  panel.querySelector('[data-challenge-save]').click();
+  await new Promise(setImmediate);
+  assert.match(panel.querySelector('[data-challenge-save-status]').textContent, /Assessment saved/);
+  savedReview.scopes.project.passages[0].changed = true;
+  await window.showClaimEvidence('claim');
+  await new Promise(setImmediate);
+  const saved = panel.querySelector('[data-saved-challenge]');
+  assert.match(saved.textContent, /Last saved assessment/);
+  assert.match(saved.textContent, /Passage changed/);
+
+  const planJs = source('plan');
+  window.eval(planJs.slice(planJs.indexOf('globalThis.planUpdateEvidence ='), planJs.indexOf('globalThis.renderPlan =')));
+  const card = document.createElement('div');
+  card.innerHTML = window.planUpdateEvidence({ claim_evidence: {
+    text: 'A scoped Claim', counter: [], supporting: [{
+      source_id: 'source', locator: '12:30', excerpt: '<passage>', relation: 'SUPPORTS', stale: true,
+      title: 'Source title', link: 'https://example.test/video?t=750s'
+    }] } });
+  assert.match(card.textContent, /A scoped Claim/);
+  assert.match(card.textContent, /<passage>/);
+  assert.match(card.textContent, /Source revised/);
+  assert.equal(card.querySelector('a').getAttribute('href'), 'https://example.test/video?t=750s');
 
 } finally {
   window.close();

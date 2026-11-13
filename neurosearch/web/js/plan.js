@@ -47,6 +47,19 @@ globalThis.statusSel = function statusSel(key) {
 }
 globalThis.setItem = async function setItem(key, status) { await put(`/api/plans/${planState.plan.id}/items/${encodeURIComponent(key)}`, { status }); planState.plan.items[key] = { status }; }
 globalThis.basis = function basis(x) { return x.basis ? `<span class="basis">basis: ${esc(x.basis)}${x.confidence ? ' · confidence: ' + esc(x.confidence.replace('_', ' ')) : ''}</span>` : ''; }
+globalThis.planUpdateEvidence = function planUpdateEvidence(update) {
+  const evidence = update.claim_evidence;
+  if (!evidence) return '<p class="muted">No Claim is linked to this update.</p>';
+  const passages = [...evidence.counter, ...evidence.supporting].filter(p => p.locator && p.excerpt);
+  const relations = { SUPPORTS: 'Supports', CONTRADICTS: 'Contradicts', QUALIFIES: 'Qualifies',
+    INTERPRETS: 'Interprets', EXPERIENTIAL: 'Firsthand experience' };
+  return `<details class="mt-2"><summary>Evidence behind this update</summary>
+    <p>${esc(evidence.text)}</p>
+    ${passages.map(p => `<div>${esc(relations[p.relation] || p.relation)} · ${claimEvidenceLink(p)}
+      ${p.stale ? '<span class="tag status-warn">Source revised</span>' : ''}
+      <blockquote class="quote">${esc(p.excerpt)}</blockquote></div>`).join('') || '<p class="muted">No located passage is recorded.</p>'}
+  </details>`;
+}
 globalThis.renderPlan = function renderPlan(r) {
   const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
   const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted');
@@ -57,7 +70,7 @@ globalThis.renderPlan = function renderPlan(r) {
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
   if (pending.length || accepted.length) {
     h += `<div class="banner"><b>Master Plan has ${pending.length} suggested update${pending.length === 1 ? '' : 's'}</b>` +
-      pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>
+      pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>${planUpdateEvidence(u)}
         <div class="row" style="margin-top:6px"><button class="small primary" onclick="updStatus(${u.id},'accepted')">Accept change</button><button class="small" onclick="updStatus(${u.id},'rejected')">Keep current plan</button><button class="small ghost" onclick="researchThis(${JSON.stringify(u.section + ': ' + u.proposed + ' — is this right? What does the research say?').replace(/"/g, '&quot;')})">Research further</button></div></div>`).join('') +
       (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
   }

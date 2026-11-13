@@ -395,6 +395,7 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
         ${result.semantic_available ? '<label class="claim-search-choice"><input name="semantic" type="checkbox"> Search for similar wording using paid embeddings</label>' : ''}
         <button class="small primary mt-2" type="submit">Search passages</button>
       </form>
+      <div data-saved-challenge class="mt-2"></div>
       <div data-challenge-results class="mt-2"></div>
     </details>`
     + section('Contradicting or qualifying evidence', result.counter, result.counter_total)
@@ -407,11 +408,34 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
   const results = panel.querySelector('[data-challenge-results]');
   const intent = { equivalent: 'Same assertion and scope', contradiction: 'Opposite result, same scope',
     qualification: 'Exception or different scope', irrelevant: 'Unrelated', uncertain: 'Unclear' };
+  const saved = panel.querySelector('[data-saved-challenge]');
+  const reviewUrl = `/api/projects/${projectId}/claims/${claimId}/challenge/review`;
+  const active = () => panel.isConnected && dlg.open && state.project?.id === projectId;
+  const showSaved = review => {
+    if (!saved || !review) return;
+    const groups = Object.entries(review.scopes);
+    const passages = groups.flatMap(([scope, group]) => group.passages.map(p => ({ ...p, scope })));
+    const changed = review.claim_changed || passages.some(p => p.changed);
+    const coverage = groups.map(([scope, group]) => `${group.passages.length} passages shown from ${group.sources_in_scope} ${scope} sources in scope`).join(' · ');
+    saved.innerHTML = `<details><summary>Last saved assessment · ${esc(new Date(review.saved_at * 1000).toLocaleDateString())}</summary>
+      ${changed ? '<p class="status-warn">The Claim or reviewed sources changed. Run a fresh search before relying on this assessment.</p>' : ''}
+      <p class="muted">Searched ${esc(new Date(review.searched_at).toLocaleString())} for ${review.queries.map(esc).join(' · ')}. ${esc(coverage)}.</p>
+      ${passages.map(p => `<div class="kn"><div class="grow min-w-0"><b>${esc(intent[p.assessment] || 'Unreviewed')}</b> · ${claimEvidenceLink(p)}
+        ${p.scope === 'library' ? '<span class="tag">Library lead at review time</span>' : ''}
+        ${p.changed ? '<span class="tag status-warn">Passage changed</span>' : ''}
+        <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote></div></div>`).join('')}
+      ${review.remaining_gaps ? `<p>Still to check: ${esc(review.remaining_gaps)}</p>` : ''}
+    </details>`;
+  };
+  let savedGeneration = 0;
+  if (saved) api(reviewUrl).then(({ review }) => {
+    if (active() && !savedGeneration) showSaved(review);
+  }).catch(() => { if (active() && !savedGeneration) saved.textContent = 'Could not load the saved assessment.'; });
   let request = 0;
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const turn = ++request;
-    const current = () => turn === request && panel.isConnected && dlg.open && state.project?.id === projectId;
+    const current = () => turn === request && active();
     const params = {
       q: form.elements.query.value.trim(),
       alternate: form.elements.alternate.value.trim(),
@@ -448,7 +472,9 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       ${groups.map(([scope, group]) => passages(scope, group)).join('')}
       <p data-challenge-outcome role="status"></p>
       <label>What still needs checking <input name="gaps" maxlength="500" placeholder="A missing source, population, or time period"></label>
-      <button type="button" class="small ghost mt-2" data-challenge-download>Download assessment</button>`;
+      <button type="button" class="small primary mt-2" data-challenge-save>Save assessment</button>
+      <button type="button" class="small ghost mt-2" data-challenge-download>Download assessment</button>
+      <p data-challenge-save-status role="status"></p>`;
     const selections = [...results.querySelectorAll('[data-challenge-passage]')];
     const outcome = results.querySelector('[data-challenge-outcome]');
     const status = () => {
@@ -474,12 +500,34 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
     };
     for (const select of selections) select.addEventListener('change', showStatus);
     showStatus();
-    results.querySelector('[data-challenge-download]').addEventListener('click', () => {
+    const reviewData = () => {
       const review = status();
-      const blob = new Blob([JSON.stringify({ ...data, scopes: Object.fromEntries(groups.map(([key, group]) => [
+      return { ...data, scopes: Object.fromEntries(groups.map(([key, group]) => [
         key, { ...group, passages: group.passages.map(p => ({ ...p, assessment: review.reviewed.find(r => r.chunk_id === p.chunk_id)?.assessment })) }
       ])), novelty: review.novelty, remaining_gaps: results.querySelector('[name="gaps"]').value,
-      scope_limit: 'Ranked passages from the selected sources. Search and review coverage are limited to the passages shown.' }, null, 2)], { type: 'application/json' });
+      scope_limit: 'Ranked passages from the selected sources. Search and review coverage are limited to the passages shown.' };
+    };
+    const save = results.querySelector('[data-challenge-save]');
+    const saveStatus = results.querySelector('[data-challenge-save-status]');
+    save.addEventListener('click', async () => {
+      if (!status().reviewed.some(p => p.assessment)) {
+        saveStatus.textContent = 'Assess at least one passage before saving.';
+        return;
+      }
+      save.disabled = true;
+      try {
+        const { review } = await put(reviewUrl, reviewData());
+        savedGeneration++;
+        if (active()) showSaved(review);
+        if (current()) saveStatus.textContent = 'Assessment saved.';
+      } catch (e) {
+        if (current()) saveStatus.textContent = e.message || 'Could not save the assessment.';
+      } finally {
+        save.disabled = false;
+      }
+    });
+    results.querySelector('[data-challenge-download]').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(reviewData(), null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'claim-assessment.json';

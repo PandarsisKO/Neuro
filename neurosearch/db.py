@@ -510,6 +510,12 @@ CREATE TABLE IF NOT EXISTS project_claims (
 );
 CREATE INDEX IF NOT EXISTS ix_claims_project ON project_claims(project_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_claims_origin_note ON project_claims(project_id, origin_note_id) WHERE origin_note_id IS NOT NULL;
+-- Latest explicitly saved challenge review. This is a research artifact, not Claim evidence.
+CREATE TABLE IF NOT EXISTS claim_challenge_reviews (
+    claim_id TEXT PRIMARY KEY REFERENCES project_claims(id) ON DELETE CASCADE,
+    review TEXT NOT NULL,
+    saved_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS claim_evidence (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id        TEXT NOT NULL REFERENCES project_claims(id) ON DELETE CASCADE,
