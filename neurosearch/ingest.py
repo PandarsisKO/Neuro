@@ -46,6 +46,8 @@ def ingest_url(
 
     `since_years` / `max_videos` limit bulk pulls (default from settings; 0 = no limit).
     """
+    from .jobs import FIRST_WAVE_RANKED
+
     url = media.canonical_url(url)
     kind = media.classify_url(url)
     tags = tags or []
@@ -121,7 +123,7 @@ def ingest_url(
             elif res.created:
                 db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
                                                 "collection_id": coll["id"], "newest_first": kind == "channel"},
-                              lane="priority")                   # added by the person just now: ahead of background ingestion
+                              lane="priority" if queued < FIRST_WAVE_RANKED else "normal")
                 queued += 1
             else:
                 skipped += 1                                       # pending/failed elsewhere: shared work, not a new job
@@ -236,6 +238,8 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
     unticked: the person never looked at them, so filing those as a relevance judgment (which is what
     `skipped_low_relevance` is, and what `creator_disposition` half-counts as a negative) attributes an opinion
     to them they never formed. A deliberate per-item skip IS that opinion, and is worth full weight."""
+    from .jobs import FIRST_WAVE_RANKED
+
     import json as _json
     meta = {}
     try:
@@ -305,21 +309,20 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
     for r in rows:
         if r["id"] in chosen:
             db.set_source_status(r["id"], "pending")
-            # 2026-09-18 (Kyle, live): "I requested the channel, so it should be prioritized first so I feel like
-            # things are going at the same speed as I am." A review the person just approved is the strongest
-            # statement of intent ingestion ever receives — the same rule `jobs.user_pick_lane` applies to findings.
-            # Ordering only: same worker pool, same cost.
+            # proposed_sources returns the highest-ranked selections first. Give the collection a small
+            # head start so a full approval cannot keep the next collection's first sources queued behind it.
+            lane = "priority" if started < FIRST_WAVE_RANKED else "normal"
             if r.get("platform") == community_mod.PLATFORM:
                 # S95: a proposed thread goes through the URL path — the community reader, and when Reddit blocks
                 # the server, the parked browser capture the extension fulfils; identity lands it on THIS row
                 db.create_job("ingest_url", {"url": r["url"], "project_id": pid, "title": r.get("title"), "collection_id": collection_id,
                                              "tags": json.loads(r.get("tags") or "[]") if isinstance(r.get("tags"), str) else (r.get("tags") or [])},
-                              lane="priority")
+                              lane=lane)
             else:
                 db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
                                                 "collection_id": collection_id, "newest_first": bool(meta.get("newest_first")),
                                                 "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")},
-                              lane="priority")
+                              lane=lane)
             started += 1
         else:
             db.delete_source(r["id"])

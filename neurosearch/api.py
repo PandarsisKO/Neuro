@@ -385,8 +385,9 @@ def api_ingest(body: IngestIn) -> dict[str, Any]:
         raise HTTPException(400, "no url")
     from .media import canonical_url
     # G1: the job's dedupe key is the CANONICAL url, so youtu.be/X and watch?v=X&si=… are one unit of work
+    lane = jobs.user_pick_lane(True, len(urls)) or "normal"
     created = [jobs.enqueue("ingest_url", {"url": canonical_url(u), "tags": body.tags, "project_id": body.project_id, "force": body.force,
-                                           "since_years": body.since_years, "max_videos": body.max_videos}) for u in urls]
+                                           "since_years": body.since_years, "max_videos": body.max_videos}, lane=lane) for u in urls]
     return {"jobs": [j["id"] for j in created]}
 
 
@@ -1181,7 +1182,7 @@ def api_ingest_with_session(project_id: str, body: SessionIngestIn) -> dict[str,
     name = "session-" + hashlib.sha256(f"{project_id}\0{url}".encode()).hexdigest()[:16]
     cookies_file = write_cookie_file(body.cookies, name) if body.cookies else None
     job = jobs.enqueue("ingest_url", {"url": url, "tags": body.tags, "project_id": project_id, "title": body.title,
-                                      "cookies_file": cookies_file, "referer": url, "review": False})
+                                      "cookies_file": cookies_file, "referer": url, "review": False}, lane="priority")
     return {"job_id": job["id"], "cookies": bool(cookies_file)}
 
 
@@ -1308,7 +1309,7 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
         try:
             capture_request = db.create_or_get_capture_ingest_request(
                 client_capture_id=capture_id, capture_url=capture_url, capture_mode=capture_mode or "visible_only",
-                job_kind="ingest_file", job_payload=job_payload_for_capture, project_id=project_id or None,
+                job_kind="ingest_file", job_payload=job_payload_for_capture, project_id=project_id or None, job_lane="priority",
                 capture_page_title=capture_page_title, captured_at=captured_at,
                 capture_partial_reason=capture_partial_reason,
                 capture_page_width=capture_page_width, capture_page_height=capture_page_height,
@@ -1356,7 +1357,7 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
     job_payload = {"path": str(dest), "name": name, "title": title or None, "tags": tag_list, "project_id": project_id or None}
     if capture_event_id:
         job_payload["capture_event_id"] = capture_event_id
-    job = jobs.enqueue("ingest_file", job_payload)
+    job = jobs.enqueue("ingest_file", job_payload, lane="priority")
     # NEVER "source created" here — the source may not exist until this job runs. Accepted and queued is the
     # whole honest contract; a caller that needs the eventual source_id polls the job.
     return {"job": job["id"], "name": name, "immediate": False, "status": "queued",

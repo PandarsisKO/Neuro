@@ -270,3 +270,36 @@ def test_a_finished_harvest_absorbs_queued_siblings_but_never_a_later_request(is
     assert j["status"] == "done" and j["message"].startswith("absorbed") and j["result"]["absorbed_by"] == late_sibling_id
     assert db.get_job(late_sibling_id)["result"]["absorbed"] == 1
     assert db.claim_job(jobs.MAINTENANCE_KINDS, worker_id="maintenance") is None, "nothing redundant is left to run"
+
+
+def test_large_collection_does_not_block_new_direct_add_or_another_first_wave(isolated):
+    from neurosearch import api, ingest
+
+    def approve_batch(project, label, count):
+        coll = db.upsert_collection("channel", label, f"https://www.youtube.com/@{label}", label)
+        db.add_project_collections(project["id"], [coll["id"]])
+        sources = []
+        for i in range(count):
+            key = f"{label}-{i}"
+            source = db.upsert_source(platform="youtube", external_id=key, url=f"https://youtu.be/{key}",
+                                      title=key, status="proposed")
+            db.link_source_collection(source["id"], coll["id"])
+            db.set_relevance(source["id"], i + 1, "ranked", project_id=project["id"])
+            sources.append(source["id"])
+        assert ingest.approve_proposed(coll["id"], sources)["started"] == count
+        return list(reversed(sources))
+
+    first_project = db.create_project("Older collection")
+    second_project = db.create_project("Newer collection")
+    older = approve_batch(first_project, "older", 8)
+    newer = approve_batch(second_project, "newer", 5)
+    direct = api.api_ingest(api.IngestIn(url="https://example.com/direct", project_id=second_project["id"]))["jobs"][0]
+
+    def claim():
+        return db.claim_job(kinds=("ingest_url", "ingest_source"))
+
+    assert [claim()["payload"]["source_id"] for _ in range(3)] == older[:3]
+    assert [claim()["payload"]["source_id"] for _ in range(3)] == newer[:3]
+    assert claim()["id"] == direct
+    assert [claim()["payload"]["source_id"] for _ in range(5)] == older[3:]
+    assert [claim()["payload"]["source_id"] for _ in range(2)] == newer[3:]
