@@ -95,6 +95,7 @@ def ingest_url(
         elif review:
             # keep a bigger pool so the relevance ranker can pick the best `mx`, not just the newest
             entries = entries[:max(relevance.POOL, mx or 0)]
+        import_batch = _collection_import(project_id)
         queued, skipped, proposed, before_cutoff = 0, 0, 0, 0
         counts = {"already_in_project": 0, "already_in_library": 0, "new": 0}
 
@@ -133,7 +134,7 @@ def ingest_url(
                 proposed += 1
             elif res.created:
                 db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
-                                                "collection_id": coll["id"], "newest_first": kind == "channel"},
+                                                "collection_id": coll["id"], "newest_first": kind == "channel", **import_batch},
                               lane="priority" if queued < FIRST_WAVE_RANKED else "normal")
                 queued += 1
             else:
@@ -238,6 +239,13 @@ def ingest_url(
     return {"kind": kind, "identity": res.state, **result}
 
 
+def _collection_import(project_id: str | None) -> dict[str, str | float]:
+    if project_id is None:
+        return {}
+    return {"collection_import_id": db.new_id(), "collection_import_project": project_id,
+            "collection_import_started": db.now()}
+
+
 def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
                      dismissed_ids: list[str] | None = None) -> dict[str, Any]:
     """Start ingesting the chosen proposed sources of a collection; drop the rest of the proposals.
@@ -263,6 +271,7 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
     # score (before 2026-09-18 this was fetched first, without it, and every skipped candidate was filed scoreless)
     rows = db.proposed_sources(collection_id, pid)
     chosen = set(source_ids) if source_ids is not None else {r["id"] for r in rows}
+    import_batch = _collection_import(pid)
     started, dropped = 0, 0
     if pid:
         # G3: skipped ≠ forgotten. The Candidate Index keeps every proposal with WHY it was not selected; chosen ones resolve to their source.
@@ -327,13 +336,13 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None,
             if r.get("platform") == community_mod.PLATFORM:
                 # S95: a proposed thread goes through the URL path — the community reader, and when Reddit blocks
                 # the server, the parked browser capture the extension fulfils; identity lands it on THIS row
-                db.create_job("ingest_url", {"url": r["url"], "project_id": pid, "title": r.get("title"), "collection_id": collection_id,
+                db.create_job("ingest_url", {"url": r["url"], "project_id": pid, "title": r.get("title"), "collection_id": collection_id, **import_batch,
                                              "tags": json.loads(r.get("tags") or "[]") if isinstance(r.get("tags"), str) else (r.get("tags") or [])},
                               lane=lane)
             else:
                 db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
                                                 "collection_id": collection_id, "newest_first": bool(meta.get("newest_first")),
-                                                "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")},
+                                                "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer"), **import_batch},
                               lane=lane)
             started += 1
         else:

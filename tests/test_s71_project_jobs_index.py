@@ -78,3 +78,65 @@ def test_the_list_never_scans_the_whole_table(fresh, monkeypatch):
     monkeypatch.setattr(db, "list_jobs", lambda *a, **k: (calls.append(k), real(*a, **k))[1])
     api.api_project_jobs(pid, limit=30)
     assert not calls, "api_project_jobs must not fall back to list_jobs (the app-wide scan)"
+
+
+def test_collection_readiness_uses_full_batch_and_current_project_evidence(fresh):
+    from neurosearch import ingest
+
+    project = db.create_project("Readiness")["id"]
+    other = db.create_project("Another project")["id"]
+    collection = db.upsert_collection("channel", "fixture", "https://example.com/channel", "Example channel")["id"]
+    db.add_project_collections(project, [collection])
+    for idx in range(34):
+        source = db.upsert_source(platform="manual", external_id=str(idx), url=f"https://example.com/{idx}",
+                                  title=f"Source {idx}", status="proposed")
+        db.link_source_collection(source["id"], collection)
+    assert ingest.approve_proposed(collection)["started"] == 34
+    jobs = db.list_jobs(limit=100)
+    assert len({j["payload"]["collection_import_id"] for j in jobs}) == 1
+    for idx, job in enumerate(jobs):
+        if idx != 0:
+            db.update_job(job["id"], status="done")
+    # Use the oldest finished job, even though it falls off the normal jobs response.
+    source = jobs[-1]["payload"]["source_id"]
+    skipped = jobs[1]
+    db.connect().execute("UPDATE jobs SET result=? WHERE id=?", ('{"skipped":true}', skipped["id"]))
+    db.connect().commit()
+    db.set_source_status(source, "ready")
+    result = api.api_project_jobs(project, with_import=True)
+    assert result["collection_import"]["searchable"] == 0
+    db.replace_chunks(source, [{"text": "A quote in a source", "start": 0, "end": 5}])
+    citation = {"source_id": source, "snippet": "A quote in a source", "timestamp": "0:00"}
+    db.add_project_note(other, "Other project", [citation], source_id=source)
+    db.add_project_note(project, "Unlocated", [{**citation, "timestamp": ""}], source_id=source)
+    db.add_project_note(project, "Dismissed", [citation], status="dismissed", source_id=source)
+    result = api.api_project_jobs(project, limit=2, with_import=True)
+    assert len(result["jobs"]) == 3
+    batch = result["collection_import"]
+    assert batch["total"] == 34 and batch["searchable"] == 1 and batch["source"]["id"] == source
+    assert batch["counts"]["queued"] == batch["counts"]["skipped"] == 1
+    assert batch["counts"]["done"] == 32 and batch["finding"] is None
+    db.add_project_note(project, "Cited", [citation], status="suggested", source_id=source)
+    assert api.api_project_jobs(project, with_import=True)["collection_import"]["finding"] == {
+        "source_id": source, "status": "suggested"}
+    db.add_project_collections(other, [collection])
+    assert api.api_project_jobs(other, with_import=True)["collection_import"] is None
+    db.remove_project_sources(project, [source])
+    assert api.api_project_jobs(project, with_import=True)["collection_import"]["searchable"] == 0
+
+
+def test_collection_import_counts_latest_retry_once(fresh):
+    from neurosearch import ingest
+
+    project = db.create_project("Readiness")["id"]
+    source = db.upsert_source(platform="manual", external_id="retry", url="https://example.com/retry")
+    db.add_project_sources(project, [source["id"]])
+    job = db.create_job("ingest_source", {"source_id": source["id"], **ingest._collection_import(project)})
+    db.update_job(job["id"], status="failed")
+    assert api.api_project_jobs(project, with_import=True)["collection_import"]["counts"]["failed"] == 1
+    new = db.retry_job(job["id"])
+    batch = api.api_project_jobs(project, with_import=True)["collection_import"]
+    assert batch["total"] == 1 and batch["counts"]["queued"] == 1 and batch["counts"]["done"] == 0
+    db.update_job(new["id"], status="failed")
+    api.api_dismiss_job(new["id"])
+    assert api.api_project_jobs(project, with_import=True)["collection_import"]["counts"]["failed"] == 1

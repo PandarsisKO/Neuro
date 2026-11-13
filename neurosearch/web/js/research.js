@@ -1051,6 +1051,33 @@ globalThis.toggleJobsBox = function toggleJobsBox() {
   try { localStorage.setItem('ns_jobsbox', JOBSBOX.expanded ? 'all' : 'hot'); } catch (e) {}
   loadJobs();
 }
+globalThis.collectionImportVisible = false;
+globalThis.renderCollectionImport = function renderCollectionImport(batch) {
+  const slot = $('#collectionImport');
+  if (!slot) return;
+  slot.hidden = !batch;
+  if (!batch) {
+    slot.replaceChildren();
+    return;
+  }
+  const c = batch.counts;
+  const outcomes = [
+    [c.queued, 'queued'], [c.running, 'processing'], [c.external_pending, 'waiting on external work'],
+    [c.shared, 'being imported elsewhere'], [c.failed, 'failed'], [c.skipped, 'skipped'], [c.cancelled, 'cancelled'],
+  ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
+  slot.innerHTML = `<div class="row" style="align-items:baseline;flex-wrap:wrap;padding-bottom:4px">
+    <strong>${esc(batch.title)}</strong><span class="muted">${c.done} of ${batch.total} import jobs completed${outcomes.length ? ' · ' + outcomes.join(' · ') : ''}</span></div>
+    <div class="row" style="align-items:baseline;flex-wrap:wrap;padding-bottom:8px">
+      ${batch.source ? `<span>${batch.searchable} searchable</span><button type="button" class="small ghost" data-import-source="${esc(batch.source.id)}">Open ${esc(batch.source.title)}</button>`
+        : '<span class="muted">No searchable sources yet</span>'}
+      ${batch.finding ? `<button type="button" class="small ghost" data-import-finding="${esc(batch.finding.source_id)}" data-import-status="${esc(batch.finding.status)}">View cited findings</button>`
+        : '<span class="muted">No cited findings yet</span>'}</div>`;
+};
+$('#collectionImport')?.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (button?.dataset.importSource) sourceDrawer(button.dataset.importSource);
+  if (button?.dataset.importFinding) openSourceSuggestions(button.dataset.importFinding, button.dataset.importStatus);
+});
 globalThis.loadJobs = async function loadJobs(quiet) {
   // `quiet` (L-19, 2026-09-15): true only when pollTick's own background /tick loop called this --
   // never when a click handler did (retry/cancel/etc. call loadJobs() with no argument all over
@@ -1063,8 +1090,9 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   const q = quiet ? { ack: false } : {};
   clearTimeout(jobsTimer);
   if (!POLL.enter('jobs', quiet)) return;                       // P0.1: one jobs refresh in flight; a second runs once after it
-  let js;
-  try { js = await api(`/api/projects/${state.project.id}/jobs?limit=30`, q); globalThis.pollFails = 0; $('#offline')?.remove(); }
+  const projectId = state.project.id;
+  let response;
+  try { response = await api(`/api/projects/${projectId}/jobs?limit=30&with_import=true`, q); globalThis.pollFails = 0; $('#offline')?.remove(); }
   catch (e) {
     POLL.leave('jobs', loadJobs);
     // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet.
@@ -1074,6 +1102,8 @@ globalThis.loadJobs = async function loadJobs(quiet) {
     globalThis.jobsTimer = setTimeout(pollTick, Math.min(3000 * pollFails, 15000));
     return;
   }
+  const js = Array.isArray(response) ? response : response.jobs;
+  const collectionImport = response.collection_import;
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
   const STATE_LABEL = { paused: 'paused by you', pausing: 'pausing', mac_paused: 'Mac work paused', queued: 'queued', running: 'running', resuming: 'waiting to resume · progress kept', blocked: 'blocked', scheduled: 'scheduled', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', chatgpt_wait: 'queued for ChatGPT', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
   const stateClass = st => ({ paused: 'queued', pausing: 'running', mac_paused: 'queued', resuming: 'queued', blocked: 'queued', scheduled: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', chatgpt_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
@@ -1092,14 +1122,17 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   // The queue itself is not touched: this is what the box draws, not what the workers do.
   const isHot = j => j._budget || j.status === 'running' || j.status === 'failed' || j.status === 'cancelling' || (j.status === 'external_pending' && j.external_provider === 'browser')
     || (j.state || j.status) === 'external_pending' || j.state === 'paused' || j.bumped;   // S86: a paused job stays in view so it can be resumed
-  const projectId = state.project.id;
   const [st, usage] = await Promise.all([api('/api/stats', q).catch(() => ({})), loadSpend(quiet)]);
   if (state.project?.id !== projectId) {
     POLL.leave('jobs', loadJobs);
     return;
   }
   const u = usage || state.usage;
-  $('#jobsCard').hidden = !(show.length || st.youtube?.paused || u?.blocked);
+  globalThis.collectionImportVisible = Boolean(collectionImport);
+  renderCollectionImport(collectionImport);
+  const showQueue = Boolean(show.length || st.youtube?.paused || u?.blocked);
+  $('#jobsCard').hidden = !(showQueue || collectionImport);
+  if ($('#jobsDetails')) $('#jobsDetails').hidden = !showQueue && Boolean(collectionImport);
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
   // S106: the wait now doubles on each consecutive bot-check, so say how long in hours when it is long, and — once it
   // has repeated — that this is YouTube's bot check (not a quick limit) and what usually clears it.
@@ -1169,7 +1202,8 @@ globalThis.pollTick = async function pollTick() {
   const srcChanged = full || changed('sources') || changed('notes') || changed('research');
   // Coalesce job-only updates before refreshing the heavier Sources and bootstrap views.
   const relatedChanged = relatedJobsRefresh.rev !== rev.jobs && Date.now() - relatedJobsRefresh.at >= 6000;
-  if (full || changed('jobs') || changed('job_activity')) loadJobs(true);
+  const importChanged = collectionImportVisible && (changed('sources') || changed('notes'));
+  if (full || changed('jobs') || changed('job_activity') || importChanged) loadJobs(true);
   else {
     refreshJobActivity();
     globalThis.jobsTimer = setTimeout(pollTick, jobPollDelay(t.active));

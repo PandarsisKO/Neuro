@@ -2259,7 +2259,7 @@ def api_tick(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/jobs", dependencies=[Depends(require_auth)])
-def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
+def api_project_jobs(project_id: str, limit: int = 40, with_import: bool = False) -> list[dict[str, Any]] | dict[str, Any]:
     """Jobs belonging to this project: URL/file ingests queued for it, plus per-video jobs of its sources.
     Kyle, live: with a big enough app-wide backlog, this used to scan only the most-recently-CREATED 400 jobs
     across every project before filtering to this one — a currently queued/running job could be crowded out of
@@ -2284,7 +2284,10 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
         if sids:
             j["label"] = titles.get(sids[0], sids[0]) + (f" +{len(sids) - 1} more" if len(sids) > 1 else "")
         _decorate_job(j, titles)
-    return [_compact_job_for_list(j) for j in out]
+    jobs = [_compact_job_for_list(j) for j in out]
+    if with_import:
+        return {"jobs": jobs, "collection_import": db.latest_collection_import(project_id, ids)}
+    return jobs
 
 
 def _compact_job_for_list(j: dict[str, Any]) -> dict[str, Any]:

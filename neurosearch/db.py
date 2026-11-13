@@ -1453,6 +1453,11 @@ def _add_job_payload_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE jobs ADD COLUMN source_id TEXT GENERATED ALWAYS AS (json_extract(payload, '$.source_id')) VIRTUAL")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_project_created ON jobs(project_id, created_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_source_created ON jobs(kind, source_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_collection_import ON jobs(json_extract(payload, '$.collection_import_id')) "
+                 "WHERE json_extract(payload, '$.collection_import_id') IS NOT NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_collection_import_project ON jobs("
+                 "json_extract(payload, '$.collection_import_project'), json_extract(payload, '$.collection_import_started') DESC) "
+                 "WHERE json_extract(payload, '$.collection_import_project') IS NOT NULL")
     conn.commit()
 
 
@@ -3155,6 +3160,71 @@ def list_project_jobs(project_id: str, source_ids: Iterable[str], *, limit: int 
         seen.setdefault(r["id"], r)
     out = sorted(seen.values(), key=lambda r: -(r["created_at"] or 0))[:limit]
     return [row_to_dict(r) for r in out]  # type: ignore[misc]
+
+
+def latest_collection_import(project_id: str, project_sources: set[str]) -> dict[str, Any] | None:
+    """Project-local readiness for the newest tracked collection import, using its full set of jobs."""
+    conn = connect()
+    latest = conn.execute(
+        """SELECT json_extract(payload, '$.collection_import_id') AS batch_id,
+                  json_extract(payload, '$.collection_id') AS collection_id
+           FROM jobs WHERE json_extract(payload, '$.collection_import_project')=?
+           ORDER BY json_extract(payload, '$.collection_import_started') DESC LIMIT 1""", (project_id,)).fetchone()
+    if not latest:
+        return None
+
+    rows = conn.execute(
+        """SELECT j.status, j.created_at, j.finished_at, s.id AS source_id, s.title, s.url, s.status AS source_status,
+                  (s.status='ready' AND EXISTS(SELECT 1 FROM chunks WHERE source_id=s.id)) AS searchable,
+                  CASE WHEN j.status='done' THEN
+                    CASE WHEN json_extract(j.result, '$.skipped') THEN 'skipped'
+                         WHEN json_extract(j.result, '$.failed') OR j.message LIKE 'dismissed — %' THEN 'failed'
+                         WHEN json_extract(j.result, '$.already_pending') THEN 'shared'
+                         ELSE 'done' END
+                    ELSE j.status END AS outcome
+           FROM jobs j LEFT JOIN sources s ON s.id=COALESCE(j.source_id, json_extract(j.result, '$.source_id'))
+           WHERE json_extract(j.payload, '$.collection_import_id')=?
+             AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id=j.id AND e.event_type='retried')
+           ORDER BY j.finished_at NULLS LAST, j.id""", (latest["batch_id"],)).fetchall()
+    if not rows:
+        return None
+    counts = dict.fromkeys(("queued", "running", "external_pending", "done", "failed", "cancelled", "skipped", "shared"), 0)
+    searchable = {}
+    for row in rows:
+        outcome = row["outcome"]
+        if row["searchable"] and row["source_id"] in project_sources and outcome in ("done", "shared", *JOB_ACTIVE):
+            searchable.setdefault(row["source_id"], row["title"] or row["url"])
+        if outcome == "shared":
+            if row["searchable"]:
+                outcome = "done"
+            elif row["source_status"] in ("failed", "skipped"):
+                outcome = row["source_status"]
+        counts[outcome] += 1
+    active = sum(counts[k] for k in JOB_ACTIVE)
+    last_finished = max((row["finished_at"] or row["created_at"]) for row in rows)
+    if not active and last_finished < now() - 86400:
+        return None
+
+    first_finding = None
+    if searchable:
+        first_finding = row_to_dict(conn.execute(
+            """SELECT n.source_id, n.status FROM project_notes n
+               WHERE n.project_id=? AND n.status IN ('suggested','approved')
+                 AND n.created_at>=? AND n.source_id IN (SELECT value FROM json_each(?))
+                 AND EXISTS (
+                   SELECT 1 FROM json_each(CASE WHEN json_valid(n.citations) THEN n.citations ELSE '[]' END) c
+                   WHERE c.type='object' AND json_extract(c.value, '$.source_id')=n.source_id
+                     AND length(trim(json_extract(c.value, '$.snippet')))>0
+                     AND length(trim(json_extract(c.value, '$.timestamp')))>0)
+               ORDER BY n.created_at, n.id LIMIT 1""",
+            (project_id, min(row["created_at"] for row in rows), json.dumps(list(searchable)))).fetchone())
+
+    first_source = next(iter(searchable.items()), None)
+    collection = conn.execute("SELECT title FROM collections WHERE id=?", (latest["collection_id"],)).fetchone()
+    return {"title": (collection["title"] if collection else None) or "Collection import",
+            "total": len(rows), "counts": counts, "searchable": len(searchable),
+            "source": {"id": first_source[0], "title": first_source[1]} if first_source else None,
+            "finding": first_finding}
 
 
 BACKGROUND_LANES = ("slow", "low")
