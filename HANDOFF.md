@@ -5510,3 +5510,31 @@ Published `596abfe` and verified GitHub main. The Mac reloaded 0.64.31
 and served matching Chat and Home scripts. Authenticated project reads
 reported source readiness across seven projects, with zero expired
 job leases.
+
+### 2026-11-13 — Apply known publish dates when approving video imports (0.64.32)
+
+Base `9fd09b2`, runtime `46495fe`, isolated worktree
+`/private/tmp/neuro-collection-date-cutoff`. Saved YouTube reviews
+now check each selected video's stored publish date, with the existing
+candidate record as a fallback when the source has no date. The
+existing cutoff validator admits items with absent or invalid dates
+to the normal metadata path. An explicit source retry remains
+available from Sources. The import summary reports date skips before
+queueing and date skips after metadata checks. It also shows when
+every selection was skipped and no jobs were queued.
+
+Atomic Marketing was listed November 11 before early cutoff filtering
+shipped. A verified pre-approval snapshot held 79 proposals with no
+source publish dates. The candidate records already had dates before
+the cutoff for 71. Replaying the exact 24 approvals on the copied
+snapshot queued the same seven videos that became searchable live and
+skipped the other 17 before queueing. Recent job samples showed late
+cutoff skips in six projects. This replay establishes avoided metadata
+requests for Atomic Marketing. End-to-end time on future imports
+remains to be measured.
+
+All 2,728 tests passed across six shards, including tests for legacy
+review records, missing and invalid dates, the cutoff boundary,
+all-skipped imports, and explicit retry. Chrome verified approval
+and the Sources summary on isolated data. Tier 1 and release-check
+passed. Report: `evals/release/release-check-0.64.32-46495fe-20261113-114354.json`.
