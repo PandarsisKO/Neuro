@@ -2176,8 +2176,9 @@ def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict])
                 for i, c in enumerate(chunks)
             ],
         )
-        conn.execute("UPDATE sources SET revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END, spoken_chars=? WHERE id=?",
-                     (segments_revision(segments), bool(chunks), sum(len(s_["text"]) for s_ in segments), source_id))
+        revision = segments_revision(segments)
+        conn.execute("UPDATE sources SET updated_at=CASE WHEN revision IS NOT ? THEN ? ELSE updated_at END, revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END, spoken_chars=? WHERE id=?",
+                     (revision, now(), revision, bool(chunks), sum(len(s_["text"]) for s_ in segments), source_id))
     # G5: a moved revision stales exactly the Claim evidence rows frozen on the old one (no-op for sources without Claims)
     try:
         if connect().execute("SELECT 1 FROM claim_evidence WHERE source_id=? LIMIT 1", (source_id,)).fetchone():

@@ -184,3 +184,35 @@ def test_drawer_distinguishes_queued_zero_failed_and_project_membership(isolated
     db.upsert_analysis(pid, sid, "summary", summary="Read complete")
     digest = sources_value.digest(pid, sid)
     assert digest["read_status"]["state"] == "read" and digest["findings_total"] == 0
+
+
+def test_plan_check_includes_new_and_revised_sources_after_many_findings(isolated_db, monkeypatch):
+    pid = db.create_project("Evidence budget")["id"]
+    sid = source("revised-existing-source", "The original transcript predates the plan.", pid)
+    db.save_plan(pid, {"first_steps": [{"action": "Review evidence"}]}, {})
+    with db.batch():
+        for i in range(65):
+            db.add_project_note(pid, f"Finding {i}: " + "background details " * 70, [])
+
+    prompts = []
+
+    def review(*args, **kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return {"updates": []}
+
+    monkeypatch.setattr(providers, "invoke_structured", review)
+    planner.suggest_updates(pid)
+    planner.suggest_updates(pid)
+    assert len(prompts) == 1
+    assert "Finding 64:" in prompts[-1]
+    source("new-plan-source", "A newly attached transcript supplies a different constraint.", pid)
+    planner.suggest_updates(pid)
+    assert len(prompts) == 2
+    assert "A newly attached transcript supplies a different constraint." in prompts[-1]
+    rows = [{"start": 0, "end": 20, "text": "The revised transcript adds a different limit."}]
+    db.replace_transcript(sid, rows, rows)
+    planner.suggest_updates(pid)
+    assert len(prompts) == 3
+    assert "The revised transcript adds a different limit." in prompts[-1]
+    planner.suggest_updates(pid)
+    assert len(prompts) == 3

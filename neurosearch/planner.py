@@ -429,27 +429,46 @@ def _suggest_updates(project_id: str) -> list[dict[str, Any]]:
         return []
     since = plan["plan"].get("_research_checked_since", plan["created_at"])
     conn = db.connect()
-    new_notes = [dict(r) for r in conn.execute(
-        "SELECT content FROM project_notes WHERE project_id=? AND created_at>? AND status<>'reserve' ORDER BY id",
-        (project_id, since)).fetchall()]
-    new_facts = [dict(r) for r in conn.execute(
-        "SELECT kind, content FROM project_facts WHERE project_id=? AND created_at>? ORDER BY id",
-        (project_id, since)).fetchall()]
-    new_msgs = [dict(r) for r in conn.execute(
+    new_notes = conn.execute(
+        "SELECT content FROM project_notes WHERE project_id=? AND created_at>? AND status<>'reserve' "
+        "ORDER BY created_at DESC, id DESC LIMIT 200", (project_id, since)).fetchall()
+    new_facts = conn.execute(
+        "SELECT kind, content FROM project_facts WHERE project_id=? AND created_at>? "
+        "ORDER BY created_at DESC, id DESC LIMIT 100", (project_id, since)).fetchall()
+    new_msgs = conn.execute(
         """SELECT m.role, m.content FROM messages m JOIN conversations c ON c.id=m.conversation_id
-           WHERE c.project_id=? AND m.created_at>? ORDER BY m.id""", (project_id, since)).fetchall()]
+           WHERE c.project_id=? AND m.created_at>? ORDER BY m.id DESC LIMIT 40""", (project_id, since)).fetchall()
     source_ids = db.project_source_ids(project_id)
     new_srcs = conn.execute(
-        """SELECT id,title FROM sources WHERE id IN (SELECT value FROM json_each(?))
-           AND (MAX(created_at, updated_at)>? OR id IN (
-               SELECT object_id FROM project_change_events
-               WHERE project_id=? AND event_type='source_attached' AND created_at>?))
-           ORDER BY id""", (json.dumps(source_ids), since, project_id, since)).fetchall()
-    material = ["NEW FINDINGS:"] + [f"- {n['content'][:1000]}" for n in new_notes]
-    material += ["NEW USER FACTS:"] + [f"- [{f['kind']}] {f['content']}" for f in new_facts]
-    material += ["NEW SOURCES:"] + [f"- {s['title']}: " + " ".join(x['text'] for x in db.get_segments(s['id'])[:30])[:600] for s in new_srcs]
-    material += ["NEW CONVERSATION:"] + [f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1200]}" for m in new_msgs[-40:]]
-    evidence = "\n".join(material)[:40000]
+        """WITH attached AS (
+               SELECT object_id, MAX(created_at) AS attached_at FROM project_change_events
+               WHERE project_id=? AND event_type='source_attached' AND created_at>? GROUP BY object_id
+           )
+           SELECT s.id, s.title, MAX(s.created_at, s.updated_at, COALESCE(a.attached_at, 0)) AS changed_at
+           FROM sources s LEFT JOIN attached a ON a.object_id=s.id
+           WHERE s.id IN (SELECT value FROM json_each(?)) AND changed_at>?
+           ORDER BY changed_at DESC, s.id LIMIT 100""", (project_id, since, json.dumps(source_ids), since)).fetchall()
+    sections = (
+        ("NEW FINDINGS", (f"- {n['content'][:1000]}" for n in new_notes), 16000),
+        ("NEW USER FACTS", (f"- [{f['kind']}] {f['content'][:1500]}" for f in new_facts), 8000),
+        ("NEW SOURCES", (f"- {(row['title'] or 'Untitled source')[:200]}: " + " ".join(x["text"] for x in db.get_segments(row["id"])[:30])[:600]
+                         for row in new_srcs), 10000),
+        ("NEW CONVERSATION", (f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1200]}" for m in new_msgs), 6000),
+    )
+    blocks = []
+    for title, lines, budget in sections:
+        # Give each evidence type space even on projects with thousands of findings.
+        # Keep complete entries, ordered newest first except for the selected conversation turns.
+        block = [title + ":"]
+        for line in lines:
+            if len(line) + 1 > budget:
+                break
+            block.append(line)
+            budget -= len(line) + 1
+        if title == "NEW CONVERSATION":
+            block[1:] = reversed(block[1:])
+        blocks.append("\n".join(block))
+    evidence = "\n".join(blocks)
     plan_json = {k: v for k, v in plan["plan"].items() if not k.startswith("_")}
     paths = ", ".join(_exact_edit_paths(plan_json))
     user = "CURRENT PLAN:\n" + json.dumps(plan_json)[:30000] + f"\n\nEXACT EDIT PATHS: {paths}\n\n" + evidence + "\n\nList the suggested updates now."
