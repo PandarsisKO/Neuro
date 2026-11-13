@@ -5475,3 +5475,10 @@ isolated app verified rewording, carry-forward, export, save and reopen.
 The verified 08:41 snapshot had no saved reviews. The regression
 and browser runs exercised this workflow using isolated data.
 Release report: `evals/release/release-check-0.64.30-026ea64-20261113-090023.json`.
+
+### 2026-11-13 — Claim Challenge review continuity live
+
+Published `2ed727c` and verified GitHub main. The Mac reloaded 0.64.30
+with matching Research JavaScript and zero expired leases. An
+authenticated keyword search returned eight passages with the retained
+assessment field. Saving and reopening were verified on isolated data.
