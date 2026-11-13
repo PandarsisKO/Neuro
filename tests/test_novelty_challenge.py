@@ -162,3 +162,76 @@ def test_pending_plan_proposal_shows_recorded_claim_and_passage(client):
     assert linked["claim_evidence"]["text"] == claim["text"]
     assert linked["claim_evidence"]["supporting"][0]["locator"] == "0:40"
     assert "claim_evidence" not in unlinked
+
+
+@pytest.mark.parametrize("subject,claim_text,first,precedent,exception,wording", [
+    ("Ventilation", "Nighttime rooftop vents reduce warehouse heat in dry climates",
+     "Rooftop vents in warehouses can be opened at night for maintenance.",
+     "The dry-climate warehouse trial reduced daytime heat by opening rooftop vents overnight.",
+     "Nighttime rooftop vents increased warehouse heat in humid climates.",
+     "warehouse trial overnight daytime heat"),
+    ("Tutoring", "Small group tutoring improves comprehension for third graders",
+     "Small group tutoring has been used to schedule third grade reading sessions.",
+     "Third grade reading groups improved comprehension in a controlled tutoring trial.",
+     "Small group tutoring reduced comprehension for third graders in the trial.",
+     "controlled reading groups trial comprehension"),
+    ("Scheduling", "Evening dispatch reduces missed deliveries on rural routes",
+     "Evening dispatch is listed in the rural route calendar.",
+     "A rural route trial found fewer missed deliveries after switching dispatch to evenings.",
+     "Evening dispatch increased missed deliveries on rural routes in winter.",
+     "rural route trial switching dispatch evenings"),
+])
+def test_challenge_benchmark_recovers_prior_example_and_keeps_scope_evidence(
+    client, subject, claim_text, first, precedent, exception, wording,
+):
+    pid = db.create_project(f"Challenge benchmark {subject}")["id"]
+    lib = db.create_project(f"Challenge benchmark library {subject}")["id"]
+    claim = claims.add_claim(pid, claim_text)
+    original = _source(pid, f"prior-{subject}-original", first)
+    copy = _source(lib, f"prior-{subject}-copy", first)
+    source = _source(pid, f"prior-{subject}-counter", exception)
+    work, _ = works.ensure_work("other", f"Challenge benchmark report {subject}")
+    works.link_source(original, work["id"])
+    works.link_source(copy, work["id"], relation="reprint_of")
+    passages = [{"start": i * 40, "end": (i + 1) * 40, "text": text}
+                for i, text in enumerate([first, precedent])]
+    db.replace_transcript(original, passages, passages)
+    path = f"/api/projects/{pid}/claims/{claim['id']}/challenge"
+    response = client.post(path, headers=H, json={"precedent": wording, "counter": exception, "library": True})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    found = data["scopes"]["project"]["passages"]
+    assert {p["text"] for p in found} == {first, precedent, exception}
+    assert len({p["origin"] for p in found}) == 2
+    assert [p["source_id"] for p in found].count(original) == 2
+    assert any(p["source_id"] == source for p in found)
+    assert not any(p["source_id"] == copy for p in data["scopes"]["library"]["passages"])
+    assert data["scopes"]["project"]["searchable_sources"] == 2
+
+
+def test_saved_challenge_detects_new_and_revised_unreviewed_sources(client):
+    pid = db.create_project("Challenge coverage")["id"]
+    claim = claims.add_claim(pid, "Warehouse skylights reduce lighting costs.")
+    _source(pid, "challenge-covered-lighting", claim["text"])
+    unreviewed = _source(pid, "challenge-covered-extra", "Truck loading ramps")
+    path = f"/api/projects/{pid}/claims/{claim['id']}/challenge"
+    result = client.post(path, headers=H, json={}).json()
+    assert result["scopes"]["project"]["searchable_sources"] == 2
+    assert len(result["scopes"]["project"]["passages"]) == 1
+    result["scopes"]["project"]["passages"][0]["assessment"] = "equivalent"
+    assert client.put(path + "/review", headers=H, json=result).status_code == 200
+    _source(pid, "challenge-covered-new", "More information about warehouse skylights")
+    saved = client.get(path + "/review", headers=H).json()["review"]
+    assert saved["scopes"]["project"]["scope_changed"]
+    assert not saved["scopes"]["project"]["passages"][0]["changed"]
+    assert client.put(path + "/review", headers=H, json=result).status_code == 409
+
+    result = client.post(path, headers=H, json={}).json()
+    for passage in result["scopes"]["project"]["passages"]:
+        passage["assessment"] = "equivalent"
+    assert client.put(path + "/review", headers=H, json=result).status_code == 200
+    segments = [{"start": 40, "end": 55, "text": "Ramp permits expire annually."}]
+    db.replace_transcript(unreviewed, segments, segments)
+    saved = client.get(path + "/review", headers=H).json()["review"]
+    assert saved["scopes"]["project"]["scope_changed"]
+    assert all(not p["changed"] for p in saved["scopes"]["project"]["passages"])

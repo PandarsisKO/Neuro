@@ -3267,6 +3267,8 @@ def api_claim_review_evidence(project_id: str, claim_id: str) -> dict[str, Any]:
 class ClaimChallengeIn(BaseModel):
     q: str = Field("", max_length=500)
     alternate: str = Field("", max_length=500)
+    precedent: str = Field("", max_length=500)
+    counter: str = Field("", max_length=500)
     semantic: bool = False
     library: bool = False
 
@@ -3276,7 +3278,8 @@ def api_claim_challenge(project_id: str, claim_id: str, body: ClaimChallengeIn) 
     """Retrieve a bounded set of passages for the user to compare with the Claim."""
     from . import claim_challenge
     result = claim_challenge.find(project_id, claim_id, body.q, body.alternate,
-                                  semantic=body.semantic, include_library=body.library)
+                                  semantic=body.semantic, include_library=body.library,
+                                  precedent=body.precedent, counter=body.counter)
     if result is None:
         raise HTTPException(404, "claim not found in project")
     return result
@@ -3292,6 +3295,8 @@ class ChallengePassageIn(BaseModel):
 
 class ChallengeScopeIn(BaseModel):
     sources_in_scope: int = Field(ge=0)
+    searchable_sources: int | None = Field(default=None, ge=0)
+    scope_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     passages: list[ChallengePassageIn] = Field(max_length=8)
 
 
@@ -3299,7 +3304,7 @@ class ChallengeReviewIn(BaseModel):
     text: str = Field(max_length=16000)
     qualifiers: dict[str, Any]
     searched_at: datetime
-    queries: list[Annotated[str, Field(max_length=500)]] = Field(min_length=1, max_length=2)
+    queries: list[Annotated[str, Field(max_length=500)]] = Field(min_length=1, max_length=4)
     method: Literal["keyword", "hybrid", "mixed"]
     semantic_requested: bool = False
     scopes: dict[Literal["project", "library"], ChallengeScopeIn]

@@ -390,7 +390,9 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
       <summary>Challenge this claim</summary>
       <form data-claim-challenge class="mt-2">
         <label>Search wording<input name="query" maxlength="500" value="${esc(result.text.slice(0, 500))}"></label>
-        <label>Alternative wording<input name="alternate" maxlength="500" placeholder="Try a paraphrase, exception, or opposite outcome"></label>
+        <label>Alternative wording<input name="alternate" maxlength="500" placeholder="Try a different way to describe the same idea"></label>
+        <label>Earlier examples<input name="precedent" maxlength="500" placeholder="Where might this already have been tried?"></label>
+        <label>Exceptions or failures<input name="counter" maxlength="500" placeholder="When might this fail or give the opposite result?"></label>
         <label class="claim-search-choice"><input name="library" type="checkbox"> Include library leads</label>
         ${result.semantic_available ? '<label class="claim-search-choice"><input name="semantic" type="checkbox"> Search for similar wording using paid embeddings</label>' : ''}
         <button class="small primary mt-2" type="submit">Search passages</button>
@@ -402,6 +404,18 @@ globalThis.showClaimEvidence = async function showClaimEvidence(claimId) {
     + section('Supporting and related evidence', result.supporting, result.supporting_total)
     + (result.supporting_total || result.counter_total ? '' : '<p class="muted">This Claim has no linked evidence.</p>');
   wireClaimChallenge(panel, projectId, claimId);
+}
+globalThis.claimChallengeSummary = function claimChallengeSummary(groups) {
+  const equivalent = scope => (groups[scope]?.passages || [])
+    .some(p => p.assessment === 'equivalent' && !p.same_origin_as_support);
+  const passages = Object.values(groups).flatMap(group => group.passages);
+  if (equivalent('project')) return 'Equivalent assertion reviewed in the project.';
+  if (equivalent('library')) return 'Equivalent assertion reviewed in the library.';
+  if (passages.some(p => p.assessment === 'equivalent')) return 'Equivalent wording reviewed from an already cited origin.';
+  if (passages.some(p => p.assessment === 'qualification' || p.assessment === 'contradiction')) {
+    return 'The review found exceptions or contrary results. Novelty remains unassessed.';
+  }
+  return 'Coverage is insufficient to assess novelty.';
 }
 globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, claimId) {
   const form = panel.querySelector('[data-claim-challenge]');
@@ -415,11 +429,12 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
     if (!saved || !review) return;
     const groups = Object.entries(review.scopes);
     const passages = groups.flatMap(([scope, group]) => group.passages.map(p => ({ ...p, scope })));
-    const changed = review.claim_changed || passages.some(p => p.changed);
+    const changed = review.claim_changed || passages.some(p => p.changed) || groups.some(([, group]) => group.scope_changed);
     const coverage = groups.map(([scope, group]) => `${group.passages.length} passages shown from ${group.sources_in_scope} ${scope} sources in scope`).join(' · ');
     saved.innerHTML = `<details><summary>Last saved assessment · ${esc(new Date(review.saved_at * 1000).toLocaleDateString())}</summary>
-      ${changed ? '<p class="status-warn">The Claim or reviewed sources changed. Run a fresh search before relying on this assessment.</p>' : ''}
+      ${changed ? '<p class="status-warn">The Claim, reviewed passages, or searched collection changed. Run a fresh search before relying on this assessment.</p>' : ''}
       <p class="muted">Searched ${esc(new Date(review.searched_at).toLocaleString())} for ${review.queries.map(esc).join(' · ')}. ${esc(coverage)}.</p>
+      <p>${esc(claimChallengeSummary(review.scopes))}</p>
       ${passages.map(p => `<div class="kn"><div class="grow min-w-0"><b>${esc(intent[p.assessment] || 'Unreviewed')}</b> · ${claimEvidenceLink(p)}
         ${p.scope === 'library' ? '<span class="tag">Library lead at review time</span>' : ''}
         ${p.changed ? '<span class="tag status-warn">Passage changed</span>' : ''}
@@ -439,6 +454,8 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
     const params = {
       q: form.elements.query.value.trim(),
       alternate: form.elements.alternate.value.trim(),
+      precedent: form.elements.precedent.value.trim(),
+      counter: form.elements.counter.value.trim(),
       library: form.elements.library.checked,
       semantic: !!form.elements.semantic?.checked,
     };
@@ -453,12 +470,19 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
     if (!current()) return;
     const checked = new Date(data.searched_at).toLocaleString();
     const groups = Object.entries(data.scopes);
-    const leads = groups.flatMap(([, group]) => group.passages);
+    const originCounts = new Map();
+    for (const [, group] of groups) {
+      for (const passage of group.passages) {
+        const key = passage.origin || passage.source_id;
+        originCounts.set(key, (originCounts.get(key) || 0) + 1);
+      }
+    }
     const passages = (scope, group) => `<h4 class="mt-3 mb-1">${scope === 'project' ? 'Project passages' : 'Library leads'}</h4>
-      <div class="muted">${group.passages.length} of up to ${data.passage_limit_per_scope} passages shown · ${group.sources_in_scope} ready sources in scope</div>
+      <div class="muted">${group.passages.length} of up to ${data.passage_limit_per_scope} passages shown · ${group.searchable_sources ?? group.sources_in_scope} of ${group.sources_in_scope} ready sources had searchable passages</div>
       ${scope === 'library' ? '<p class="muted">These sources are outside the project. Attach a source before using it as project evidence.</p>' : ''}
       ${group.passages.map(p => `<div class="kn"><div class="grow min-w-0">
         ${claimEvidenceLink(p)}${p.same_origin_as_support ? ' <span class="tag">Already cited origin</span>' : ''}
+        ${originCounts.get(p.origin || p.source_id) > 1 ? ' <span class="tag">Shared source origin</span>' : ''}
         <blockquote class="quote">${esc(p.text)}${p.excerpt_truncated ? '…' : ''}</blockquote>
         <label>Passage assessment <select class="w-auto" data-challenge-passage="${esc(p.chunk_id)}">
           <option value="">Unreviewed</option>${Object.entries(intent).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
@@ -477,40 +501,25 @@ globalThis.wireClaimChallenge = function wireClaimChallenge(panel, projectId, cl
       <p data-challenge-save-status role="status"></p>`;
     const selections = [...results.querySelectorAll('[data-challenge-passage]')];
     const outcome = results.querySelector('[data-challenge-outcome]');
-    const status = () => {
-      const reviewed = selections.map((select, index) => ({ ...leads[index], assessment: select.value }));
-      const equivalents = reviewed.filter(p => p.assessment === 'equivalent');
-      let novelty;
-      if (equivalents.some(p => !p.same_origin_as_support)) novelty = 'Equivalent assertion found in another source origin.';
-      else if (equivalents.length) novelty = 'Equivalent wording found from an already cited origin.';
-      else if (!reviewed.some(p => !p.same_origin_as_support && ['contradiction', 'qualification'].includes(p.assessment))
-               || reviewed.some(p => !p.assessment || p.assessment === 'uncertain')) {
-        novelty = 'Coverage is insufficient to assess novelty.';
-      } else novelty = 'No equivalent found in the passages checked.';
-      return { novelty, reviewed };
+    const assessedScopes = () => {
+      const labels = new Map(selections.map(select => [select.dataset.challengePassage, select.value]));
+      return Object.fromEntries(groups.map(([scope, group]) => [scope, {
+        ...group, passages: group.passages.map(p => ({ ...p, assessment: labels.get(String(p.chunk_id)) })),
+      }]));
     };
-    const showStatus = () => {
-      const { novelty, reviewed } = status();
-      const contrary = reviewed.filter(p => p.assessment === 'contradiction').length;
-      const exceptions = reviewed.filter(p => p.assessment === 'qualification').length;
-      const observations = [];
-      if (contrary) observations.push(`${contrary} opposite result${contrary === 1 ? '' : 's'} in the same scope`);
-      if (exceptions) observations.push(`${exceptions} exception${exceptions === 1 ? '' : 's'} or scope difference${exceptions === 1 ? '' : 's'}`);
-      outcome.textContent = novelty + (observations.length ? ' ' + observations.join(' · ') + ' in your assessment.' : '');
-    };
+    const showStatus = () => { outcome.textContent = claimChallengeSummary(assessedScopes()); };
     for (const select of selections) select.addEventListener('change', showStatus);
     showStatus();
     const reviewData = () => {
-      const review = status();
-      return { ...data, scopes: Object.fromEntries(groups.map(([key, group]) => [
-        key, { ...group, passages: group.passages.map(p => ({ ...p, assessment: review.reviewed.find(r => r.chunk_id === p.chunk_id)?.assessment })) }
-      ])), novelty: review.novelty, remaining_gaps: results.querySelector('[name="gaps"]').value,
-      scope_limit: 'Ranked passages from the selected sources. Search and review coverage are limited to the passages shown.' };
+      const scopes = assessedScopes();
+      return { ...data, scopes, novelty: claimChallengeSummary(scopes),
+        remaining_gaps: results.querySelector('[name="gaps"]').value,
+        scope_limit: 'Ranked passages from the selected sources. Search and review coverage are limited to the passages shown.' };
     };
     const save = results.querySelector('[data-challenge-save]');
     const saveStatus = results.querySelector('[data-challenge-save-status]');
     save.addEventListener('click', async () => {
-      if (!status().reviewed.some(p => p.assessment)) {
+      if (!selections.some(select => select.value)) {
         saveStatus.textContent = 'Assess at least one passage before saving.';
         return;
       }

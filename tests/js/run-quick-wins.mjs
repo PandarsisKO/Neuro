@@ -108,12 +108,18 @@ try {
   assert.match(outcome.textContent, /insufficient/);
   const assessment = panel.querySelector('[data-challenge-passage]');
   for (const [choice, expected] of [
-    ['irrelevant', /insufficient/], ['qualification', /No equivalent found/], ['equivalent', /Equivalent assertion found/],
+    ['irrelevant', /insufficient/], ['qualification', /Novelty remains unassessed/], ['contradiction', /Novelty remains unassessed/], ['equivalent', /Equivalent assertion reviewed in the project/],
   ]) {
     assessment.value = choice;
     assessment.dispatchEvent(new window.Event('change'));
     assert.match(outcome.textContent, expected);
   }
+
+  assert.match(window.claimChallengeSummary({ project: { passages: [] } }), /insufficient/);
+  assert.match(window.claimChallengeSummary({ library: { passages: [{ assessment: 'equivalent' }] } }), /reviewed in the library/);
+  assert.match(window.claimChallengeSummary({ project: { passages: [
+    { assessment: 'equivalent', same_origin_as_support: true }
+  ] } }), /already cited origin/);
 
   window.put = async (url, body) => {
     assert.match(url, /challenge\/review$/);
