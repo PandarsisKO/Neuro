@@ -124,3 +124,10 @@ Gemma 4 26B can take up to two ordinary Findings jobs waiting on a
 spending limit or ChatGPT's occupied slot. It shares the existing job
 queue and Pause Mac work control. Claims still uses the subscribed
 providers because the tested local models failed qualifier checks.
+
+## 2026-11-12 — ChatGPT gives Finding suggestions the next slot (0.64.16)
+
+When Finding suggestions are ready and queued for the connected ChatGPT
+plan, they go ahead of Claims extraction on that plan. An in-flight
+request finishes. Claims can use Claude as usual, and eligible Findings
+can still run on the Mac in parallel.

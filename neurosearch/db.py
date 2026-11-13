@@ -2882,6 +2882,7 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
 
 EXECUTION_POLICIES = ("local_preferred", "local_only", "api_requested", "api_only")
 LEGACY_CHATGPT_BUSY_MESSAGE = "paused: ChatGPT is working on another Neuro job."
+CHATGPT_SLOT_WAIT = "(wait_reason IS 'chatgpt_slot' OR message IS ?)"
 
 
 def set_job_policy(job_id: str, policy: str) -> dict[str, Any] | None:
@@ -3183,10 +3184,28 @@ def set_background_paused(paused: bool) -> dict[str, Any]:
     return {"paused": paused, "stopped": stopped, "waiting": waiting}
 
 
+def chatgpt_findings_waiting(conn: sqlite3.Connection | None = None) -> bool:
+    """Runnable Findings waiting for the shared plan, including the handoff from queue to worker."""
+    conn = conn or connect()
+    t = now()
+    rows = conn.execute(
+        "SELECT status, lane, blocked_by, dependency_policy FROM jobs "
+        "WHERE kind='suggest_findings' AND status IN ('queued','running') "
+        "AND execution_policy!='local_only' AND cancel_requested_at IS NULL AND pause_requested_at IS NULL "
+        f"AND {CHATGPT_SLOT_WAIT} "
+        "AND ((status='queued' AND (not_before IS NULL OR not_before<=?)) "
+        "OR (status='running' AND lease_until>=? AND COALESCE(worker_id,'') NOT LIKE ?))",
+        (LEGACY_CHATGPT_BUSY_MESSAGE, t, t, "%" + MAC_FINDINGS_WORKER_SUFFIX),
+    ).fetchall()
+    paused = bool(rows) and background_paused()
+    return any((not paused or row["lane"] not in BACKGROUND_LANES)
+               and (row["status"] == "running" or _deps_state(conn, row) == "ready") for row in rows)
+
+
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
               exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None,
               anthropic_alternates: tuple[str, ...] = (), chatgpt_busy: bool = False,
-              mac_findings: bool = False) -> dict[str, Any] | None:
+              mac_findings: bool = False, chatgpt_findings_first: bool = False) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
     Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
     L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
@@ -3206,9 +3225,9 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         args: list[Any] = []
         if mac_findings:
             # Budget waits and ChatGPT slot waits have no bearing on $0 Mac execution.
-            q += """ AND ((wait_reason='mac_findings' AND (not_before IS NULL OR not_before<=?))
+            q += f""" AND ((wait_reason='mac_findings' AND (not_before IS NULL OR not_before<=?))
                         OR wait_reason='budget'
-                        OR (? AND (wait_reason='chatgpt_slot' OR message=?)))"""
+                        OR (? AND {CHATGPT_SLOT_WAIT}))"""
             args.extend((now(), chatgpt_busy, LEGACY_CHATGPT_BUSY_MESSAGE))
             q += " AND json_extract(payload, '$.r6_wave') IS NULL"
             q += " AND json_extract(payload, '$.substance_floor') IS NULL"
@@ -3220,7 +3239,11 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             if settings.mac_findings:
                 q += " AND wait_reason IS NOT 'mac_findings'"
         if chatgpt_busy and not mac_findings:
-            q += " AND wait_reason IS NOT 'chatgpt_slot' AND message IS NOT ?"
+            q += f" AND NOT {CHATGPT_SLOT_WAIT}"
+            args.append(LEGACY_CHATGPT_BUSY_MESSAGE)
+        elif (chatgpt_findings_first and (not kinds or "extract_claims" in kinds)
+              and (not exclude_kinds or "extract_claims" not in exclude_kinds) and chatgpt_findings_waiting(conn)):
+            q += f" AND NOT (kind='extract_claims' AND {CHATGPT_SLOT_WAIT})"
             args.append(LEGACY_CHATGPT_BUSY_MESSAGE)
         if kinds:
             q += f" AND kind IN ({','.join('?' for _ in kinds)})"
@@ -3305,16 +3328,18 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
                 f" AND (SELECT COUNT(*) FROM jobs WHERE status='running' AND {MAC_FINDINGS_RUNNING}) < {MAC_FINDINGS_SLOTS}"
             )
         cur = conn.execute(
-            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, updated_at=?, not_before=NULL, wait_reason=NULL, wait_operation=NULL, bumped_at=NULL, "
+            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, updated_at=?, not_before=NULL, "
+            f"wait_reason=CASE WHEN ? AND kind='suggest_findings' AND {CHATGPT_SLOT_WAIT} THEN 'chatgpt_slot' END, "
+            "wait_operation=NULL, bumped_at=NULL, "
                      # Kyle, live: an extract_claims job showed "paused: the account's credit balance is too low" while it was
-                     # actually RUNNING and making successful calls. Claiming cleared not_before/wait_reason but left the
-                     # message from when it was parked, so the panel kept showing a resolved error as if it were current.
+                     # actually running. Clear the old message even when retaining the Findings priority marker.
                      "message=CASE WHEN wait_reason IN ('chatgpt_slot','mac_findings') OR wait_operation IS NOT NULL OR message LIKE 'paused:%' THEN NULL ELSE message END "
             "WHERE id=? AND status='queued' "
             f"AND (NOT COALESCE(({MAC_PROFILE_FILTER}),0) OR ("
             "COALESCE((SELECT value FROM kv WHERE key='mac_work:paused'),'0')!='1' "
             f"AND NOT EXISTS (SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER})))" + mac_guard,
-            (t, run_id, worker_id, t, t, t + lease_seconds, t, row["id"])
+            (t, run_id, worker_id, t, t, t + lease_seconds, t,
+             chatgpt_findings_first and not mac_findings, LEGACY_CHATGPT_BUSY_MESSAGE, row["id"])
         )
         if cur.rowcount != 1:
             return None
@@ -3670,7 +3695,7 @@ def finish_job(job_id: str, run_id: str | None, status: str, *, message: str | N
     with tx() as conn:
         t = now()
         cur = conn.execute("UPDATE jobs SET status=?, finished_at=?, message=COALESCE(?, message), result=COALESCE(?, result), progress=CASE WHEN ?='done' THEN 1.0 ELSE progress END, "
-                           "run_id=NULL, worker_id=NULL, lease_until=NULL, updated_at=? WHERE id=? AND status='running'" + (" AND run_id=?" if run_id else ""),
+                           "run_id=NULL, worker_id=NULL, lease_until=NULL, wait_reason=NULL, updated_at=? WHERE id=? AND status='running'" + (" AND run_id=?" if run_id else ""),
                            (status, t, message[:2000] if message else None, json.dumps(result) if result is not None else None, status, t, job_id, *([run_id] if run_id else [])))
         ok = cur.rowcount == 1
         if ok:

@@ -604,6 +604,8 @@ def _invoke_chatgpt_plan(task: str, *, system: Any, messages: list[dict[str, Any
     if not plan._slot.acquire(blocking=False):
         raise plan.PlanBusy()
     try:
+        if task == "claims.extract" and plan.model_for("findings.extract") and db.chatgpt_findings_waiting():
+            raise plan.PlanBusy("Finding suggestions are ahead of Claims in the ChatGPT queue.")
         # The plan preview rejects an output-token limit. Reserve the documented model maximum
         # as estimated exposure and enforce the task's smaller limit on the returned result.
         input_bound = len(json.dumps(body, ensure_ascii=False).encode()) + 2000

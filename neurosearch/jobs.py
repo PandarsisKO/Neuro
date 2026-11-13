@@ -660,16 +660,18 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[s
         fallback_kinds = (*enabled, "extract_claims") if plan.model_for("claims.extract") else enabled
         alternates = fallback_kinds if fallback_kinds and plan.ready() else ()
         chatgpt_busy = plan.busy()
+        findings_first = "suggest_findings" in alternates and "extract_claims" in alternates
         job = None
         if kinds and "suggest_findings" in kinds and (policies is None or "local_preferred" in policies):
             job = db.claim_mac_findings(wid, lanes=lanes, chatgpt_busy=chatgpt_busy)
         if not job:
             job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes,
-                               chatgpt_busy=chatgpt_busy,
+                               chatgpt_busy=chatgpt_busy, chatgpt_findings_first=findings_first,
                                **({"anthropic_alternates": alternates} if alternates else {}))
         parallel = False
         if not job and chatgpt_overflow and enabled and alternates and settings.chatgpt_plan_parallel and not plan.busy():
-            job = db.claim_job(enabled, worker_id=wid, policies=("local_preferred",), lanes=lanes)
+            job = db.claim_job(enabled, worker_id=wid, policies=("local_preferred",), lanes=lanes,
+                               chatgpt_findings_first=findings_first)
             parallel = bool(job)
         if not job:
             _stop.wait(1.5)

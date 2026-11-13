@@ -513,3 +513,88 @@ def test_job_display_distinguishes_existing_waits_and_chatgpt_outages(calls):
     db.requeue_job(job_id, wait_reason="chatgpt_slot", message="Starts when the current ChatGPT request finishes.")
     db.set_job_policy(job_id, "api_requested")
     assert db.claim_job(("suggest_findings",), policies=jobs.API_POLICIES, chatgpt_busy=True)["id"] == job_id
+
+
+def test_findings_take_next_chatgpt_slot_across_workers(calls, monkeypatch):
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", (TASK, "claims.extract"))
+    monkeypatch.setattr(claude, "health_snapshot", lambda **kw: {"state": "usage_limit"})
+
+    waiting_claim = db.create_job("extract_claims", {"project_id": "first"}, lane="priority")
+    db.requeue_job(waiting_claim["id"], wait_reason="chatgpt_slot")
+    fresh_claim = db.create_job("extract_claims", {"project_id": "second"}, lane="priority")
+    finding = db.create_job("suggest_findings", {"project_id": "third"})
+    db.requeue_job(finding["id"], wait_reason="provider", message=db.LEGACY_CHATGPT_BUSY_MESSAGE)
+    kinds = ("extract_claims", "suggest_findings")
+
+    def model_call(job):
+        task = TASK if job["kind"] == "suggest_findings" else "claims.extract"
+        providers.invoke(task, system="Fixture", messages=MESSAGES)
+        return {}
+
+    monkeypatch.setattr(jobs, "run_job", model_call)
+    with plan._slot:
+        claim = db.claim_job(kinds, chatgpt_busy=plan.busy(), chatgpt_findings_first=True)
+        assert claim["id"] == fresh_claim["id"]
+    # A worker that already picked up Claims still has to honor the queued Findings.
+    assert jobs.execute(claim) == "queued"
+    row = db.get_job(fresh_claim["id"])
+    assert row["attempts"] == 0 and row["wait_reason"] == "chatgpt_slot"
+    assert "Finding suggestions are ahead" in row["message"]
+    assert calls == [] and not plan.busy()
+
+    claimed_finding = db.claim_job(kinds, worker_id="findings", chatgpt_findings_first=True)
+    assert claimed_finding["id"] == finding["id"] and claimed_finding["message"] is None
+    # The queue-to-worker handoff preserves priority until the Finding finishes.
+    assert db.claim_job(kinds, worker_id="claims", chatgpt_findings_first=True) is None
+    with pytest.raises(plan.PlanBusy, match="Finding suggestions are ahead"):
+        providers.invoke("claims.extract", system="Fixture", messages=MESSAGES)
+
+    assert jobs.execute(claimed_finding, "findings") == "done"
+    assert db.get_job(finding["id"])["wait_reason"] is None
+
+    monkeypatch.setattr(jobs, "_stop", threading.Event())
+    monkeypatch.setattr(jobs._stop, "wait", lambda *_: jobs._stop.set())
+
+    def stop_after_call(**kwargs):
+        jobs._stop.set()
+        calls.append("chatgpt")
+        return response(plan.MODEL)
+
+    monkeypatch.setattr(plan, "create", stop_after_call)
+    jobs._worker(0, kinds, policies=jobs.LOCAL_POLICIES)
+    assert db.get_job(waiting_claim["id"])["status"] == "done"
+    assert db.get_job(fresh_claim["id"])["status"] == "queued"
+    assert calls == ["chatgpt", "chatgpt"]
+
+
+@pytest.mark.parametrize("state", ["blocked", "delayed", "paused_lane", "mac", "local_only", "expired", "fresh"])
+def test_findings_without_a_runnable_chatgpt_wait_do_not_hold_claims(calls, monkeypatch, state):
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", (TASK, "claims.extract"))
+    monkeypatch.setattr(settings, "mac_findings", state == "mac")
+    monkeypatch.setattr(claude, "health_snapshot", lambda **kw: {"state": "usage_limit"})
+    dependency = db.create_job("ingest_source", {}) if state == "blocked" else None
+    finding = db.create_job("suggest_findings", {"project_id": "findings"},
+                            blocked_by=[dependency["id"]] if dependency else None,
+                            lane="slow" if state == "paused_lane" else "normal",
+                            execution_policy="local_only" if state == "local_only" else "local_preferred")
+    if state != "fresh":
+        db.requeue_job(finding["id"], wait_reason="chatgpt_slot", delay=600 if state == "delayed" else 0)
+    if state == "paused_lane":
+        db.kv_set("background_paused", "1")
+    elif state == "mac":
+        assert db.claim_mac_findings("mac", lanes=None, chatgpt_busy=True)["id"] == finding["id"]
+    elif state == "expired":
+        assert db.claim_job(("suggest_findings",), lease_seconds=-1, chatgpt_findings_first=True)["id"] == finding["id"]
+
+    providers.invoke("claims.extract", system="Fixture", messages=MESSAGES)
+    assert calls == ["chatgpt"]
+
+
+def test_chatgpt_findings_priority_allows_healthy_claude_claims(calls, monkeypatch):
+    monkeypatch.setattr(settings, "chatgpt_plan_tasks", (TASK, "claims.extract"))
+    finding = db.create_job("suggest_findings", {"project_id": "findings"})
+    db.requeue_job(finding["id"], wait_reason="chatgpt_slot")
+    assert db.chatgpt_findings_waiting()
+
+    providers.invoke("claims.extract", system="Fixture", messages=MESSAGES)
+    assert calls == ["claude"]

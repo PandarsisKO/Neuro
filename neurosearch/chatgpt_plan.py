@@ -46,10 +46,10 @@ class PlanWait(RuntimeError):
 
 
 class PlanBusy(PlanWait):
-    """The connected plan's slot is already serving another request."""
+    """The connected plan's slot is occupied or reserved for Findings."""
 
-    def __init__(self) -> None:
-        super().__init__("Starts when the current ChatGPT request finishes.")
+    def __init__(self, message: str = "Starts when the current ChatGPT request finishes.") -> None:
+        super().__init__(message)
 
 
 def model_for(task: str) -> str | None:
