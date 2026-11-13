@@ -5503,3 +5503,10 @@ candidate passed Tier 1 and release-check.
 Release report: `evals/release/release-check-0.64.31-7f667e1-20261113-090615.json`.
 All 2,726 pytest cases passed across six shards. The final one-line
 empty Chat rendering fix passed the affected suites and Chrome scenario.
+
+### 2026-11-13 — Source-first starting questions live
+
+Published `596abfe` and verified GitHub main. The Mac reloaded 0.64.31
+and served matching Chat and Home scripts. Authenticated project reads
+reported source readiness across seven projects, with zero expired
+job leases.
