@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, parse_qsl, urlparse
 
 import yt_dlp
 
+from . import perf
 from .config import settings
 
 log = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ def _save(site: str) -> None:
         pass
 
 
-def polite(url: str):
+def polite(url: str, *, measure_metadata: bool = False):
     """Context manager: serialise requests to touchy sites (YouTube, Instagram) and space them out;
     honour a global per-site pause after a bot-check."""
     site = _site(url)
@@ -102,7 +103,10 @@ def polite(url: str):
             if not site:
                 return self
             st = _sites[site]
+            started = _time.perf_counter() if measure_metadata else 0.0
             st["lock"].acquire()
+            if measure_metadata:
+                perf.record(f"ingest.metadata.{site}.lock_wait", _time.perf_counter() - started)
             _load(site)
             wait = max(0.0, st["until"] - _time.time())
             if wait > 0:
@@ -110,7 +114,12 @@ def polite(url: str):
                 raise RateLimited(f"{site.title()} rate limit — paused for another {_fmt_wait(wait)}")
             gap = st["delay"]() * random.uniform(0.6, 1.6) - (_time.time() - st["last"])
             if gap > 0:
+                started = _time.perf_counter() if measure_metadata else 0.0
                 _time.sleep(gap)
+                if measure_metadata:
+                    perf.record(f"ingest.metadata.{site}.request_spacing", _time.perf_counter() - started)
+            elif measure_metadata:
+                perf.record(f"ingest.metadata.{site}.request_spacing", 0.0)
             return self
 
         def __exit__(self, et, ev, tb):
@@ -606,9 +615,11 @@ def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = 
     lg = _Collect()
     # noplaylist: a watch?v=…&list=… link means THAT video, not the whole playlist (which made single-video
     # fetches crawl every entry and sit in "fetching metadata" for many minutes)
-    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, noplaylist=True, logger=lg, site_url=url)) as ydl:
+    site = _site(url) or "other"
+    with polite(url, measure_metadata=True), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, noplaylist=True, logger=lg, site_url=url)) as ydl:
         try:
-            info = _with_timeout(lambda: ydl.extract_info(url, download=False), FETCH_TIMEOUT, "metadata fetch")
+            with perf.timed(f"ingest.metadata.{site}.fetch"):
+                info = _with_timeout(lambda: ydl.extract_info(url, download=False), FETCH_TIMEOUT, "metadata fetch")
         except Exception as e:  # noqa: BLE001
             if BOT_CHECK.search(str(e)):
                 raise

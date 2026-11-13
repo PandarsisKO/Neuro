@@ -61,6 +61,14 @@ def _counts():
 def test_crash_matrix_ingestion(tmp_path, monkeypatch, point):
     urls = crashkit.write_fixtures(tmp_path / "fx", 1, captions_every=0)      # no captions: must be transcribed (paid)
     downloads = {"n": 0}
+    metadata_fetches = {"n": 0}
+    real_fetch = media.fetch_info
+
+    def counting_fetch(url, **kwargs):
+        metadata_fetches["n"] += 1
+        return real_fetch(url, **kwargs)
+
+    monkeypatch.setattr(media, "fetch_info", counting_fetch)
     real_dl = media.download_audio
     def counting_dl(url, **kw):
         downloads["n"] += 1
@@ -93,6 +101,8 @@ def test_crash_matrix_ingestion(tmp_path, monkeypatch, point):
     after = _counts()
     # the expensive step is paid exactly once whatever happened; the download happened at most once
     assert after["whisper"] == 1 and after["sources"] == 1 and downloads["n"] == 1
+    # Only a restart between saving metadata and getting audio needs another metadata fetch.
+    assert metadata_fetches["n"] == (2 if point == "metadata_complete" else 1)
     if point in ("transcript_complete", "chunks_complete", "embeddings_half"):
         assert before["whisper"] == 1                                                     # nothing re-transcribed after the crash
     assert s["audio_path"] is None and not list((settings.data_dir / "media").glob("*.mp3"))   # cleaned up

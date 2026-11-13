@@ -613,22 +613,25 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
         # ---- transcript (atomic; the expensive step — captions or download + transcription)
         if stage < db.stage_index("transcript"):
             check_cancel()
-            info = info or media.fetch_info(url, cookies_file=cookies_file, referer=referer) or {}
-            progress(0.15, "looking for captions…")
-            caps = media.fetch_captions(info, cookies_file=cookies_file)
-            kind, lang = None, None
-            audio = None
+            audio = Path(src["audio_path"]) if src.get("audio_path") else None
+            if audio is not None and not audio.is_file():
+                audio = None
+            caps = None
+            if audio is None:
+                info = info or media.fetch_info(url, cookies_file=cookies_file, referer=referer) or {}
+                progress(0.15, "looking for captions…")
+                caps = media.fetch_captions(info, cookies_file=cookies_file)
             if caps:
                 segments, lang = caps
                 kind = "captions"
             elif settings.allow_transcription and providers.openai_available():
-                dur = (src.get("duration") or info.get("duration") or 0) / 60
+                duration = src.get("duration") or (info or {}).get("duration")
+                dur = (duration or 0) / 60
                 if dur > settings.max_transcribe_minutes:
                     raise RuntimeError(f"no captions and duration {dur:.0f} min exceeds transcription limit")
                 from . import usage
-                usage.guard(usage.estimate_transcription(src.get("duration") or info.get("duration")))
-                audio = Path(src["audio_path"]) if src.get("audio_path") else None
-                if not (audio and audio.exists()):
+                usage.guard(usage.estimate_transcription(duration))
+                if audio is None:
                     progress(0.2, "no captions; downloading audio…")
                     audio = media.download_audio(url, cookies_file=cookies_file, referer=referer,
                                                  progress=lambda p, m: progress(0.2 + 0.09 * p, m))

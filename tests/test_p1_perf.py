@@ -479,3 +479,53 @@ def test_research_overview_is_cached_on_the_research_revision():
         research_view.overview(p["id"])
     assert perf.snapshot()["caches"]["research_overview"]["miss"] == settled, \
         "a settled, unchanged project must not recompute per request"
+
+
+def test_video_metadata_reports_lock_spacing_and_fetch_separately(monkeypatch):
+    from neurosearch import media
+
+    class Clock:
+        now = 100.0
+
+        def sleep(self, seconds):
+            self.now += seconds
+
+        def time(self):
+            return self.now
+
+        perf_counter = time
+
+    clock = Clock()
+
+    class Lock:
+        def acquire(self):
+            clock.sleep(2)
+
+        def release(self):
+            pass
+
+    class Downloader:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def extract_info(self, url, download):
+            clock.sleep(7)
+            return {"id": "timed-video"}
+
+    monkeypatch.setattr(media, "_time", clock)
+    monkeypatch.setattr(perf, "time", clock)
+    monkeypatch.setattr(media.random, "uniform", lambda *_: 1)
+    monkeypatch.setitem(media._sites, "youtube", {
+        "lock": Lock(), "last": 100, "until": 0, "strikes": 0, "loaded": True, "delay": lambda: 5,
+    })
+    monkeypatch.setattr(media, "_base_opts", lambda *args, **kwargs: {})
+    monkeypatch.setattr(media, "_with_timeout", lambda fn, *_: fn())
+    monkeypatch.setattr(media.yt_dlp, "YoutubeDL", lambda _: Downloader())
+    assert media.fetch_info("https://www.youtube.com/watch?v=timed-video") == {"id": "timed-video"}
+    observed = api.api_perf()["timings"]
+    for suffix, seconds in (("lock_wait", 2), ("request_spacing", 3), ("fetch", 7)):
+        stats = observed[f"ingest.metadata.youtube.{suffix}"]
+        assert stats["n"] == 1 and stats["p50"] == seconds

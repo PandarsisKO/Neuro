@@ -1,0 +1,76 @@
+[
+  {
+    "id": "warehouse-heat",
+    "claim": "Roof vents lower storage temperature in uncooled warehouses in dry summer weather.",
+    "qualifiers": {"population": "uncooled warehouses", "conditions": "dry summer weather", "outcome": "storage temperature"},
+    "queries": ["passive ridge ventilation interior temperatures dry warehouses", "uncooled warehouse roof vents humid summer", "warehouse roof vent temperature dry weather"],
+    "passages": [
+      ["cited", "Roof vents lower storage temperature in uncooled warehouses in dry summer weather."],
+      ["precedent", "A trial of passive ridge ventilation reported cooler interiors in uncooled warehouses during dry summer weather."],
+      ["different_conditions", "Roof vents lowered storage temperature in uncooled warehouses during humid summer weather."],
+      ["different_outcome", "Roof vents reduced storage humidity in uncooled warehouses in dry summer weather."],
+      ["contradiction", "Roof vents increased storage temperature in uncooled warehouses in dry summer weather."]
+    ]
+  },
+  {
+    "id": "early-reading",
+    "claim": "Daily small-group tutoring improves reading comprehension for third-grade students who read below grade level.",
+    "qualifiers": {"population": "third-grade students below grade level", "frequency": "daily", "outcome": "reading comprehension"},
+    "queries": ["third graders below grade daily reading groups comprehension", "small group tutoring fourth grade reading comprehension", "daily tutoring third grade word recognition"],
+    "passages": [
+      ["cited", "Daily small-group tutoring improves reading comprehension for third-grade students who read below grade level."],
+      ["precedent", "Third graders reading below grade level understood more of what they read after meeting every school day in small tutoring groups."],
+      ["different_population", "Daily small-group tutoring improved reading comprehension for fourth-grade students who read below grade level."],
+      ["different_outcome", "Daily small-group tutoring improved word recognition for third-grade students who read below grade level."]
+    ]
+  },
+  {
+    "id": "delivery-dispatch",
+    "claim": "Moving parcel dispatch to evenings cuts missed deliveries on rural routes during winter.",
+    "qualifiers": {"population": "rural routes", "timeframe": "winter", "outcome": "missed deliveries"},
+    "queries": ["rural routes winter evening dispatch fewer failed parcel deliveries", "summer evening dispatch rural missed deliveries", "winter rural evening dispatch late deliveries"],
+    "passages": [
+      ["cited", "Moving parcel dispatch to evenings cuts missed deliveries on rural routes during winter."],
+      ["precedent", "On rural routes in winter, sending parcels out in the evening reduced the number that could not be delivered."],
+      ["different_timeframe", "Moving parcel dispatch to evenings cuts missed deliveries on rural routes during summer."],
+      ["different_outcome", "Moving parcel dispatch to evenings cuts late deliveries on rural routes during winter."],
+      ["contradiction", "Moving parcel dispatch to evenings increased missed deliveries on rural routes during winter."]
+    ]
+  },
+  {
+    "id": "factory-scrap",
+    "claim": "Weekly calibration reduces scrap rates for automated aluminum cutting lines at high production volumes.",
+    "qualifiers": {"material": "aluminum", "conditions": "high production volumes", "outcome": "scrap rate"},
+    "queries": ["weekly calibration aluminum cutter scrap high throughput", "weekly calibration steel cutting scrap", "weekly calibration aluminum cutting downtime"],
+    "passages": [
+      ["cited", "Weekly calibration reduces scrap rates for automated aluminum cutting lines at high production volumes."],
+      ["different_material", "Weekly calibration reduces scrap rates for automated steel cutting lines at high production volumes."],
+      ["different_conditions", "Weekly calibration reduces scrap rates for automated aluminum cutting lines at low production volumes."],
+      ["different_outcome", "Weekly calibration reduces downtime for automated aluminum cutting lines at high production volumes."]
+    ]
+  },
+  {
+    "id": "mobile-forms",
+    "claim": "Showing shipping costs before account creation improves completed checkouts for first-time mobile shoppers.",
+    "qualifiers": {"population": "first-time mobile shoppers", "outcome": "completed checkouts"},
+    "queries": ["mobile first time shoppers shipping costs before account creation completion", "returning mobile shoppers shipping costs early checkout", "shipping costs before account creation checkout starts"],
+    "passages": [
+      ["cited", "Showing shipping costs before account creation improves completed checkouts for first-time mobile shoppers."],
+      ["different_population", "Showing shipping costs before account creation improves completed checkouts for returning mobile shoppers."],
+      ["different_outcome", "Showing shipping costs before account creation increases checkout starts for first-time mobile shoppers."],
+      ["contradiction", "Showing shipping costs before account creation lowered completed checkouts for first-time mobile shoppers."]
+    ]
+  },
+  {
+    "id": "orchard-water",
+    "claim": "Nighttime drip irrigation reduces seasonal water use while maintaining apple yield in mature orchards on sandy soil.",
+    "qualifiers": {"population": "mature apple orchards", "conditions": "sandy soil", "outcome": "water use and yield"},
+    "queries": ["nighttime drip mature apple orchards sandy soil water use yield", "nighttime drip clay soil apple irrigation yield", "sandy soil apple nighttime drip water use lower yield"],
+    "passages": [
+      ["cited", "Nighttime drip irrigation reduces seasonal water use while maintaining apple yield in mature orchards on sandy soil."],
+      ["different_conditions", "Nighttime drip irrigation reduces seasonal water use while maintaining apple yield in mature orchards on clay soil."],
+      ["partial", "Nighttime drip irrigation reduced seasonal water use in mature apple orchards on sandy soil. Yield was not measured."],
+      ["contradiction", "Nighttime drip irrigation reduced seasonal water use in mature apple orchards on sandy soil and also reduced apple yield."]
+    ]
+  }
+]

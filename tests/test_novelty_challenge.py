@@ -1,5 +1,7 @@
 """Hand-labeled cases from distinct domains for Claim review and candidate search."""
+import json
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -237,3 +239,36 @@ def test_saved_challenge_detects_new_and_revised_unreviewed_sources(client):
     saved = client.get(path + "/review", headers=H).json()["review"]
     assert saved["scopes"]["project"]["scope_changed"]
     assert all(not p["changed"] for p in saved["scopes"]["project"]["passages"])
+
+
+@pytest.mark.parametrize("case", json.loads(
+    (Path(__file__).parent / "fixtures" / "novelty_challenge.json").read_text()
+), ids=lambda case: case["id"])
+def test_challenge_recovers_independent_precedents_and_preserves_scope_labels(client, case):
+    pid = db.create_project(f"Novelty benchmark {case['id']}")["id"]
+    library = db.create_project(f"Novelty benchmark library {case['id']}")["id"]
+    claim = claims.add_claim(pid, case["claim"], qualifiers=case["qualifiers"])
+    labels = {}
+    for label, excerpt in case["passages"]:
+        sid = _source(pid, f"novelty-benchmark-{case['id']}-{label}", excerpt)
+        labels[sid] = label
+        if label == "cited":
+            claims.add_evidence(claim["id"], sid, excerpt=excerpt, locator="0:40")
+            work, _ = works.ensure_work("other", f"Original report {case['id']}")
+            works.link_source(sid, work["id"])
+            copy = _source(library, f"novelty-benchmark-{case['id']}-reprint", excerpt)
+            works.link_source(copy, work["id"], relation="reprint_of")
+
+    path = f"/api/projects/{pid}/claims/{claim['id']}/challenge"
+    alternate, precedent, counter = case["queries"]
+    response = client.post(path, headers=H, json={"alternate": alternate, "precedent": precedent, "counter": counter,
+                                                 "library": True})
+    assert response.status_code == 200, response.text
+    scopes = response.json()["scopes"]
+    passages = {labels[p["source_id"]]: p for p in scopes["project"]["passages"]}
+    assert set(passages) == {label for label, _ in case["passages"]}
+    assert passages["cited"]["same_origin_as_support"]
+    if "precedent" in passages:
+        assert not passages["precedent"]["same_origin_as_support"]
+    assert all(not p["assessment"] for p in passages.values())
+    assert all(p["source_id"] != copy for p in scopes["library"]["passages"])
