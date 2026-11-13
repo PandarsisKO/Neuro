@@ -171,7 +171,7 @@ globalThis.showView = function showView(v, push = true) {
     if (state.project?.id !== p.id) return;
     state.project = p;
     $('#nSources').textContent = p.n_sources;
-    if (state.view === 'chats' && $('#chat .empty')) emptyChat();
+    if (state.view === 'chats' && ($('#chat .empty') || (!state.conv && !$('#chat').hasChildNodes()))) emptyChat();
   });
   if (v === 'findings') loadNotes();
   if (v === 'research') loadResearch();
