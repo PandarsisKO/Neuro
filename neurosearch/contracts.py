@@ -341,6 +341,8 @@ def contract(task: str) -> InferenceContract:
     if _env(task, "SCHEMA"):                                    # "none" turns structured output off (rollback/experiment); else a registry key
         over["schema"] = None if _env(task, "SCHEMA").lower() == "none" else _env(task, "SCHEMA")
     c = replace(c, **over) if over else c
+    if task == "findings.extract" and (not settings.mac_findings or c.schema != "findings-v2" or c.thinking != "disabled"):
+        c = replace(c, on_device_model=None)
     validate(c)
     return c
 

@@ -3132,6 +3132,9 @@ MAC_FINDINGS_SLOTS = 2
 def claim_mac_findings(worker_id: str, *, lanes: tuple[str, ...] | None, chatgpt_busy: bool) -> dict[str, Any] | None:
     if not settings.mac_findings or settings.fake_ai or mac_work_paused() or background_paused() or kv_get("queue_paused") == "1":
         return None
+    from .contracts import contract
+    if not contract("findings.extract").on_device_model:
+        return None
     return claim_job(("suggest_findings",), worker_id=worker_id + MAC_FINDINGS_WORKER_SUFFIX,
                      policies=("local_preferred",), lanes=lanes, chatgpt_busy=chatgpt_busy, mac_findings=True)
 
