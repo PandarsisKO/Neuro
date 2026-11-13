@@ -214,6 +214,9 @@ def recent_changes(project_id: str, plan_row: dict, since: int | None, until: in
     impacts = decision_impact(project_id, sorted(claim_ids - {None})) if claim_ids else {}
     versions = {v["id"]: v["version"] for v in db.list_plans(project_id)}
     tasks, aliases, _ = task_layout(plan)
+    project_decisions = {str(f["id"]) for f in db.list_facts(project_id, include_history=True)
+                         if f["kind"] == "decision" and f["scope"] == "project"} if any(
+                             e["event_type"] in _ACTIVITY_DECISIONS for e in events) else set()
     changes = []
 
     for event in events:
@@ -221,8 +224,14 @@ def recent_changes(project_id: str, plan_row: dict, since: int | None, until: in
         before, after = event["before"] or {}, event["after"] or {}
         change = {"at": event["created_at"]}
         if kind in _ACTIVITY_DECISIONS:
-            change.update(title=_ACTIVITY_DECISIONS[kind], detail=after.get("content") or before.get("content"),
-                          section="decisions", anchor=f"plan-fact-{key}")
+            if key not in project_decisions:
+                continue
+            target = after.get("superseded_by") or key
+            detail = after.get("content") or before.get("content")
+            if after.get("rationale"):
+                detail = f"{detail} · {after['rationale']}"
+            change.update(title=_ACTIVITY_DECISIONS[kind], detail=detail,
+                          section="decisions", anchor=f"plan-fact-{target}")
         elif kind == "plan_version_created":
             change.update(title=f"Plan version {after.get('version')} saved", section="history",
                           anchor=f"plan-version-{after.get('version')}")
