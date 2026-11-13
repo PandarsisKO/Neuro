@@ -5290,3 +5290,33 @@ or queued before the rollout were present afterward: one completed,
 four were running again, and four stayed queued. No expired leases
 were reported. The performance endpoint responded; no metadata
 timing samples had been collected yet.
+
+### 2026-11-12 — Master Plan milestones, progress, and evidence (0.64.25 candidate)
+
+Base `af8d187`, runtime candidate `dbce605`, isolated worktree
+`/private/tmp/neuro-master-plan-milestones`. The plan opens on the
+goal, active milestone, next actions, and unresolved decisions or
+dependencies. Later phases, evidence, plan changes and questions are
+available on demand. Confirmed deadlines are explicit project facts
+with optional consequences and fallbacks. The recorded decision and its
+reason become a project fact for future plan revisions.
+
+Weekly and first-step references resolve to existing phase tasks when
+explicitly linked or uniquely matched by wording. The existing plan
+item store keeps one status. Rebuilds match existing stable IDs or
+unique legacy wording and flag unmatched progress. Exact edits retain
+the original task links and progress. The current and share views
+distinguish cited evidence from available material. A model update can
+display a verified quotation from a uniquely matched source passage or
+project fact included in its check, with a revision flag for changed
+sources. Other proposals show that a passage has not been verified.
+
+Baseline: 137 affected tests passed. Full pytest on `aa0b6dd`: 2,720
+passed across six module shards. The subsequent layout-only commit
+`dbce605` passed the 42-test frontend, plan provenance, and novelty
+subset. Chrome fixture checks exercised 1,024, 390, and 320 px widths,
+failed-save recovery, shared progress, and cited evidence. Desktop and
+mobile screenshots inspected in `/private/tmp/neuro-master-plan-browser`.
+Tier 1 and release-check passed on `dbce605` with private data.
+Reports: `evals/release/release-check-0.64.25-dbce605-20261112-210909.{json,txt}`.
+Prepared on the review branch. The live checkout was not changed.
