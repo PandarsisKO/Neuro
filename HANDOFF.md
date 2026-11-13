@@ -5091,3 +5091,10 @@ rejected equivalent proposal needs a new verbatim evidence quotation in
 its rationale to reappear. The exact-edit option is limited to matching
 fields and creates a version that carries execution status and notes.
 Broader changes use the existing Plan rebuild.
+
+All 2,705 tests passed across six module shards with private databases
+(`pytest -q --tb=short`). The JavaScript browser harness passed.
+The Mac release check on runtime commit `4f7fff7` used a private data
+directory and `release-check --no-pytest` after the separate pytest run.
+The report records Tier 1, retrieval, Foundation and backup results in
+`evals/release/release-check-0.64.20-4f7fff7-20261112-190817.{json,txt}`.
