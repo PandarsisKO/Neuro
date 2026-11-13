@@ -5456,3 +5456,22 @@ Published `a5e26a3` and verified GitHub main. The Mac reloaded 0.64.29
 with matching Research JavaScript and zero expired leases. An
 authenticated read-only keyword search returned eight passages with
 origin status. The saved-review endpoint responded successfully.
+
+### 2026-11-13 — Keep Claim Challenge judgments across search refinements (0.64.30)
+
+Base `59f6725`, runtime candidate `026ea64`, isolated worktree
+`/private/tmp/neuro-claim-challenge-review-reuse`. An unchanged Claim
+keeps its saved open questions and valid judgments in selected scopes
+when the wording changes or the search runs again. A matching result
+reuses its assessment. Judged passages that fall outside the current
+results appear under Earlier assessments and are included in the export
+and summary. The existing limit of 32 earlier assessments per scope
+still applies. A revised or unavailable passage is excluded, and
+earlier judgments are validated from the saved server record.
+
+The focused suite passed 29 tests. Full pytest passed all 2,726 across
+six shards. Tier 1 and release-check passed. Desktop Chrome on an
+isolated app verified rewording, carry-forward, export, save and reopen.
+The verified 08:41 snapshot had no saved reviews. The regression
+and browser runs exercised this workflow using isolated data.
+Release report: `evals/release/release-check-0.64.30-026ea64-20261113-090023.json`.
