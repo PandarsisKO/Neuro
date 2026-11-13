@@ -92,6 +92,9 @@ LOCAL_TYPES = ("LOCAL_UNAVAILABLE", "LOCAL_LIMIT")     # L1: never retried by th
 
 def classify_error(e: BaseException) -> str:
     from . import claude_code as CC
+    from .ollama import ModelUnavailable
+    if isinstance(e, ModelUnavailable):
+        return "LOCAL_UNAVAILABLE"
     if isinstance(e, CC.LocalLimit):
         return "LOCAL_LIMIT"
     if isinstance(e, CC.LocalUnavailable):
@@ -104,7 +107,7 @@ def _classify_error(e: BaseException) -> str:
     consulted: a 429 with NO retry window that names a spend/usage limit is an account condition (SPEND_CAP), not a
     rate limit, and a 400 that names billing/credit balance is BILLING — neither will recover by retrying."""
     name = type(e).__name__
-    status = getattr(e, "status_code", None)
+    status = e.response.status_code if isinstance(e, httpx.HTTPStatusError) else getattr(e, "status_code", None)
     if name in ("RateLimitError",) or status == 429:
         txt = _error_text(e).lower()
         if retry_after_of(e) is None and ("spend" in txt or "usage limit" in txt or "enforced_spend_limit" in txt or "monthly limit" in txt):
@@ -226,7 +229,7 @@ class _Ledgered:
             db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None,
                                  returned_model=str(getattr(res, "model", "") or "") or None)   # configured vs returned
             breakers.record_success(self._operation, worker, generation=generation)
-            if self._provider != "chatgpt_plan":
+            if self._provider not in ("chatgpt_plan", "ollama"):
                 db.clear_account_gates()   # ChatGPT success says nothing about the Anthropic account
             return res
 
@@ -331,7 +334,7 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
     c = C.contract(task)
     r = getattr(_tl, "route", None) or {}
     # Plan provenance belongs to the call that set it, not an unrelated artifact on this thread.
-    if r.get("executed_by") == "chatgpt_plan" and getattr(_tl, "task", None) != task:
+    if r.get("executed_by") in ("chatgpt_plan", "ollama") and getattr(_tl, "task", None) != task:
         r = {}
     by = r.get("executed_by", "api")
     requested = r.get("model") if by == "chatgpt_plan" else c.model_for(by)
@@ -340,6 +343,8 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
            "executed_by": by, "route_reason": r.get("reason")}    # L1: WHICH PROVIDER ran (model substitution is still not a thing)
     if by == "chatgpt_plan":
         out.update(provider="chatgpt_plan", primary_model=c.model, fallback_policy="CHATGPT_PLAN_OPT_IN")
+    elif by == "ollama":
+        out.update(provider="ollama", local_model=requested, api_model=c.model)
     elif requested != c.model:
         # a declared, deliberate difference — recorded so it can never be mistaken for the contract's model
         out["local_model"] = requested
@@ -468,6 +473,15 @@ def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]],
     c = C.contract(task)
     if not c.schema:
         raise C.ContractError(f"{task}: invoke_structured() needs a contract with a schema")
+    if getattr(_policy_tl, "on_device", False):
+        resp = invoke(task, system=system, messages=messages)
+        _tl.resp = resp
+        usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
+        try:
+            return structured(task, resp)
+        except OutputError as e:
+            output_event(task, e, project_id=project_id, source_id=source_id)
+            raise
     usage.guard(guard_estimate)
     resp = invoke(task, system=system, messages=messages)
     _tl.resp = resp
@@ -618,6 +632,24 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     """Run the task's primary contract, with an explicitly enabled ChatGPT plan route for bounded text tasks."""
     from . import chatgpt_plan as plan, contracts, db
     from .breakers import ProviderUnavailable, get as breaker_get
+
+    if getattr(_policy_tl, "on_device", False):
+        from . import jobs, ollama
+        if db.mac_work_paused() or db.background_paused() or not settings.mac_profiles:
+            raise jobs.Yield("Completed profiles kept · waiting for background work to resume")
+        c = contracts.contract(task)
+        if not c.on_device_model or not c.schema or tools or stream or on_text or extra or max_output_tokens:
+            raise contracts.ContractError(f"{task}: on-device route requires its declared text contract")
+        _tl.task = task
+        _tl.route = {"executed_by": "ollama", "reason": "mac_source_profiles", "fallback_reason": None}
+        result = _Ledgered(ollama.create, "ollama", task, policy={"max_attempts": 1, "backoff": []},
+                           operation="ollama:chat")(model=c.on_device_model, system=system, messages=messages,
+                                                    schema=c.schema, max_tokens=c.max_output_tokens, timeout=c.timeout)
+        _accumulate_route()
+        if result.model != c.on_device_model:
+            routing_for(task, result.model)
+            raise ProviderError(INVALID_REQUEST, RuntimeError("Ollama returned a different model"), 1)
+        return result
 
     options = dict(system=system, messages=messages, tools=tools, stream=stream,
                    max_output_tokens=max_output_tokens, on_text=on_text, **extra)
@@ -780,6 +812,16 @@ def policy_context(policy: str):
         yield
     finally:
         _policy_tl.policy = before
+
+
+@_contextlib.contextmanager
+def on_device():
+    before = getattr(_policy_tl, "on_device", False)
+    _policy_tl.on_device = True
+    try:
+        yield
+    finally:
+        _policy_tl.on_device = before
 
 
 @_contextlib.contextmanager

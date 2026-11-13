@@ -494,6 +494,7 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         from .usage import BudgetPaused
         sid = (job.get("payload") or {}).get("source_id")
         if isinstance(e, Yield):
+            _record_execution(jid)
             # wait_reason="yield" is what lets the panel say "waiting to resume" instead of "queued" for a job
             # that kept its progress (Kyle, 2026-09-29: a queued job with a 60% bar "is pretty ambiguous").
             # claim_job clears wait_reason when the job is picked up again, so the marker lives exactly as long
@@ -536,6 +537,11 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             if sid:
                 db.set_source_status(sid, "pending")
             return "queued"
+        if job["kind"] == db.MAC_PROFILE_JOB and (job.get("payload") or {}).get("on_device") and pe is not None:
+            if pe.error_type in providers.TRANSIENT_TYPES or pe.error_type == "LOCAL_UNAVAILABLE":
+                _record_execution(jid)
+                db.requeue_job(jid, delay=60, wait_reason="provider", message="paused: waiting for Ollama and the Qwen model on this Mac")
+                return "queued"
         if pe is not None and pe.error_type in providers.LOCAL_TYPES:
             _record_execution(jid)
             db.requeue_job(jid, delay=60, wait_reason="provider",
@@ -777,6 +783,12 @@ def _housekeeping_loop(every: float = 120.0) -> None:
     # against 50–170 ms warm.
     _warm_quality()
     _backfill_research()
+    from . import library
+    if library.mac_profiles_enabled():
+        try:
+            library.maybe_queue_batch()
+        except Exception:
+            log.warning("could not queue wanted Mac profiles on startup", exc_info=True)
     while not _stop.is_set():
         _stop.wait(every)
         if _stop.is_set():
@@ -920,8 +932,12 @@ def _after_done(job: dict[str, Any]) -> None:
                 # costs one small INSERT, and execute() runs it only after the job has left `_running`.
                 from . import claims
                 claims.request_harvest(pid, f"after {job['kind']}")
+        elif job["kind"] == db.MAC_PROFILE_JOB:
+            from . import library
+            if library.mac_profiles_enabled():
+                library.maybe_queue_batch()
     except Exception as e:  # noqa: BLE001
-        log.warning("post-job claims hook skipped: %s", e)
+        log.warning("post-job hook skipped: %s", e)
 
 
 def wait_for_idle(poll: float = 1.0) -> None:

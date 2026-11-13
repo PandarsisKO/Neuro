@@ -3121,6 +3121,29 @@ RATE_HELD_POLICIES = ("api_requested", "api_only")   # held while the spend-rate
 ACCOUNT_HELD_POLICIES = ("api_requested", "api_only")
 
 
+MAC_PROFILE_JOB = "enrich_profiles_batch"
+MAC_PROFILE_FILTER = "kind='enrich_profiles_batch' AND json_extract(payload, '$.on_device')=1"
+
+
+def active_profile_batch() -> dict[str, Any] | None:
+    row = connect().execute("SELECT * FROM jobs WHERE kind=? AND status IN ('queued','running','external_pending') ORDER BY created_at LIMIT 1",
+                            (MAC_PROFILE_JOB,)).fetchone()
+    return row_to_dict(row)
+
+
+def mac_work_paused() -> bool:
+    return kv_get("mac_work:paused") == "1"
+
+
+def mac_work_status() -> dict[str, bool]:
+    row = connect().execute(
+        "SELECT (SELECT value FROM kv WHERE key='mac_work:paused') AS paused, "
+        f"EXISTS(SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER}) AS running"
+    ).fetchone()
+    return {"enabled": settings.mac_profiles and not settings.fake_ai,
+            "paused": row["paused"] == "1", "running": bool(row["running"])}
+
+
 def background_paused() -> bool:
     return kv_get("background_paused") == "1"
 
@@ -3196,6 +3219,8 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             if BACKGROUND_KINDS:
                 q += f" AND kind NOT IN ({','.join('?' for _ in BACKGROUND_KINDS)})"
                 args += list(BACKGROUND_KINDS)
+        if mac_work_paused() or not settings.mac_profiles:
+            q += f" AND NOT COALESCE(({MAC_PROFILE_FILTER}),0)"
         if account_gate_active():
             # The ACCOUNT is walled (no credit, or the Console's own usage limit). Nothing that must use the API can
             # succeed, so nothing that must use the API is claimed. Unlike the rate ceiling this holds `api_only`
@@ -3294,6 +3319,8 @@ def derived_status(j: dict[str, Any]) -> str:
                 return "blocked"
         if j.get("wait_reason") == "paused":
             return "paused"                                    # S86: held by the person until they press Resume
+        if j.get("kind") == MAC_PROFILE_JOB and (j.get("payload") or {}).get("on_device") and mac_work_paused():
+            return "mac_paused"
         if j.get("wait_reason") == "yield":
             return "resuming"                                  # gave its worker back at a safe point; progress kept; next in line
         if j.get("wait_reason") == "chatgpt_slot" or (

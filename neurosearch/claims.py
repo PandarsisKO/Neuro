@@ -210,7 +210,10 @@ def evidence_class_for(src: dict[str, Any]) -> str:
         from . import library
         prof = library.profile(src["id"]) if src else None
         enr = (prof or {}).get("enriched") or {}
-        if enr.get("evidence_class") in ("authoritative", "expert", "experiential", "market", "historical"):
+        # The on-device profiling pilot gates summaries and tags, not the class used to establish a claim.
+        if ((prof or {}).get("enriched_provenance") or {}).get("enriched_transport") != "ollama" and enr.get("evidence_class") in (
+            "authoritative", "expert", "experiential", "market", "historical"
+        ):
             return str(enr["evidence_class"])
         sig = {s["signal"]: s["value"] for s in library.authority_signals(src)}
     except Exception:  # noqa: BLE001

@@ -838,6 +838,7 @@ def api_usage() -> dict[str, Any]:
         t["blocked"] = t["blocked"] or "the Anthropic account's credit balance is too low — add credits in Plans & Billing to continue"
     from . import claude_code
     t["background_paused"] = db.background_paused()
+    t["mac_work"] = db.mac_work_status()
     t["rate"] = usage.rate_gate()
     t["local_ai"] = {**claude_code.health_snapshot(model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(refresh=False), "avoided_month": usage.avoided_this_month(),
                      "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
@@ -1585,6 +1586,26 @@ def api_youtube_retry_now() -> dict[str, Any]:
     from . import media
     media.reset_rate_limit("youtube")
     return {"released": db.release_rate_limited(), **media.rate_limit_status()}
+
+
+class MacWorkIn(BaseModel):
+    paused: bool
+
+
+@app.get("/api/mac-work", dependencies=[Depends(require_auth)])
+def api_mac_work_status() -> dict[str, bool]:
+    return db.mac_work_status()
+
+
+@app.post("/api/mac-work", dependencies=[Depends(require_auth)])
+def api_mac_work(body: MacWorkIn) -> dict[str, bool]:
+    from . import library
+    if not library.mac_profiles_enabled():
+        raise HTTPException(409, "On-device source profiling is unavailable")
+    db.kv_set("mac_work:paused", "1" if body.paused else None)
+    if not body.paused:
+        library.maybe_queue_batch()
+    return db.mac_work_status()
 
 
 @app.post("/api/jobs/background-pause", dependencies=[Depends(require_auth)])
@@ -3453,6 +3474,11 @@ async def api_library_enrich(body: EnrichIn) -> dict[str, Any]:
     """Enrich profiles on request: a few inline, or the whole wanted queue as an opportunistic batch. Never automatic
     across the library."""
     from . import library
+    if library.mac_profiles_enabled():
+        if body.source_ids:
+            ids = body.source_ids[:min(max(body.limit, 0), 10)]
+            library.want([sid for sid in ids if library.baseline(sid) is not None], "requested source profiles")
+        return library.maybe_queue_batch(force=True) or {"job_id": None, "note": "nothing wanted"}
     if body.batch:
         return library.maybe_queue_batch(force=True) or {"job_id": None, "note": "nothing wanted"}
     return await anyio.to_thread.run_sync(lambda: library.enrich_wanted(limit=min(body.limit, 10), source_ids=body.source_ids))

@@ -1,7 +1,45 @@
 // ================= home =================
+let macWork, macWorkTimer, macWorkSaving = false, macWorkRevision = 0;
+function renderMacWork(status) {
+  if (!status) return;
+  macWork = status;
+  document.querySelectorAll('.macWorkToggle').forEach(button => {
+    button.hidden = !status.enabled;
+    button.disabled = macWorkSaving || (status.paused && status.running);
+    button.textContent = status.paused ? (status.running ? 'Pausing Mac work…' : 'Resume Mac work') : 'Pause Mac work';
+    button.title = status.paused
+      ? (status.running ? 'Finishing the current profile before releasing the GPU' : 'Mac work is paused. Click to resume source profiling.')
+      : 'Pause source profiling on this Mac. Claude and ChatGPT can keep working.';
+  });
+  clearTimeout(macWorkTimer);
+  if (status.paused && status.running && !macWorkSaving) {
+    const revision = macWorkRevision;
+    macWorkTimer = setTimeout(async () => {
+      const next = await api('/api/mac-work', { ack: false }).catch(() => status);
+      if (revision === macWorkRevision && !macWorkSaving) renderMacWork(next);
+    }, 1500);
+  }
+}
+globalThis.toggleMacWork = async function toggleMacWork() {
+  if (!macWork?.enabled || macWorkSaving) return;
+  macWorkSaving = true;
+  ++macWorkRevision;
+  renderMacWork(macWork);
+  try {
+    macWork = await post('/api/mac-work', { paused: !macWork.paused });
+    toast(macWork.paused ? (macWork.running ? 'Mac work will pause after the current source profile.' : 'Mac work paused.') : 'Mac work resumed.');
+  } catch (error) {
+    toast(error.message || error, 'err');
+  } finally {
+    macWorkSaving = false;
+    renderMacWork(macWork);
+  }
+};
 globalThis.loadSpend = async function loadSpend(quiet) {
   try {
+    const revision = macWorkRevision;
     const u = await api('/api/usage', quiet ? { ack: false } : {});
+    if (!macWorkSaving && revision === macWorkRevision) renderMacWork(u.mac_work);
     const h = $('#homeSpend'); if (h) h.innerHTML = statusBar(u);
     const sd = $('#sideSpend'); if (sd) sd.innerHTML = statusBar(u, true);
     state.usage = u; return u;

@@ -163,6 +163,7 @@
   aside .briefFoot .footLabel{color:var(--text-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;flex:0 0 auto;padding-top:1px}
   aside .themefoot{padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
   aside .themefoot .verTag{font-size:12px}
+  aside .macWorkToggle{margin-top:6px}
 
   /* ---- workspace ---- */
   #ws{display:none;height:100vh;height:100dvh}

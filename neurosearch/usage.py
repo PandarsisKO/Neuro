@@ -207,6 +207,10 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
         searches = int(getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0)
     except Exception:  # noqa: BLE001
         pass
+    if getattr(resp, "provider", None) == "ollama":
+        return record(kind, resp.model, input_tokens=u.input_tokens, output_tokens=u.output_tokens,
+                      seconds=resp.seconds, project_id=project_id, source_id=source_id, cost=0.0,
+                      transport="ollama", billing_basis="on_device", ts=ts)
     if getattr(resp, "provider", None) == "chatgpt_plan":
         i = int(u.input_tokens or 0)
         cached = min(i, int(u.cache_read_input_tokens or 0))

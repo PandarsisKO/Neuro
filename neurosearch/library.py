@@ -565,6 +565,8 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
     if want_enrichment:
         with perf.timed("recall.want_enrichment"):
             wanted = want([s["source_id"] for s in out if not s["enriched"]], reason or f"library recall: {q[:120]}", project_id)
+            if wanted and mac_profiles_enabled():
+                maybe_queue_batch()
     try:
         db.kv_bump("library:recalls")
         if out:
@@ -643,19 +645,27 @@ def wanted_ids(limit: int = 500) -> list[str]:
     return [r["source_id"] for r in db.connect().execute("SELECT source_id FROM source_profiles WHERE enriched_status='wanted' ORDER BY wanted_at LIMIT ?", (limit,)).fetchall()]
 
 
-def _store_enriched(source_id: str, parsed: dict[str, Any], *, model: Any, ih: str, transport: str, rev: str | None) -> None:
+def _store_enriched(source_id: str, parsed: dict[str, Any], *, model: Any, ih: str, transport: str, rev: str | None) -> bool:
     from . import providers
     from .contracts import contract
     c = contract("library.profile")
     t = time.time()
+    routing = providers.routing_json("library.profile", model)
     with db.tx() as conn:
+        if transport == "ollama":
+            source = conn.execute("SELECT revision,status FROM sources WHERE id=?", (source_id,)).fetchone()
+            if not source or source["status"] != "ready" or source["revision"] != rev:
+                conn.execute("UPDATE source_profiles SET enriched_status='stale',updated_at=? WHERE source_id=? AND enriched_status='queued'",
+                             (t, source_id))
+                return False
         conn.execute("UPDATE source_profiles SET enriched=?, enriched_status='current', enriched_at=?, enriched_model=?, enriched_prompt_version=?, enriched_schema_version=?, "
                      "enriched_input_hash=?, enriched_routing=?, enriched_transport=?, enriched_error=NULL, source_revision=COALESCE(?, source_revision), updated_at=? WHERE source_id=?",
-                     (json.dumps(parsed), t, str(model or c.model), PROMPT_VERSION, c.schema, ih, providers.routing_json("library.profile", model), transport, rev, t, source_id))
+                     (json.dumps(parsed), t, str(model or c.model), PROMPT_VERSION, c.schema, ih, routing, transport, rev, t, source_id))
     try:
         db.kv_bump("library:profiles_enriched")
     except Exception:  # noqa: BLE001
         pass
+    return True
 
 
 def enrich(source_id: str, transport: str = "interactive") -> dict[str, Any] | None:
@@ -664,6 +674,9 @@ def enrich(source_id: str, transport: str = "interactive") -> dict[str, Any] | N
     src = db.get_source(source_id)
     b = baseline(source_id)
     if not src or b is None:
+        if transport == "ollama":
+            with db.tx() as conn:
+                conn.execute("UPDATE source_profiles SET enriched_status='stale' WHERE source_id=? AND enriched_status IN ('wanted','queued')", (source_id,))
         return None
     sample = _sample(src, b)
     if not sample:
@@ -680,11 +693,18 @@ def enrich(source_id: str, transport: str = "interactive") -> dict[str, Any] | N
         parsed = providers.invoke_structured("library.profile", system=SYSTEM, messages=[{"role": "user", "content": _user(src, b, sample)}],
                                              usage_kind="profile", source_id=source_id)
     except Exception as e:  # noqa: BLE001
+        from .breakers import ProviderUnavailable
+        from .jobs import Yield
+        waiting = transport == "ollama" and (isinstance(e, (ProviderUnavailable, Yield)) or (
+            isinstance(e, providers.ProviderError) and e.error_type in providers.TRANSIENT_TYPES | {"LOCAL_UNAVAILABLE"}
+        ))
         with db.tx() as conn:
-            conn.execute("UPDATE source_profiles SET enriched_status='failed', enriched_error=?, updated_at=? WHERE source_id=?", (str(e)[:300], time.time(), source_id))
+            conn.execute("UPDATE source_profiles SET enriched_status=?, enriched_error=?, updated_at=? WHERE source_id=?",
+                         ("wanted" if waiting else "failed", str(e)[:300], time.time(), source_id))
         raise
     model = getattr(providers.last_response(), "model", None)
-    _store_enriched(source_id, parsed, model=model, ih=ih, transport=transport, rev=src.get("revision"))
+    if not _store_enriched(source_id, parsed, model=model, ih=ih, transport=transport, rev=src.get("revision")):
+        return None
     return parsed
 
 
@@ -724,12 +744,22 @@ def batch_requests(source_ids: list[str]) -> list[dict[str, Any]]:
     return out
 
 
+def mac_profiles_enabled() -> bool:
+    return settings.mac_profiles and not settings.fake_ai
+
+
 def maybe_queue_batch(min_items: int = BATCH_MIN, force: bool = False) -> dict[str, Any] | None:
-    """When enough wanted profiles have accumulated, ONE durable `enrich_profiles_batch` job takes them (50% economics).
-    Called opportunistically (after a recall, by Discover); never on a timer, never for sources nobody asked about."""
-    active = [j for j in db.list_jobs(50) if j["kind"] == "enrich_profiles_batch" and j["status"] in ("queued", "running", "external_pending")]
+    """Queue one bounded Mac batch, or use the existing minimum for a cloud batch.
+    Only profiles already wanted by a lookup or an explicit request are eligible."""
+    active = db.active_profile_batch()
     if active:
-        return {"job_id": active[0]["id"], "already_running": True}
+        return {"job_id": active["id"], "already_running": True}
+    if mac_profiles_enabled():
+        ids = wanted_ids(limit=BATCH_MIN)
+        if not ids:
+            return None
+        job = db.create_job(db.MAC_PROFILE_JOB, {"on_device": True, "source_ids": ids}, lane="low")
+        return {"job_id": job["id"], "items": len((job["payload"] or {}).get("source_ids") or [])}
     ids = wanted_ids()
     if not ids or (len(ids) < min_items and not force):
         return None
@@ -743,6 +773,8 @@ def run_batch_job(job_id: str, payload: dict[str, Any], progress: Any = None) ->
     """Job body for enrich_profiles_batch: plan + submit (parks as external_pending), then materialize when the batch ends.
     Mirrors batches.run for findings; failed items are retried once in a second cohort, then marked failed (visible)."""
     from . import batches, jobs, providers, usage
+    if payload.get("on_device"):
+        return _run_mac_profiles(payload, progress)
     result = payload.get("_external_result")
     cohort_no = int(payload.get("_cohort_no") or 1)
     if not result:
@@ -779,6 +811,32 @@ def run_batch_job(job_id: str, payload: dict[str, Any], progress: Any = None) ->
                              (f["error"], time.time(), f["source_id"]))
     db.job_event(job_id, "batch_ended", cohort_no=cohort_no, enriched=done, failed=len(failed))
     return {"enriched": done, "failed": failed, "items": len(db.batch_items(job_id))}
+
+
+def _run_mac_profiles(payload: dict[str, Any], progress: Any) -> dict[str, Any]:
+    from . import jobs, providers
+    from .breakers import ProviderUnavailable
+    ids = payload.get("source_ids") or []
+    done, failed = 0, []
+    with providers.on_device():
+        for n, sid in enumerate(ids):
+            jobs.check_cancel()
+            if db.mac_work_paused() or db.background_paused() or not mac_profiles_enabled():
+                raise jobs.Yield("Completed profiles kept · waiting for background work to resume")
+            if progress:
+                progress(n / len(ids), f"Profiling source {n + 1} of {len(ids)} on this Mac")
+            try:
+                if enrich(sid, transport="ollama") is not None:
+                    done += 1
+            except ProviderUnavailable:
+                raise
+            except providers.ProviderError as exc:
+                if exc.error_type in providers.TRANSIENT_TYPES or exc.error_type == "LOCAL_UNAVAILABLE":
+                    raise
+                failed.append({"source_id": sid, "error": str(exc)[:200]})
+            except providers.OutputError as exc:
+                failed.append({"source_id": sid, "error": str(exc)[:200]})
+    return {"enriched": done, "failed": failed, "items": len(ids)}
 
 
 def stats() -> dict[str, Any]:

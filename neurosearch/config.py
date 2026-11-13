@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,6 +49,8 @@ def float_env(name: str, default: float) -> float:
 
 @dataclass
 class Settings:
+    mac_profiles: bool = field(default_factory=lambda: _env("NEUROSEARCH_MAC_PROFILES", "1" if sys.platform == "darwin" else "0") in ("1", "true", "yes"))
+
     # Storage
     data_dir: Path = field(default_factory=lambda: Path(_env("NEUROSEARCH_DATA_DIR", "./data")).resolve())
 

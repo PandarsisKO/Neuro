@@ -65,6 +65,7 @@ class InferenceContract:
     # `neurosearch contracts` and `doctor`, because a cheaper model chosen deliberately is a legitimate trade and a
     # cheaper model arriving by accident is a silent quality regression.
     local_model: str | None = None
+    on_device_model: str | None = None   # pinned Ollama model for eligible queued text work
     # ---------------------------------------------------------------- the model decision engine (0.53.0)
     # Kyle: "we need a decision engine of some sort: haiku unless XYZ proven by ABC."
     #
@@ -97,6 +98,8 @@ class InferenceContract:
     tier_reason: str | None = None     # None = cheapest tier; otherwise capability:… | evidence:… | irreversible
 
     def model_for(self, executed_by: str) -> str:
+        if executed_by == "ollama" and self.on_device_model:
+            return self.on_device_model
         return (self.local_model or self.model) if executed_by == "local" else self.model
 
     def describe(self) -> dict[str, Any]:
@@ -172,7 +175,7 @@ def _base() -> dict[str, InferenceContract]:
                           notes="Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"),
         # G4 (0.28.0): project-NEUTRAL "what can this source answer?" — lazy (only for plausible candidates), cached globally,
         # batch-allowed for opportunistic 50% enrichment; never required for library recall
-        InferenceContract("library.profile", "anthropic", CHEAP, local_capable=True, thinking="disabled", max_output_tokens=1200, max_output_ceiling=1800, timeout=120.0,
+        InferenceContract("library.profile", "anthropic", CHEAP, local_capable=True, on_device_model="qwen3.5:9b", thinking="disabled", max_output_tokens=1200, max_output_ceiling=1800, timeout=120.0,
                           reversible=True, gate="schema source-profile-v1; re-derivable per source at one call",
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="source-profile-v1",
                           notes="global source profile (topics, entities, document type, evidence class, temporal character, useful_for); authority = signals with basis, not a verdict"),
@@ -394,6 +397,8 @@ def validate(c: InferenceContract) -> None:
         raise ContractError(f"{c.task}: max_attempts must be ≥ 1")
     if c.max_output_ceiling is not None and c.max_output_ceiling < c.max_output_tokens:
         raise ContractError(f"{c.task}: max_output_ceiling {c.max_output_ceiling} is below max_output_tokens {c.max_output_tokens}")
+    if c.on_device_model and (not c.reversible or not c.schema or c.interactive or c.thinking != "disabled"):
+        raise ContractError(f"{c.task}: on-device tasks must be reversible, structured and noninteractive")
     if c.schema:
         from . import schemas
         if c.provider != "anthropic":
