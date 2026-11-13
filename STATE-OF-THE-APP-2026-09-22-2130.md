@@ -103,3 +103,9 @@ short retry through the existing provider ledger. ChatGPT Claims calls
 now use strict structured output and retry an unexpected schema mismatch
 once on the connected plan. See HANDOFF for the release checks and
 live queue recovery.
+
+## 2026-11-12 — ChatGPT capacity in the queue
+
+Version **0.64.13** is live on the Mac. Jobs waiting for the connected
+ChatGPT plan's slot show “Queued for ChatGPT” and stay queued while the
+slot is occupied. The queue reports actual provider outages separately.

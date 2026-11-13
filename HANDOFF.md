@@ -4847,3 +4847,11 @@ queue harness. Regression tests covered capacity admission and resumption,
 legacy rows, real breaker waits, plan-limit messages, and Accelerate.
 Tier 1 and release-check passed. See
 `evals/release/release-check-0.64.13-1598274-20261112-155710.{json,txt}`.
+
+#### Live verification
+
+Fast-forwarded the Mac to the published `7c7b954`. The live app reloaded
+0.64.13 and the served queue JavaScript matched the checkout. Three
+capacity waits stayed in the new state across three samples, with zero
+failed attempts and no extra worker claims during the sample. The active
+Claims queue had no paid API jobs. Startup reported zero expired leases.
