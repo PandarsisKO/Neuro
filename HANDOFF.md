@@ -5105,3 +5105,58 @@ confirmed the Source drawer status, Plan edit availability, target
 response shape and keyword Claim Challenge. Served Plan, Research and
 version scripts matched the checkout. Health showed zero expired
 leases. The write flows were exercised in private test databases.
+
+### 2026-11-12 — Cross-project reuse audit and Plan evidence fix (0.64.21)
+
+Base `6f13821`, runtime candidate `bf7c1d9`, isolated worktree
+`/private/tmp/neuro-plan-check-audit`. Used private copies of the app's
+verified 19:11 backup and disabled paid retrieval. The first run exposed
+a Plan input truncation bug on the 1,964-source project: the findings
+block filled the shared prompt budget before the newly attached source
+could enter the prompt. Plan checks now reserve space for each evidence
+type and take the latest entries within each budget. Transcript replacement
+updates the source timestamp when the text revision changes.
+
+| Project | Ready sources | Full target search | Repeat | After adding a source | After revising it | Final map refresh |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Real Estate Investment Strategy | 75 | 5.081 s | 0.131 s | 0.398 s | 0.212 s | 0.338 s |
+| AI powered Aviation Detailing Company | 385 | 1.370 s | 0.331 s | 0.463 s | 0.352 s | 0.458 s |
+| Business acquisition | 1,964 | 3.334 s | 0.599 s | 0.831 s | 0.663 s | 61.293 s |
+
+One Evidence Target per project. The repeat reused all three search stages
+with identical match counts. Each project search checked one source after
+addition and ran in full after revision. A provider stub returned an empty
+Plan check. It was called once initially, zero times on repeat, and once
+after each source change, with the new or revised text present. The Claims
+replay supplied three controlled extraction passes within one refresh
+window. The pre-coalescing worker called refresh on every pass, and the
+current worker ran one real map refresh per project. These timings describe
+the controlled copy, with process cache warmup included.
+
+The same backup provided 355 completed ingest-to-first-cited-Finding pairs
+across four projects in the 30 days ending at the snapshot. Overall median
+377 s, p90 888 s. The ten longest traces were from one batch that finished
+before the ChatGPT Findings priority rule deployed. Their observed ChatGPT
+slot intervals were 45.6–46.3 min, budget intervals 19.6–25.8 min and
+provider intervals 2.1–2.7 min. For 17 eligible jobs enqueued after the
+priority change, Findings wait was 5 s median and 25 s p90, while ingest
+queue wait was 341 s median and 842 s p90. The follow-up sample is too small
+for a routing change. The next queue measurement is ingest admission over
+a larger sample. No provider or billing policy was edited.
+
+Blind review, first assistant pass: 108 shuffled excerpts across 11 cases
+and six projects, with retrieval arms joined after labeling. Both arms
+displayed an equivalent excerpt in the same three cases. In the other eight,
+the pooled excerpts provided no full same-scope equivalent. The newer arm
+showed 29 related or partial passages versus 26 in the old arm, and both
+showed three equivalents in 88 slots. The sample illustrates retrieval and
+scope errors and gives no production false-positive rate. The app did not
+auto-assign equivalence. Independent human labels and verified independent
+precedents remain open. The next retrieval experiment is targeted wording
+for the individual assertions inside compound Claims. Private benchmark
+output and draft judgments remain outside Git.
+
+All 2,706 pytest cases passed across six isolated shards. Tier 1 and the
+deterministic release check passed at `bf7c1d9` using a private data
+directory. Reports:
+`evals/release/release-check-0.64.21-bf7c1d9-20261112-192826.{json,txt}`.

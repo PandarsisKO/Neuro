@@ -164,3 +164,11 @@ whether work is waiting, failed, finished with zero findings or ready to start.
 Master Plan checks retain completed results and rejection reasons. Accepted
 exact wording edits can save a new version with execution status and notes
 intact. Repeated query embeddings reuse a bounded local cache.
+
+## 2026-11-12 — Fresh evidence in busy Plan checks (0.64.21)
+
+Master Plan checks reserve prompt space for findings, facts, sources and
+conversation so a long findings history cannot crowd out a newly added
+source. A changed transcript updates the source timestamp. The three-project
+reuse benchmark, queue timing sample and six-project blind review first pass
+are recorded in the 0.64.21 handoff.
