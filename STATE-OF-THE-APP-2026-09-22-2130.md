@@ -145,3 +145,12 @@ Claim evidence can save and reopen the latest manual challenge
 assessment, with warnings when the Claim or reviewed passages have
 changed. Pending Master Plan updates with a recorded Claim link
 can show the Claim and its cited passages next to the proposed edit.
+
+## 2026-11-12 — Precedent and counterevidence in Claim Challenge (0.64.19)
+
+Claim Challenge can search separately for earlier examples and
+failures, retain distinct passages from the same Work, and show
+searchable-source coverage. Saved assessments flag changes to the
+searched collection. The review reports human passage judgments
+and leaves novelty unassessed when no equivalent is confirmed.
+An 11-case blind review is prepared across six projects.

@@ -5061,3 +5061,9 @@ All 2,698 tests passed across six shards. The final same-Work test
 fixtures were tightened and passed in a focused rerun. Tier 1 and
 release-check passed. See
 `evals/release/release-check-0.64.19-95988d0-20261112-183927.{json,txt}`.
+
+The Mac reloaded 0.64.19 from `b34f8d3` and served the matching
+Research JavaScript. An authenticated keyword challenge ran three
+queries and returned eight passages from a scope with 19 searchable
+sources. Health reported zero expired leases. The blind review form
+is at `/private/tmp/ns-challenge-blind-review/review.html` on this Mac.
