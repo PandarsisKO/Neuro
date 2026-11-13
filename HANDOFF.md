@@ -4942,3 +4942,37 @@ The Mac app reloaded 0.64.16 with Mac work enabled and unpaused.
 The jobs API showed Claims using ChatGPT and zero expired leases.
 There were no active Findings among the latest 200 jobs, so the
 priority under contention was verified in the isolated queue test.
+
+### 2026-11-12 — Research-map refresh performance (0.64.17)
+
+Base `0fe5527`, candidate `4722f48`. An unlinked evidence target used to
+load the project's complete Claim and evidence corpus on every match.
+A refresh now builds a temporary token lookup once and loads evidence
+only for the winning Claim. Target deduplication uses shared tokens to
+rule out impossible pairs before applying the existing Jaccard threshold.
+The refresh schedule, verdicts, score thresholds and tie order stay intact.
+
+Compared isolated copies of the verified 17:41 backup. Claims, evidence
+targets, tensions and map nodes matched exactly after excluding timestamps
+and embeddings for projects with 208 and 3,917 Claims. Refresh time was
+0.18 s versus 0.25 s on the small project and 25.72 s versus 4.11 s on the
+medium project. The candidate completed the 26,545-Claim, 10,912-target
+project in 78.70 s while other test processes ran. The baseline had not
+completed by five minutes. The earlier baseline and candidate ran under
+different loads, so these are wall-clock observations.
+
+Full pytest passed all 2,692 tests across six shards. The deterministic
+release check including Tier 1 passed. See
+`evals/release/release-check-0.64.17-4722f48-20261112-181839.{json,txt}`.
+
+#### Ingestion timing baseline
+
+Joined completed ingestion, one-source Findings jobs and persisted notes
+with a quoted citation on the same source. In the latest 24 hours in the
+backup, 72 comparable pairs were available from one project. Median time
+from ingest queue entry to first cited Finding was 11.7 minutes. At the
+90th percentile it was 79.6 minutes. The slowest five had 71–73 minutes
+between ingest completion and the final Findings start, with budget,
+provider and ChatGPT capacity waits in all five histories. A seven-day
+window had 87 comparable pairs, still from that project. Treat these as
+a batch diagnosis, and repeat across projects before changing admission.
