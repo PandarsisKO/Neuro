@@ -4934,3 +4934,11 @@ dependency and pause gates, lease expiry, and Mac handoff. Tier 1 and
 release-check passed. Evidence:
 `evals/release/chatgpt-findings-priority-pytest-a45bd9c-20261112.txt`
 and `evals/release/release-check-0.64.16-a45bd9c-20261112-173858.{json,txt}`.
+
+#### Live verification
+
+Published `7fca0cb` to GitHub main and passed the delivery check.
+The Mac app reloaded 0.64.16 with Mac work enabled and unpaused.
+The jobs API showed Claims using ChatGPT and zero expired leases.
+There were no active Findings among the latest 200 jobs, so the
+priority under contention was verified in the isolated queue test.
