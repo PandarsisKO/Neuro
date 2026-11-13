@@ -5351,3 +5351,11 @@ respectively. Release report:
 The full rerun passed all 2,721 tests across six shards. The initial
 run hit a disk space limit. A byte-identical temporary copy of the
 19:45 backup was removed before rerunning with private test directories.
+
+### 2026-11-12 — Full Master Plan 0.64.26 live
+
+Fast-forwarded to `eaa4ebb` and verified GitHub main. A second watcher
+reload hit a disk I/O error during startup. Removed only completed test
+directories and restarted the existing server LaunchAgent. Authenticated
+checks confirmed 0.64.26, the matching Plan script, both saved plans, both
+available earlier versions, and zero expired job leases.

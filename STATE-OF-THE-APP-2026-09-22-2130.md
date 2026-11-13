@@ -202,3 +202,10 @@ blockers. Linked tasks share progress. Rebuilds carry progress to matched
 tasks and flag ambiguous matches. Confirmed deadlines and recorded decisions
 are project facts. The review area shows verified quotes where available,
 and Markdown and HTML exports begin with the milestone and next actions.
+
+## 2026-11-12 — Full Master Plan and history (0.64.26)
+
+The milestone summarizes immediate work. The same page shows all phases,
+rationale, alternatives, decisions, assumptions, costs, risks, and cited
+evidence. Section shortcuts scroll without hiding other sections. History
+opens earlier versions and retains applied and rejected proposals.
