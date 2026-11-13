@@ -3219,8 +3219,11 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             if BACKGROUND_KINDS:
                 q += f" AND kind NOT IN ({','.join('?' for _ in BACKGROUND_KINDS)})"
                 args += list(BACKGROUND_KINDS)
-        if mac_work_paused() or not settings.mac_profiles:
+        if mac_work_paused() or not settings.mac_profiles or settings.fake_ai:
             q += f" AND NOT COALESCE(({MAC_PROFILE_FILTER}),0)"
+        else:
+            # In the unlikely event two schedulers enqueue simultaneously, only one Mac batch can run.
+            q += f" AND (NOT COALESCE(({MAC_PROFILE_FILTER}),0) OR NOT EXISTS (SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER}))"
         if account_gate_active():
             # The ACCOUNT is walled (no credit, or the Console's own usage limit). Nothing that must use the API can
             # succeed, so nothing that must use the API is claimed. Unlike the rate ceiling this holds `api_only`
@@ -3271,7 +3274,11 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
                      # actually RUNNING and making successful calls. Claiming cleared not_before/wait_reason but left the
                      # message from when it was parked, so the panel kept showing a resolved error as if it were current.
                      "message=CASE WHEN wait_reason='chatgpt_slot' OR wait_operation IS NOT NULL OR message LIKE 'paused:%' THEN NULL ELSE message END "
-            "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, t, row["id"])
+            "WHERE id=? AND status='queued' "
+            f"AND (NOT COALESCE(({MAC_PROFILE_FILTER}),0) OR ("
+            "COALESCE((SELECT value FROM kv WHERE key='mac_work:paused'),'0')!='1' "
+            f"AND NOT EXISTS (SELECT 1 FROM jobs WHERE status='running' AND {MAC_PROFILE_FILTER})))",
+            (t, run_id, worker_id, t, t, t + lease_seconds, t, row["id"])
         )
         if cur.rowcount != 1:
             return None

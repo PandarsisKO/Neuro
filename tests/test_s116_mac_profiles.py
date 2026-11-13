@@ -101,3 +101,20 @@ def test_ollama_only_posts_schema_to_loopback_and_requests_unload(monkeypatch):
     result = ollama.create(model="qwen3.5:9b", system="catalogue this source", messages=[{"role": "user", "content": "passage"}],
                            schema="source-profile-v1", max_tokens=1200, timeout=10)
     assert result.model == "qwen3.5:9b"
+
+
+
+def test_legacy_cloud_batch_can_run_while_mac_is_paused_and_mac_jobs_serialize(isolated_db, monkeypatch):
+    _enable(monkeypatch)
+    mac = db.create_job(db.MAC_PROFILE_JOB, {"on_device": True}, dedupe_key="first")
+    extra = db.create_job(db.MAC_PROFILE_JOB, {"on_device": True}, dedupe_key="second")
+    cloud = db.create_job(db.MAC_PROFILE_JOB, {}, dedupe_key="legacy")
+    db.kv_set("mac_work:paused", "1")
+    assert db.claim_job((db.MAC_PROFILE_JOB,))["id"] == cloud["id"]
+    assert db.claim_job((db.MAC_PROFILE_JOB,)) is None
+    db.kv_set("mac_work:paused", None)
+    first = db.claim_job((db.MAC_PROFILE_JOB,))
+    assert first["id"] == mac["id"]
+    assert db.claim_job((db.MAC_PROFILE_JOB,)) is None
+    db.finish_job(first["id"], first["run_id"], "done")
+    assert db.claim_job((db.MAC_PROFILE_JOB,))["id"] == extra["id"]
