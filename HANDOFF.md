@@ -4915,3 +4915,22 @@ overflow was left enabled. During rollout the Mac temporarily had less
 than 1 GiB free and queue API calls timed out. The API responded again as
 space recovered. The two larger Qwen weights downloaded for comparison
 were removed, and Gemma 4 26B remains installed.
+
+### 2026-11-12 — Finding suggestions first on ChatGPT (0.64.16)
+
+Base `ff7c0d7`, candidate `a45bd9c`, worktree
+`/tmp/neurosearch-chatgpt-findings-priority`. Kyle asked to prioritize
+Finding suggestions over Claims on the connected ChatGPT fallback as
+ingestion grows. The existing queue skips Claims waiting on that slot
+while runnable Findings have an earlier turn. The provider checks
+again inside the shared slot, including while a Findings job holds
+its lease and is preparing the request. Jobs claimed for Ollama
+release their place in the ChatGPT queue. Claims can still use Claude,
+and any ChatGPT request already in flight can finish.
+
+All 2,691 pytest tests passed in six shards. The regression covers
+both waiting and already-claimed Claims, legacy waits, resumed Claims,
+dependency and pause gates, lease expiry, and Mac handoff. Tier 1 and
+release-check passed. Evidence:
+`evals/release/chatgpt-findings-priority-pytest-a45bd9c-20261112.txt`
+and `evals/release/release-check-0.64.16-a45bd9c-20261112-173858.{json,txt}`.

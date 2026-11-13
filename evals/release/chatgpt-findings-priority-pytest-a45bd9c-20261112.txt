@@ -1,0 +1,11 @@
+Candidate a45bd9c, base ff7c0d7, macOS arm64, Python 3.14.7. Private databases.
+Command: python -m pytest -q <sorted test modules split by file index modulo six>
+
+Shard 0: 441 passed, 1 warning in 79.64s (0:01:19)
+Shard 1: 414 passed, 1 warning in 64.07s (0:01:04)
+Shard 2: 431 passed, 1 warning in 42.06s
+Shard 3: 409 passed, 1 warning in 51.89s
+Shard 4: 516 passed, 1 warning in 61.97s (0:01:01)
+Shard 5: 480 passed, 1 warning in 117.93s (0:01:57)
+
+Total: 2691 passed, all six exit codes zero.
