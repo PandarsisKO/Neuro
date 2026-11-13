@@ -293,11 +293,15 @@ def test_plan_history_reads_original_version_and_keeps_recorded_decisions(s56_db
     client = TestClient(app)
     assert client.post(f"/api/plans/{first['id']}/decisions/0", headers=H,
                        json={"choice": "Library", "reason": "No rental deposit"}).status_code == 200
+    db.add_plan_updates(first["id"], [{"section": "Venue", "proposed": "Book hotel"}])
+    proposal = db.get_plan(first["id"])["updates"][0]
+    db.set_update_status(proposal["id"], "rejected", decision_reason="Outside budget")
     db.save_plan(pid, {"approach": {"recommended": "Use the community hall", "why": "The library closed"}}, {})
     db.add_fact(pid, "deadline", '{"date":"2027-02-01","label":"Community hall cutoff"}')
     path = f"/api/projects/{pid}/plan"
     current = client.get(path, headers=H).json()
     assert "No rental deposit" in current["recorded_decisions"][0]["content"]
+    assert current["rejected_updates"][0]["decision_reason"] == "Outside budget"
     assert not current["plan"]["plan"].get("decisions")
     old = client.get(path + ".html?version=1", headers=H)
     assert old.status_code == 200

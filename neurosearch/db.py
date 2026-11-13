@@ -5522,11 +5522,23 @@ def list_plans(project_id: str) -> list[dict[str, Any]]:
         "SELECT id, version, status, created_at FROM plans WHERE project_id=? ORDER BY version DESC", (project_id,)).fetchall()]
 
 
-def applied_plan_updates(project_id: str) -> list[dict[str, Any]]:
-    return [dict(row) for row in connect().execute(
-        """SELECT u.section, u.previous, u.proposed, u.reason, u.status, u.claim_id, u.evidence_json, v.version
-           FROM plan_updates u JOIN plans v ON v.id=u.applied_plan_id
-           WHERE v.project_id=? ORDER BY v.version DESC, u.id DESC""", (project_id,))]
+def reviewed_plan_updates(project_id: str) -> list[dict[str, Any]]:
+    """Return applied and rejected proposals across all versions, with their saved rationale."""
+    rows = connect().execute(
+        """SELECT u.section, u.previous, u.proposed, u.reason, u.status, u.claim_id, u.evidence_json,
+                  u.decision_reason, u.decided_at, COALESCE(v.version, p.version) AS version
+           FROM plan_updates u JOIN plans p ON p.id=u.plan_id
+           LEFT JOIN plans v ON v.id=u.applied_plan_id
+           WHERE p.project_id=? AND (u.applied_plan_id IS NOT NULL OR u.status='rejected')
+           ORDER BY u.decided_at DESC, version ASC, u.id ASC""", (project_id,))
+    history = []
+    seen = set()
+    for row in rows:
+        key = tuple(row[k] for k in ("status", "section", "previous", "proposed", "reason", "decided_at"))
+        if key not in seen:
+            history.append(dict(row))
+            seen.add(key)
+    return history
 
 
 def set_plan_status(plan_id: str, status: str) -> None:

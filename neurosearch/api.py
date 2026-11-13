@@ -2601,18 +2601,19 @@ def api_plan(project_id: str) -> dict[str, Any]:
     facts = db.list_facts(project_id, include_history=True) if plan else []
     recorded = [{k: f[k] for k in ("content", "created_at", "status")} for f in facts
                 if f["kind"] == "decision" and f["scope"] == "project" and f["status"] in ("active", "superseded", "withdrawn")]
-    applied = db.applied_plan_updates(project_id) if plan else []
+    history = db.reviewed_plan_updates(project_id) if plan else []
     if plan:
         from . import plan_narrative
         plan_narrative.attach_update_evidence(project_id, plan["updates"])
-        plan_narrative.attach_update_evidence(project_id, applied, history=True)
+        plan_narrative.attach_update_evidence(project_id, history, history=True)
     for v in versions:                                  # older versions are superseded, never "current"
         v["label"] = "current" if plan and v["id"] == plan["id"] else "superseded"
     return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions,
             "can_apply_exact": bool(plan and planner.exact_edits(plan)),
             "execution": plan_execution.execution_view(plan["plan"], plan["items"]) if plan else None,
             "deadlines": plan_execution.confirmed_deadlines(f for f in facts if f["scope"] == "project" and f["status"] == "active"),
-            "applied_updates": applied, "recorded_decisions": recorded}
+            "applied_updates": [u for u in history if u["status"] == "accepted"],
+            "rejected_updates": [u for u in history if u["status"] == "rejected"], "recorded_decisions": recorded}
 
 
 @app.get("/api/projects/{project_id}/staleness", dependencies=[Depends(require_auth)])

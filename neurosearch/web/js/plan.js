@@ -219,7 +219,7 @@ function planSection(id, title, body) {
 globalThis.renderPlan = function renderPlan(r) {
   const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
   const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted' && !u.applied_plan_id);
-  const rejected = pl.updates.filter(u => u.status === 'rejected');
+  const rejected = r.rejected_updates || pl.updates.filter(u => u.status === 'rejected');
   const an = p.analysis || {}, facts = (state.project.facts || []);
   const execution = r.execution;
   let h = `<div class="row mb-3 plan-header"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
@@ -373,10 +373,10 @@ globalThis.renderPlan = function renderPlan(r) {
     ${(r.applied_updates || []).map(u => `<article class="plan-history-row"><b>Applied in v${u.version} · ${esc(u.section)}</b>
       ${u.previous ? `<p class="muted">Previous · ${esc(u.previous)}</p>` : ''}<p>${esc(u.proposed)}</p>
       ${u.reason ? `<p>Reason · ${esc(u.reason)}</p>` : ''}${u.claim_evidence || u.verified_evidence?.length ? planUpdateEvidence(u) : ''}</article>`).join('')}
-    ${rejected.map(u => `<article class="plan-history-row"><b>Kept current plan · ${esc(u.section)}</b>
+    ${rejected.map(u => `<article class="plan-history-row"><b>Kept current plan${u.version ? ` in v${u.version}` : ''} · ${esc(u.section)}</b>
       <p>${esc(u.proposed)}</p>${u.reason ? `<p>Proposed because · ${esc(u.reason)}</p>` : ''}
       ${u.decision_reason ? `<p>Decision reason · ${esc(u.decision_reason)}</p>` : ''}
-      ${u.verified_evidence?.length ? planUpdateEvidence(u) : ''}</article>`).join('')}`;
+      ${u.claim_evidence || u.verified_evidence?.length ? planUpdateEvidence(u) : ''}</article>`).join('')}`;
   h += planSection('history', 'Plan history', history) + '</div>';
   const stale = $('#stalePlan');
   const wrap = $('#planWrap');

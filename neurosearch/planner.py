@@ -923,7 +923,7 @@ def _h(s: str) -> str:
 
 def _inline(s: str) -> str:
     s = _h(s)
-    s = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r'<a href="\2">\1</a>', s)
+    s = re.sub(r'\[([^\]]+)\]\((https?://[^)"<>\s]+)\)', r'<a href="\2">\1</a>', s)
     s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
     s = re.sub(r"(?<![\w*])_([^_]+)_(?![\w*])", r"<em>\1</em>", s)
     s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
