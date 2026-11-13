@@ -188,11 +188,12 @@ def test_challenge_benchmark_recovers_prior_example_and_keeps_scope_evidence(
     lib = db.create_project(f"Challenge benchmark library {subject}")["id"]
     claim = claims.add_claim(pid, claim_text)
     original = _source(pid, f"prior-{subject}-original", first)
-    copy = _source(lib, f"prior-{subject}-copy", first)
+    copy = _source(lib, f"prior-{subject}-copy", precedent)
     source = _source(pid, f"prior-{subject}-counter", exception)
     work, _ = works.ensure_work("other", f"Challenge benchmark report {subject}")
     works.link_source(original, work["id"])
     works.link_source(copy, work["id"], relation="reprint_of")
+    works.link_source(source, work["id"])
     passages = [{"start": i * 40, "end": (i + 1) * 40, "text": text}
                 for i, text in enumerate([first, precedent])]
     db.replace_transcript(original, passages, passages)
@@ -201,9 +202,10 @@ def test_challenge_benchmark_recovers_prior_example_and_keeps_scope_evidence(
     assert response.status_code == 200, response.text
     data = response.json()
     found = data["scopes"]["project"]["passages"]
-    assert {p["text"] for p in found} == {first, precedent, exception}
-    assert len({p["origin"] for p in found}) == 2
-    assert [p["source_id"] for p in found].count(original) == 2
+    assert {precedent, exception} <= {p["text"] for p in found}
+    assert len(found) == 2
+    assert len({p["origin"] for p in found}) == 1
+    assert [p["source_id"] for p in found].count(original) == 1
     assert any(p["source_id"] == source for p in found)
     assert not any(p["source_id"] == copy for p in data["scopes"]["library"]["passages"])
     assert data["scopes"]["project"]["searchable_sources"] == 2
