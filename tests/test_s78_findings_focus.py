@@ -186,10 +186,10 @@ def test_the_suggested_button_exists():
     assert 'onclick="fbReviewSuggested()"' in HTML and 'id="fbSuggestedBtn"' in HTML
 
 
-def test_it_shows_the_most_important_first_the_opposite_of_the_second_look():
-    """Deliberately the reverse. A second look hunts bad approvals, so weakest first. This decides what to
-    promote INTO evidence, so it shows what would matter most if promoted."""
-    assert "sort: 'importance'" in SUGG and "status: 'suggested'" in SUGG
+def test_suggested_focus_requests_the_review_queue_order():
+    """The server prioritizes dependencies for projects with retention and keeps importance order elsewhere."""
+    assert "sort: 'review'" in SUGG and "status: 'suggested'" in SUGG
+    assert "Findings with Plan, Chat or Claim links come first" in SUGG
     assert "sort: 'weakest'" in SECOND
 
 

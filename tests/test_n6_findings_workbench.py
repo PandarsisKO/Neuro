@@ -450,3 +450,57 @@ def test_retained_chat_leads_expansion_keeps_first_twelve_in_order(monkeypatch):
     assert first == expanded[:12]
     assert len({item["id"] for item in expanded}) == 18
     assert client.post(path, json=data | {"limit": 19}, headers=headers).status_code == 422
+
+
+def test_exception_review_prioritizes_dependencies_and_explains_them_without_writes(monkeypatch):
+    pid, sid, add, citation = _five_star_fixture()
+    monkeypatch.setattr(settings, "retain_findings_project", pid)
+    plan_note = add(citations=[dict(citation, timestamp="§ 1")], importance=4)
+    chat_note = add(citations=[dict(citation, timestamp="§ 2")], importance=3)
+    claim_note = add(importance=2)
+    returned = add(status="approved", importance=5)
+    db.set_note_status(returned, "suggested")
+    unreferenced = add(citations=[dict(citation, timestamp="§ 3")])
+    db.save_plan(pid, {"steps": [{"evidence": ["F1"]}], "_evidence": {
+        "F1": {"source_id": sid, "timestamp": "§ 1"},
+        "F2": {"source_id": sid, "timestamp": "§ 3"},
+    }}, {})
+    chat = db.create_conversation(pid, "Original title")
+    db.save_message(chat["id"], "assistant", "Passage [1]", citations=[dict(citation, timestamp="§ 2")])
+    claim = claims.add_claim(pid, "The seller tracks weekly operations.", origin_note_id=claim_note, status="accepted")
+    disputed = claims.add_claim(pid, "The keeper of the agenda varies.")
+    claims.add_claim(pid, "Proposed-only Claim.", origin_note_id=unreferenced)
+    with db.tx() as conn:
+        conn.execute("INSERT INTO claim_evidence_notes (claim_id, note_id) VALUES (?, ?)", (disputed["id"], claim_note))
+        conn.execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, description, created_at, updated_at) "
+                     "VALUES (?, ?, 'CONTRADICTION', ?, 'Open dispute', 0, 0)",
+                     (db.new_id(), pid, disputed["id"]))
+    before = db.list_project_notes(pid, status=None)
+
+    def review(**kwargs):
+        return api.api_findings_query(pid, status="suggested", sort="review", **kwargs)
+
+    result = review(limit=3)
+    assert result["total"] == 4
+    plan, cited_chat, evidence = result["findings"]
+    assert [r["id"] for r in result["findings"]] == [plan_note, chat_note, claim_note]
+    assert plan["review_reasons"] == ["Cited in Master Plan"]
+    assert plan["review_dependencies"]["plan_version"] == 1
+    assert cited_chat["review_reasons"] == ["Cited in Chat"]
+    assert cited_chat["review_dependencies"]["chats"] == ["Original title"]
+    assert evidence["review_dependencies"]["claims"] == [
+        {"status": "accepted", "text": claim["text"]},
+        {"status": "disputed", "text": disputed["text"]},
+    ]
+    remaining = review(offset=3)["findings"]
+    assert [r["id"] for r in remaining] == [returned]
+    assert remaining[0]["review_reasons"] == ["Returned for review"]
+    assert fv.query(pid, status="retained")["findings"][0]["id"] == unreferenced
+    assert fv.query(pid, status="suggested")["findings"][0]["id"] == returned
+    db.rename_conversation(chat["id"], "New title")
+    assert review(offset=1, limit=1)["findings"][0]["review_dependencies"]["chats"] == ["New title"]
+    assert db.list_project_notes(pid, status=None) == before
+    monkeypatch.setattr(settings, "retain_findings_project", "")
+    legacy = review()["findings"]
+    assert [r["id"] for r in legacy] == [unreferenced, returned, plan_note, chat_note, claim_note]
+    assert all("review_dependencies" not in r for r in legacy)

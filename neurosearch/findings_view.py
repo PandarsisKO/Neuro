@@ -2,7 +2,7 @@
 
 Filters compose (AND): q (words over title + content), status (approved · suggested · reserve · dismissed), min_importance, importance (exact levels, "1,2"),
 source_id, used (plan · chat · claim · never), stale (source stale / current), area (the Research Area the finding's Claim
-belongs to), sort (importance · newest · source · used). Facets are counts over the FILTERED set minus the facet's own
+belongs to), sort (importance · newest · source · used · review). Facets are counts over the FILTERED set minus the facet's own
 dimension (so a facet always shows what choosing it would give). Use badges: 📋 plan · 💬 cited N× · 🧠 Claim (strength).
 "Used" means: referenced by the plan body, cited in a chat answer, or behind a STRONG or ACCEPTED Claim — the $0 harvest
 folds nearly every finding into some weak Claim, and that is not use.
@@ -17,6 +17,7 @@ from typing import Any
 from . import db
 
 PAGE_MAX = 500
+RETURNED_FOR_REVIEW = "Returned for review"
 LOW_IMPORTANCE = 2      # the "low-value sweep": approved, importance ≤ LOW_IMPORTANCE, never used
 
 
@@ -194,7 +195,8 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
                 hit = by_title_loc.get((t, l), [])
             for nid in hit:
                 out[nid]["plan"] += 1
-    for r in conn.execute("""SELECT m.citations FROM messages m JOIN conversations c ON c.id=m.conversation_id
+                out[nid]["plan_version"] = plan["version"]
+    for r in conn.execute("""SELECT m.citations, m.conversation_id FROM messages m JOIN conversations c ON c.id=m.conversation_id
                              WHERE c.project_id=? AND m.role='assistant' AND m.citations IS NOT NULL AND m.citations<>'[]'""", (project_id,)).fetchall():
         try:
             cites = json.loads(r["citations"]) or []
@@ -205,6 +207,7 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
             for nid in by_src.get(sid or "", []):
                 if loc and loc_of[nid][1] == loc:
                     out[nid]["chat"] += 1
+                    out[nid].setdefault("conversations", set()).add(r["conversation_id"])
     rank = {"strong": 3, "developing": 2, "weak": 1, "unsupported": 0}
     for r in conn.execute("SELECT origin_note_id AS nid, strength, status FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL AND status<>'rejected' "
                           "UNION ALL SELECT e.note_id, c.strength, c.status FROM claim_evidence_notes e JOIN project_claims c ON c.id=e.claim_id WHERE c.project_id=? AND c.status<>'rejected'",
@@ -221,26 +224,39 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
 
 def review_reasons(project_id: str) -> dict[int, list[str]]:
     """Use current evidence links and explicit return decisions to route Suggested findings."""
-    conn = db.connect()
-    usage = usage_map(project_id)
-    protected_claim_links = conn.execute(
+    return _review_reasons(project_id, usage_map(project_id), _review_claims(project_id))
+
+
+def _review_claims(project_id: str) -> dict[int, list[dict[str, str]]]:
+    rows = db.connect().execute(
         """WITH protected AS (
-               SELECT c.id, c.origin_note_id FROM project_claims c WHERE c.project_id=?
+               SELECT c.id, c.text, c.status, c.origin_note_id FROM project_claims c WHERE c.project_id=?
                AND (c.status='accepted' OR (c.status='proposed' AND EXISTS (
                    SELECT 1 FROM research_tensions t WHERE t.claim_id=c.id
                    AND t.status='open' AND t.kind='CONTRADICTION')))
-           ) SELECT origin_note_id AS id FROM protected WHERE origin_note_id IS NOT NULL
-           UNION SELECT e.note_id FROM claim_evidence_notes e JOIN protected c ON c.id=e.claim_id""",
-        (project_id,),
+           ), links AS (
+               SELECT origin_note_id AS note_id, id FROM protected WHERE origin_note_id IS NOT NULL
+               UNION SELECT e.note_id, e.claim_id FROM claim_evidence_notes e JOIN protected c ON c.id=e.claim_id
+           ) SELECT l.note_id, c.text, c.status FROM links l JOIN protected c ON c.id=l.id
+             JOIN project_notes n ON n.id=l.note_id
+             WHERE n.project_id=? AND n.status='suggested'
+             ORDER BY c.status, c.text, c.id""",
+        (project_id, project_id),
     )
-    claim_notes = {r["id"] for r in protected_claim_links}
+    links = defaultdict(list)
+    for row in rows:
+        links[row["note_id"]].append({"text": row["text"], "status": "accepted" if row["status"] == "accepted" else "disputed"})
+    return links
+
+
+def _review_reasons(project_id: str, usage: dict, claim_notes: dict) -> dict[int, list[str]]:
     result = {}
-    for row in conn.execute("SELECT id, reviewed_at FROM project_notes WHERE project_id=? AND status='suggested'", (project_id,)):
+    for row in db.connect().execute("SELECT id, reviewed_at FROM project_notes WHERE project_id=? AND status='suggested'", (project_id,)):
         nid = row["id"]
         use = usage.get(nid, {})
         reasons = [
             reason for applies, reason in (
-                (row["reviewed_at"] is not None, "Returned for review"),
+                (row["reviewed_at"] is not None, RETURNED_FOR_REVIEW),
                 (use.get("plan"), "Cited in Master Plan"),
                 (use.get("chat"), "Cited in Chat"),
                 (nid in claim_notes, "Supports an accepted or disputed Claim"),
@@ -249,6 +265,23 @@ def review_reasons(project_id: str) -> dict[int, list[str]]:
         if reasons:
             result[nid] = reasons
     return result
+
+
+def _add_review_dependencies(project_id: str, page: list[dict], usage: dict, claim_notes: dict) -> None:
+    # Titles can change independently of citations. Read them for the page rather than caching them with usage.
+    conversation_ids = {cid for row in page for cid in usage.get(row["id"], {}).get("conversations", ())}
+    titles = {}
+    if conversation_ids:
+        titles = {r["id"]: r["title"] or "Untitled Chat" for r in db.connect().execute(
+            "SELECT id, title FROM conversations WHERE project_id=?", (project_id,)
+        ) if r["id"] in conversation_ids}
+    for row in page:
+        use = usage.get(row["id"], {})
+        row["review_dependencies"] = {
+            "plan_version": use.get("plan_version"),
+            "chats": sorted(titles[cid] for cid in use.get("conversations", ()) if cid in titles),
+            "claims": claim_notes.get(row["id"], []),
+        }
 
 
 # Keep broad question wording from overwhelming the useful terms in a lead.
@@ -315,8 +348,13 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
     dec = decorations(project_id, block=needs_decorations)
     rows = _merge(rows_only(project_id), dec["maps"])
     retention = db.retains_findings(project_id)
+    review_order = retention and status == "suggested" and sort == "review"
+    if sort == "review" and not review_order:
+        sort = "importance"
     if retention:
-        review = review_reasons(project_id)
+        usage = usage_map(project_id)
+        claim_notes = _review_claims(project_id)
+        review = _review_reasons(project_id, usage, claim_notes)
         for row in rows:
             if row["status"] == "suggested":
                 row["review_reasons"] = review.get(row["id"], [])
@@ -366,6 +404,10 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
         "source": Counter((r.get("source_id") or "", r["source_title"]) for r in rows if passes(r, "source")),
     }
     keyf = {"importance": lambda r: (-int(r.get("importance") or 0), -(r.get("created_at") or 0)),
+            "review": lambda r: (
+                not any(reason != RETURNED_FOR_REVIEW for reason in r["review_reasons"]),
+                -int(r.get("importance") or 0), -(r.get("created_at") or 0), -r["id"],
+            ),
             # weakest first -- what a second look wants, and the exact reverse of the default. Ties break
             # oldest-first so a long pass moves steadily through the backlog rather than re-treading new rows.
             "weakest": lambda r: (int(r.get("importance") or 0), (r.get("created_at") or 0)),
@@ -374,6 +416,8 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
             "used": lambda r: (-(r["used"]["plan"] * 3 + r["used"]["chat"] + (2 if r["used"]["claim_counts"] else 0)), -int(r.get("importance") or 0))}.get(sort) or (lambda r: (-int(r.get("importance") or 0),))
     matched.sort(key=keyf)
     page = matched[offset:offset + limit]
+    if review_order:
+        _add_review_dependencies(project_id, page, usage, claim_notes)
     low = [r for r in rows if r["status"] == "approved" and int(r.get("importance") or 0) <= LOW_IMPORTANCE and r["used"]["never"]]
     return {"retention": retention, "total": len(matched), "offset": offset, "limit": limit, "findings": page,
             "badges": {"known": dec["maps"] is not None, "current": dec["current"], "pending": dec["pending"],

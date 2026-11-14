@@ -1924,27 +1924,23 @@ globalThis.splitFinding = function splitFinding(n) {
 // earlier than he asked to stop.
 globalThis.FOCUS_BATCH = 100;
 
-// Suggested findings, most important first (Kyle: "keep vs lose on the suggested findings first").
-//
-// The order is the OPPOSITE of the second look's on purpose. A second look hunts bad approvals, so it shows
-// the weakest first. This pass decides what to promote INTO evidence, so it shows what would matter most if
-// promoted. Same reviewer, same door, opposite end of the same ordering.
+// Open the review queue with findings already used by the project first.
 globalThis.fbReviewSuggested = async function fbReviewSuggested() {
   const btn = $('#fbSuggestedBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
   const restore = () => { if (btn) { btn.disabled = false; btn.textContent = FB.retention ? 'Needs review' : 'Suggested'; } };
   let r;
   try {
-    const p = new URLSearchParams({ status: 'suggested', sort: 'importance', limit: FOCUS_BATCH });
+    const p = new URLSearchParams({ status: 'suggested', sort: 'review', limit: FOCUS_BATCH });
     r = await api(`/api/projects/${state.project.id}/findings?` + p);
   } catch (e) { restore(); toast('Could not load suggested findings: ' + (e.message || e), 'err'); return; }
   restore();
   const rows = r.findings || [];
   if (!rows.length) { toast('Nothing left in Suggested'); return; }
   fbFocusOpen(rows, {
-    title: r.retention ? 'Needs review — most important first' : 'Suggested findings — most important first',
+    title: r.retention ? 'Needs review' : 'Suggested findings — most important first',
     sourceContext: !!r.retention,
-    subtitle: r.retention ? `${rows.length} of ${r.total} need review. Keep approves, Lose dismisses. Other findings stay available under Retained research.`
+    subtitle: r.retention ? `${rows.length} of ${r.total} need review. Findings with Plan, Chat or Claim links come first. Keep approves. Lose dismisses.`
       : `${rows.length} of ${r.total} waiting. A suggested finding cannot be cited in chat or exported `
       + `until you keep it, but it CAN already have become a proposed Claim. Losing it does not silently pull `
       + `that Claim down — it sends the Claim to the Research review queue for you to decide, flagged `
@@ -2135,6 +2131,7 @@ globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
     items: rows.map(n => {
       const c = (n.citations || [])[0] || {};
       const { title, body } = splitFinding(n);
+      const dependencies = n.review_dependencies;
       return {
         id: n.id,
         title,
@@ -2148,6 +2145,10 @@ globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
           n.area ? ['area', n.area] : null,
           n.status ? ['now', n.status] : null,
           n.hold_reason ? ['review', n.hold_reason] : null,
+          n.review_reasons?.length ? ['why review', n.review_reasons.join(' · ')] : null,
+          dependencies?.plan_version ? ['Master Plan', `Version ${dependencies.plan_version}`] : null,
+          ...(dependencies?.chats || []).map(title => ['Chat', title]),
+          ...(dependencies?.claims || []).map(claim => [`${claim.status} Claim`, claim.text]),
         ].filter(Boolean),
       };
     }),
