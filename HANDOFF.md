@@ -5537,3 +5537,11 @@ focused tests. Deterministic `neurosearch eval` and
 `evals/release/release-check-0.64.32-72a4307-20261113-195427.json`.
 Chrome verified a read-only preview, approval of the passing row,
 and explicit Keep and Lose for the held rows on isolated data.
+
+### 2026-11-13 — Five-star review live
+
+Published `c230b39` and verified GitHub main. The Mac reloaded
+0.64.32 and served the tested Findings JavaScript. An authenticated
+read-only Buying Businesses preview returned 36 eligible and 78 for
+review, with identical status counts before and after. The live app
+reported zero expired job leases.
