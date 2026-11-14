@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.64.37">
+<meta name="neurosearch-ui-version" content="0.64.38">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -235,7 +235,7 @@
         <div class="wb-row">
           <input id="fbQ" class="wb-search" placeholder="Search findings…" oninput="debounce(loadWorkbench)">
           <div class="wb-chips" id="fbStatusChips"></div>
-          <select id="fbStatus" hidden><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
+          <select id="fbStatus" hidden><option value="approved">approved</option><option value="suggested">suggested</option><option value="retained">retained research</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
           <span class="muted wb-count" id="fbCount"></span>
         </div>
         <div class="wb-row">

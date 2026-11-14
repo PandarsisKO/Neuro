@@ -141,11 +141,18 @@ def review_context(project_id: str, note_id: int) -> dict[str, Any] | None:
 def five_star_preview(project_id: str) -> dict[str, Any]:
     members = set(db.project_source_ids(project_id))
     eligible, held = [], []
+    if db.retains_findings(project_id):
+        from .findings_view import review_reasons
+        review = review_reasons(project_id)
+    else:
+        review = None
     for row in db.connect().execute(
         "SELECT * FROM project_notes WHERE project_id=? AND status='suggested' "
         "AND importance=5 ORDER BY created_at DESC, id DESC", (project_id,)
     ):
         note = db.row_to_dict(row)
+        if review is not None and note["id"] not in review:
+            continue
         reason = five_star_hold(note, members)
         if reason:
             held.append(five_star_review_row(note, reason))

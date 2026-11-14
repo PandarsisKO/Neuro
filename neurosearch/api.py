@@ -3860,6 +3860,7 @@ def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
         raise HTTPException(422, "A five-star preview can only confirm gated approvals.")
     n, skipped, held = 0, 0, []
     members: dict[str, set[str]] = {}
+    reviewed_candidates: dict[str, dict[int, list[str]]] = {}
     for nid in dict.fromkeys(body.note_ids):
         if body.status != "approved" or body.individually_reviewed:
             n += db.set_note_status(nid, body.status) is not None
@@ -3869,6 +3870,13 @@ def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
             skipped += 1
             continue
         project_id = note["project_id"]
+        if note["status"] == "suggested" and db.retains_findings(project_id):
+            if project_id not in reviewed_candidates:
+                from .findings_view import review_reasons
+                reviewed_candidates[project_id] = review_reasons(project_id)
+            if nid not in reviewed_candidates[project_id]:
+                held.append(findings_quality.five_star_review_row(note, "Retained research needs an individual Keep."))
+                continue
         gated = findings_quality.needs_five_star_gate(note)
         if body.five_star_project_id is not None and (
                 project_id != body.five_star_project_id or not gated or note["status"] != "suggested"):

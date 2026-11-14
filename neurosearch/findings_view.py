@@ -219,6 +219,38 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
     return out
 
 
+def review_reasons(project_id: str) -> dict[int, list[str]]:
+    """Use current evidence links and explicit return decisions to route Suggested findings."""
+    conn = db.connect()
+    usage = usage_map(project_id)
+    protected_claim_links = conn.execute(
+        """WITH protected AS (
+               SELECT c.id, c.origin_note_id FROM project_claims c WHERE c.project_id=?
+               AND (c.status='accepted' OR (c.status='proposed' AND EXISTS (
+                   SELECT 1 FROM research_tensions t WHERE t.claim_id=c.id
+                   AND t.status='open' AND t.kind='CONTRADICTION')))
+           ) SELECT origin_note_id AS id FROM protected WHERE origin_note_id IS NOT NULL
+           UNION SELECT e.note_id FROM claim_evidence_notes e JOIN protected c ON c.id=e.claim_id""",
+        (project_id,),
+    )
+    claim_notes = {r["id"] for r in protected_claim_links}
+    result = {}
+    for row in conn.execute("SELECT id, reviewed_at FROM project_notes WHERE project_id=? AND status='suggested'", (project_id,)):
+        nid = row["id"]
+        use = usage.get(nid, {})
+        reasons = [
+            reason for applies, reason in (
+                (row["reviewed_at"] is not None, "Returned for review"),
+                (use.get("plan"), "Cited in Master Plan"),
+                (use.get("chat"), "Cited in Chat"),
+                (nid in claim_notes, "Supports an accepted or disputed Claim"),
+            ) if applies
+        ]
+        if reasons:
+            result[nid] = reasons
+    return result
+
+
 def parse_levels(importance: str | None) -> set[int] | None:
     """S99: `importance="1,2"` -> {1, 2}; blank/None -> None (no filter). Unknown tokens are ignored rather than
     rejected, so a stale chip value can never turn the list into an error page. 0 means "unrated"."""
@@ -243,6 +275,14 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
     needs_decorations = bool(used or stale or area) or sort == "used"
     dec = decorations(project_id, block=needs_decorations)
     rows = _merge(rows_only(project_id), dec["maps"])
+    retention = db.retains_findings(project_id)
+    if retention:
+        review = review_reasons(project_id)
+        for row in rows:
+            if row["status"] == "suggested":
+                row["review_reasons"] = review.get(row["id"], [])
+                if not row["review_reasons"]:
+                    row["status"] = "retained"
     qtoks = set(_tokens(q or ""))
 
     def passes(r: dict[str, Any], skip: str | None = None) -> bool:
@@ -296,7 +336,7 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
     matched.sort(key=keyf)
     page = matched[offset:offset + limit]
     low = [r for r in rows if r["status"] == "approved" and int(r.get("importance") or 0) <= LOW_IMPORTANCE and r["used"]["never"]]
-    return {"total": len(matched), "offset": offset, "limit": limit, "findings": page,
+    return {"retention": retention, "total": len(matched), "offset": offset, "limit": limit, "findings": page,
             "badges": {"known": dec["maps"] is not None, "current": dec["current"], "pending": dec["pending"],
                        "note": "" if dec["current"] else ("use, staleness and area are still being counted"
                                                           if dec["pending"] else "use, staleness and area are from a moment ago")},

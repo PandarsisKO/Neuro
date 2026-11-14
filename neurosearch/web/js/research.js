@@ -1492,11 +1492,11 @@ globalThis.loadNotes = async function loadNotes() {
   globalThis.notesRev = JSON.stringify((await api(`/api/projects/${state.project.id}/tick`, { ack: false }).catch(() => ({}))).rev || null);
   clearTimeout(window._notesTimer);
   if (analysing) scheduleNotesTick();
-  let sug = [], sugTotal = nSug;
+  let sug = [], sugTotal = nSug, retention = false;
   if (nSug) {
     try {
       const r = await api(`/api/projects/${state.project.id}/findings?` + new URLSearchParams({ status: 'suggested', limit: 100, offset: 0, sort: 'importance' }));
-      sug = r.findings || []; sugTotal = r.total != null ? r.total : nSug;
+      sug = r.findings || []; sugTotal = r.total != null ? r.total : nSug; retention = !!r.retention;
     } catch (e) { sug = []; }
   }
   const legacy = sug.filter(n => !n.title).length;
@@ -1505,7 +1505,8 @@ globalThis.loadNotes = async function loadNotes() {
   // REVIEW entry that sends the user to that filter; bulk approve/dismiss live on the workbench itself (see
   // loadWorkbench's #fbBulk), scoped to whichever page is actually on screen rather than a separate top-100 pull.
   $('#suggestedReview').innerHTML = (legacy ? reviewItem(`${legacy} legacy suggestion${legacy === 1 ? '' : 's'}`, 'older analysis produced run-on text', `<button class="small" onclick="analyzeChooser(true)">Re-analyse all…</button> <span class="muted text-xs">Cost is shown before anything runs.</span>`) : '')
-    + (sugTotal ? reviewItem(`${sugTotal} suggested finding${sugTotal === 1 ? '' : 's'} waiting`, 'new findings extracted from your sources, not yet reviewed', `<button class="small primary" onclick="reviewSuggested()">Review</button>`) : '')
+    + (retention ? reviewItem(`${sugTotal} need review`, 'Other suggestions are kept as searchable, unverified research', `<button class="small" onclick="fbReviewSuggested()">Keep vs Lose</button> <button class="small ghost" onclick="setFbStatus('retained')">Open retained research</button>`) :
+      sugTotal ? reviewItem(`${sugTotal} suggested finding${sugTotal === 1 ? '' : 's'} waiting`, 'new findings extracted from your sources, not yet reviewed', `<button class="small primary" onclick="reviewSuggested()">Review</button>`) : '')
     + (analysing ? reviewItem(`Reading ${analysing} source${analysing === 1 ? '' : 's'}`, 'new findings will appear as each source finishes', `${FWAVE.queued ? `<button class="small primary" title="Move the first few of these to the front of the whole queue so this project becomes usable now. Free — it changes the order only, not the provider, model or cost." onclick="firstWave()">⏫ Start ${Math.min(FWAVE.queued, 6)} now</button> <span class="muted text-xs">Free — changes queue order only.</span>` : '<span class="muted text-xs">No action needed.</span>'}`) : '');
   syncFindingsReview();
   loadWorkbench();
@@ -1552,6 +1553,8 @@ globalThis.useBadges = function useBadges(n) {
   if (u.chat) { used.push(`cited ${u.chat}×`); why.push(`cited in ${u.chat} chat answer${u.chat === 1 ? '' : 's'}`); }
   if (u.claim) { used.push(`Claim: ${esc(u.claim)}`); why.push(`became or evidences ${u.claim} Claim${u.claim === 1 ? '' : 's'}`); }
   const b = [];
+  if (n.status === 'retained') b.push('<span class="tag">Unverified research</span>');
+  if ((n.review_reasons || []).length) b.push(`<span class="tag">${esc(n.review_reasons.join(' · '))}</span>`);
   if (used.length) b.push(`<span class="tag" title="${esc(why.join(' · '))}">${used.join(' ')}</span>`);
   // CL-6: the warn glyph is redundant with the status-warn colour the tag already carries -- the word says it.
   if (n.source_stale) b.push(`<span class="tag status-warn" title="its source was analysed against older inputs">stale source</span>`);
@@ -1568,7 +1571,9 @@ globalThis.renderFbStatusChips = function renderFbStatusChips(cur, counts) {
   counts = counts || FB.statusCounts || {};
   const n = k => k === 'all' ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[k] || 0);
   // S90: each chip says how many are behind it — an empty filter is then a fact, not a broken tab
-  el.innerHTML = FB_STATUS_CHIPS.map(([k, l]) => `<span class="chipf ${cur === k ? 'on' : ''}" onclick="setFbStatus('${k}')">${l}${Object.keys(counts).length ? ` <span class="muted">${n(k)}</span>` : ''}</span>`).join('');
+  const chips = FB_STATUS_CHIPS.flatMap(([k, label]) => k === 'suggested' && FB.retention
+    ? [[k, 'Needs review'], ['retained', 'Retained research']] : [[k, label]]);
+  el.innerHTML = chips.map(([k, l]) => `<span class="chipf ${cur === k ? 'on' : ''}" onclick="setFbStatus('${k}')">${l}${Object.keys(counts).length ? ` <span class="muted">${n(k)}</span>` : ''}</span>`).join('');
 }
 globalThis.setFbStatus = function setFbStatus(v) { $('#fbStatus').value = v; FB.userStatus = true; loadWorkbench(); }
 // S99 (Kyle, 2026-09-25: "a way to filter by strength so I can review findings and bulk select and remove"). Strength
@@ -1620,6 +1625,14 @@ globalThis.fbReviewSelected = function fbReviewSelected() {
     onDone: fbSelClear,
   });
 }
+globalThis.fbReviewRetained = function fbReviewRetained(id) {
+  const row = (FB.rows || []).find(n => n.id === id && n.status === 'retained');
+  if (row) fbFocusOpen([row], {
+    title: 'Review retained research',
+    sourceContext: true,
+    subtitle: 'Keep approves this finding for use as evidence. Lose dismisses it.',
+  });
+}
 globalThis.fbReviewSource = function fbReviewSource(ids, title) {
   const pending = new Set(ids);
   const rows = (FB.rows || []).filter(n => pending.has(n.id) && ['suggested', 'reserve'].includes(n.status));
@@ -1644,7 +1657,7 @@ globalThis.renderFbBulk = function renderFbBulk() {
       <label class="wb-check"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="fbSelAll(this.checked)" title="Tick every finding on this page">Select the ${rows.length} shown</label>
       ${n ? `<span class="wb-label"><b>${n}</b> selected</span>
       <button class="small" title="Load exactly the selected findings into Keep vs Lose" onclick="fbReviewSelected()">Keep vs Lose ${n}</button>
-      ${st !== 'approved' ? `<button class="small" title="Approve the selected findings" onclick="fbBulkSelected('approved')">Approve ${n}</button>` : ''}
+      ${st !== 'approved' && ![...FB.sel.values()].some(n => n.status === 'retained') ? `<button class="small" title="Approve the selected findings" onclick="fbBulkSelected('approved')">Approve ${n}</button>` : ''}
       ${st !== 'dismissed' ? `<button class="small danger" title="Dismiss the selected findings (nothing is deleted — they stay under Dismissed)" onclick="fbBulkSelected('dismissed')">Dismiss ${n}</button>` : ''}
       ${st === 'dismissed' ? `<button class="small" title="Put the selected findings back in the review queue" onclick="fbBulkSelected('suggested')">↩ Restore ${n}</button>` : ''}
       <a href="#" class="wb-label" onclick="fbSelClear();return false">clear</a>` : `<span class="wb-label">tick findings to approve, dismiss or review them together</span>`}
@@ -1661,6 +1674,13 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (!FB.loaded) $('#notes').innerHTML = listState('loading', { label: 'Loading findings…' });
   let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { if (e && e.stale) return; $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
   FB.loaded = true;
+  FB.retention = !!r.retention;
+  const reviewButton = $('#fbSuggestedBtn');
+  if (reviewButton && !reviewButton.disabled) reviewButton.textContent = FB.retention ? 'Needs review' : 'Suggested';
+  if (!FB.retention && $('#fbStatus').value === 'retained') {
+    $('#fbStatus').value = 'approved';
+    return loadWorkbench();
+  }
   FB.statusCounts = (r.facets && r.facets.status) || {};
   // S90 (Kyle, 2026-09-23: "something is seriously broken with the findings tab... why is nothing showing up?").
   // Nothing was broken: the tab opened on Approved, this project had 0 approved and 126 suggested, and the empty
@@ -1672,6 +1692,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
     const cur = $('#fbStatus').value, c = FB.statusCounts;
     if (!r.total && !FB.source && !$('#fbQ').value) {
       const go = ['suggested', 'approved', 'reserve'].find(k => k !== cur && c[k]);
+      if (FB.retention && !go && cur !== 'retained' && c.retained) { $('#fbStatus').value = 'retained'; return loadWorkbench(); }
       if (go) { $('#fbStatus').value = go; toast(`No ${cur} findings yet — showing the ${c[go]} ${go === 'reserve' ? 'beyond the cap' : go}`); return loadWorkbench(); }
     }
   }
@@ -1715,6 +1736,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   // it stays -- but plain, not primary; the one primary on this surface is #fbBulk's bulk Approve above the
   // list (CL-2), which is what "one dominant primary action per decision region" asks for at this scale.
   const act = n => st === 'approved' || st === 'all' && n.status === 'approved' ? `<button class="small ghost" title="Remove it from the project's approved findings" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button>`
+    : n.status === 'retained' ? `<button class="small" onclick="fbReviewRetained(${n.id})">Review</button><button class="small ghost" title="Put this finding in the individual review queue" onclick="noteStatus(${n.id},'suggested')">Send to review</button>`
     : n.status === 'suggested' ? `<button class="small" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button>`
     : n.status === 'reserve' ? `<button class="small" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="noteStatus(${n.id},'suggested')">To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button>`
     : `<button class="small ghost" title="Put it back in the review queue" onclick="noteStatus(${n.id},'suggested')">↩ Restore</button>`;
@@ -1910,7 +1932,7 @@ globalThis.FOCUS_BATCH = 100;
 globalThis.fbReviewSuggested = async function fbReviewSuggested() {
   const btn = $('#fbSuggestedBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = 'Suggested'; } };
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = FB.retention ? 'Needs review' : 'Suggested'; } };
   let r;
   try {
     const p = new URLSearchParams({ status: 'suggested', sort: 'importance', limit: FOCUS_BATCH });
@@ -1920,8 +1942,10 @@ globalThis.fbReviewSuggested = async function fbReviewSuggested() {
   const rows = r.findings || [];
   if (!rows.length) { toast('Nothing left in Suggested'); return; }
   fbFocusOpen(rows, {
-    title: 'Suggested findings — most important first',
-    subtitle: `${rows.length} of ${r.total} waiting. A suggested finding cannot be cited in chat or exported `
+    title: r.retention ? 'Needs review — most important first' : 'Suggested findings — most important first',
+    sourceContext: !!r.retention,
+    subtitle: r.retention ? `${rows.length} of ${r.total} need review. Keep approves, Lose dismisses. Other findings stay available under Retained research.`
+      : `${rows.length} of ${r.total} waiting. A suggested finding cannot be cited in chat or exported `
       + `until you keep it, but it CAN already have become a proposed Claim. Losing it does not silently pull `
       + `that Claim down — it sends the Claim to the Research review queue for you to decide, flagged `
       + `"every finding under it was dismissed". Keep files it as approved; Lose dismisses it, and both are `

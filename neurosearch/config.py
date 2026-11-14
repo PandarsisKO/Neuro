@@ -92,6 +92,9 @@ class Settings:
     retrieval_rerank: bool = field(default_factory=lambda: (_env("NEUROSEARCH_RETRIEVAL_RERANK", "") or "").lower() in ("1", "true", "yes"))   # I2: Haiku listwise rerank of the retrieved candidates (experiment, off)
     findings_prefilter: bool = field(default_factory=lambda: (_env("NEUROSEARCH_FINDINGS_PREFILTER", "") or "").lower() in ("1", "true", "yes"))   # H1: cheap window rejection filter before findings.extract (off until proven)
 
+    # One project at a time. Unset restores the existing Findings workflow.
+    retain_findings_project: str | None = field(default_factory=lambda: _env("NEUROSEARCH_RETAIN_FINDINGS_PROJECT"))
+
     # Ingest
     caption_langs: list[str] = field(
         default_factory=lambda: [s.strip() for s in (_env("NEUROSEARCH_CAPTION_LANGS", "en,en-US,en-GB") or "").split(",") if s.strip()]

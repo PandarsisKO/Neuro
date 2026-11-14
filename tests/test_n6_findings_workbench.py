@@ -283,3 +283,72 @@ def test_findings_review_context_is_read_only_and_checks_source_scope():
     assert db.list_project_notes(pid, status=None) == before
     db.remove_project_sources(pid, [sid])
     assert "unavailable" in api.api_finding_source_context(pid, good)["message"]
+
+
+def test_retained_findings_are_searchable_without_entering_decision_inputs(monkeypatch):
+    from fastapi.testclient import TestClient
+    from neurosearch import planner, providers, qa
+
+    pid = db.create_project("Pilot")["id"]
+    other = db.create_project("Other project")["id"]
+    monkeypatch.setattr(settings, "retain_findings_project", pid)
+    db.save_plan(pid, {"first_steps": [{"action": "Ask lender"}]}, {})
+    lead = db.add_project_note(pid, "Universal downpayment must be 83 percent for this acquisition.", status="suggested", importance=5)
+    explicit = db.add_project_note(pid, "Ask about closing costs.", status="approved")
+    db.set_note_status(explicit["id"], "suggested")
+    approved = db.add_project_note(pid, "Verified terms are in the signed commitment.", status="approved")
+    external = db.add_project_note(other, "The original workflow still handles this item.", status="suggested")
+    client = TestClient(api.app)
+    headers = {"Authorization": "Bearer t0k"}
+
+    result = client.get(f"/api/projects/{pid}/findings", params={"status": "retained", "q": "downpayment"}, headers=headers).json()
+    assert [r["id"] for r in result["findings"]] == [lead["id"]]
+    assert result["findings"][0]["status"] == "retained"
+    assert [r["id"] for r in fv.query(pid, status="suggested")["findings"]] == [explicit["id"]]
+    assert fv.query(other, status="suggested")["findings"][0]["id"] == external["id"]
+    assert db.list_project_notes(pid, status="suggested")[0]["status"] == "suggested"
+    assert client.get(f"/api/projects/{pid}/findings/five-star-review", headers=headers).json()["held"] == []
+    assert client.post("/api/notes/bulk-status", headers=headers,
+                       json={"note_ids": [lead["id"]], "status": "approved"}).json()["n"] == 0
+    assert claims.unharvested_note_ids(pid) == {approved["id"]}
+    claims.harvest(pid)
+    assert {x["origin_note_id"] for x in claims.list_for_project(pid)} == {approved["id"]}
+    blocks, _ = qa.chat_system_blocks(db.get_project(pid), False, [], None)
+    assert "83 percent" not in str(blocks) and "signed commitment" in str(blocks)
+    assert "83 percent" not in str(planner._evidence(pid, db.get_project(pid)))
+
+    captured = []
+    def suggest(*args, **kwargs):
+        captured.append(kwargs["messages"][0]["content"])
+        return {"updates": []}
+    monkeypatch.setattr(providers, "invoke_structured", suggest)
+    planner._suggest_updates(pid)
+    assert captured and "83 percent" not in captured[0] and "signed commitment" in captured[0]
+
+    assert client.post("/api/notes/bulk-status", headers=headers, json={
+        "note_ids": [lead["id"]], "status": "approved", "individually_reviewed": True,
+    }).json()["n"] == 1
+    assert lead["id"] in claims.unharvested_note_ids(pid)
+    assert fv.query(pid, status="retained")["total"] == 0
+
+
+def test_retention_preserves_source_findings_and_holds_preexisting_claim_readiness(monkeypatch):
+    pid = db.create_project("Pilot")["id"]
+    sid = db.upsert_source(platform="youtube", external_id="retained-rebuild", url="https://example.test/rebuild",
+                           title="Rebuild", status="ready")["id"]
+    old = {"title": "First", "content": "One lender required a form in this example."}
+    db.replace_suggestions(pid, sid, [old], {"source_revision": "original"})
+    first = db.list_project_notes(pid, "suggested")[0]
+    claim = claims.add_claim(pid, first["content"], origin="finding_suggested", origin_note_id=first["id"])
+    with db.tx() as conn:
+        conn.execute("UPDATE project_claims SET readiness='ready' WHERE id=?", (claim["id"],))
+    monkeypatch.setattr(settings, "retain_findings_project", pid)
+    assert claims.get(claim["id"])["readiness"] == "not_ready"
+    assert claims.list_for_project(pid, with_evidence=False)[0]["readiness"] == "not_ready"
+
+    db.replace_suggestions(pid, sid, [old, {"title": "Next", "content": "Ask for the signed term sheet."}], {"source_revision": "original"})
+    rows = db.list_project_notes(pid, "suggested")
+    assert len(rows) == 2
+    assert first["id"] in {x["id"] for x in rows}
+    db.set_note_status(first["id"], "approved")
+    assert claims.has_approved_finding_support(claim)

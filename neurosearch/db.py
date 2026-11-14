@@ -5113,6 +5113,10 @@ def add_project_note(project_id: str, content: str, citations: list | None = Non
         return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (cur.lastrowid,)).fetchone())  # type: ignore[return-value]
 
 
+def retains_findings(project_id: str) -> bool:
+    return bool(project_id and settings.retain_findings_project == project_id)
+
+
 def list_project_notes(project_id: str, status: str | None = "approved", limit: int | None = None) -> list[dict[str, Any]]:
     """Approved notes by default (what exports and the planner use). status=None returns all.
 
@@ -5269,7 +5273,10 @@ def set_note_status(note_id: int, status: str, *, checked_finding: dict[str, Any
     # the G5 source-revision hook above (`stale_by_source`). Same shape on purpose: only when it matters, a late
     # import, and never able to break the write it follows.
     was = (before["status"] if before else None) or "approved"
-    if row and (was == "dismissed") != (status == "dismissed"):
+    reassess = (was == "dismissed") != (status == "dismissed")
+    if row and retains_findings(row["project_id"]):
+        reassess = reassess or (was == "approved") != (status == "approved")
+    if row and reassess:
         try:
             if connect().execute("SELECT 1 FROM project_claims WHERE origin_note_id=? LIMIT 1", (note_id,)).fetchone() \
                     or connect().execute("SELECT 1 FROM claim_evidence_notes WHERE note_id=? LIMIT 1", (note_id,)).fetchone():
@@ -5295,8 +5302,16 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
         conn.execute(
             "DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status IN ('suggested','reserve') "
             "AND id NOT IN (SELECT origin_note_id FROM project_claims WHERE origin_note_id IS NOT NULL) "
-            "AND id NOT IN (SELECT note_id FROM claim_evidence_notes)",
-            (project_id, source_id))
+            "AND id NOT IN (SELECT note_id FROM claim_evidence_notes) "
+            "AND (?=0 OR (status='reserve' AND reviewed_at IS NULL))",
+            (project_id, source_id, retains_findings(project_id)))
+        if retains_findings(project_id):
+            existing = {(r["title"] or "", r["content"]) for r in conn.execute(
+                "SELECT title,content FROM project_notes WHERE project_id=? AND source_id=? "
+                "AND status IN ('suggested','approved','dismissed') AND source_revision IS ?",
+                (project_id, source_id, srev),
+            )}
+            notes = [n for n in notes if (n.get("title") or "", n["content"]) not in existing]
         t = now()
         conn.executemany(
             "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash, transport, batch_id, routing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

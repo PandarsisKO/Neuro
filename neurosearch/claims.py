@@ -287,6 +287,7 @@ def get(claim_id: str) -> dict[str, Any] | None:
     if not row:
         return None
     c = _claim(row)
+    _check_retained_readiness([c])
     c["evidence"] = evidence_for(claim_id)
     return c
 
@@ -325,6 +326,7 @@ def list_for_project(project_id: str, status: str | None = None, with_evidence: 
     q = "SELECT * FROM project_claims WHERE project_id=?" + (" AND status=?" if status else "") + " ORDER BY created_at"
     rows = db.connect().execute(q, (project_id, status) if status else (project_id,)).fetchall()
     out = [_claim(r) for r in rows]
+    _check_retained_readiness(out)
     if with_evidence:
         em = evidence_map(project_id)
         for c in out:
@@ -577,12 +579,8 @@ def _harvest_locked(project_id: str, *, progress=None, ignored: set[int] | None 
     # the lease keeper. Checking just the NOTE IDS first -- not the bodies -- answers "is there actually
     # anything new" for a few KB instead of several MB: the common case in a burst (nothing changed since the
     # last caller a moment ago) now returns almost immediately instead of repeating the full scan.
-    ids_by_status = {
-        status: {r["id"] for r in db.connect().execute(
-            "SELECT id FROM project_notes WHERE project_id=? AND status=?", (project_id, status))}
-        for status in ("approved", "suggested")
-    }
-    if not ((ids_by_status["approved"] | ids_by_status["suggested"]) - have):
+    statuses = ("approved",) if db.retains_findings(project_id) else ("approved", "suggested")
+    if not (_harvestable_note_ids(project_id) - have):
         return {"created": 0, "merged": 0}
     existing = [c for c in list_for_project(project_id, with_evidence=False) if c["status"] != "rejected"]
     index = TwinIndex(existing)
@@ -595,7 +593,7 @@ def _harvest_locked(project_id: str, *, progress=None, ignored: set[int] | None 
     # committed every HARVEST_TX_NOTES notes: identical results (each note is independent and idempotent —
     # origin_note_id is UNIQUE, so a crash between chunks resumes at the first unharvested note), but the lock
     # is held for one chunk at a time and every other writer interleaves.
-    pending = [(status, n) for status in ("approved", "suggested") for n in db.list_project_notes(project_id, status=status)
+    pending = [(status, n) for status in statuses for n in db.list_project_notes(project_id, status=status)
                if n["id"] not in have]
     if progress:
         progress(0.05, f"Checking {len(pending):,} findings")
@@ -713,13 +711,35 @@ def _primary_gap(evidence: list[dict[str, Any]], works_mod: Any) -> str | None:
     return None
 
 
+def _check_retained_readiness(claims: list[dict[str, Any]]) -> None:
+    for claim in claims:
+        if claim["readiness"] == "ready" and not has_approved_finding_support(claim):
+            claim["readiness"] = "not_ready"
+            claim["readiness_why"] = "linked findings need an explicit Keep before they can support this decision"
+
+
+def has_approved_finding_support(claim: dict[str, Any]) -> bool:
+    if not db.retains_findings(claim["project_id"]):
+        return True
+    linked_statuses = {
+        row["status"] for row in db.connect().execute(
+            """SELECT status FROM project_notes WHERE id=?
+               UNION SELECT n.status FROM claim_evidence_notes e JOIN project_notes n ON n.id=e.note_id
+               WHERE e.claim_id=?""",
+            (claim["origin_note_id"], claim["id"]),
+        )
+    }
+    return not linked_statuses or ("approved" in linked_statuses and "suggested" not in linked_statuses)
+
+
 def assess(claim_id: str) -> dict[str, Any] | None:
     """Strength from the evidence REQUIREMENT of the Claim type, not the source count; freshness from the domain class;
     readiness separate from strength. Writes strength/strength_why/readiness/readiness_why; returns the claim."""
-    c = get(claim_id)
-    if not c:
+    row = db.connect().execute("SELECT * FROM project_claims WHERE id=?", (claim_id,)).fetchone()
+    if not row:
         return None
-    ev = c["evidence"]
+    c = _claim(row)
+    ev = evidence_for(claim_id)
     now = time.time()
     srcs: dict[str, dict[str, Any]] = {}
     for e in ev:
@@ -849,7 +869,9 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         why.append(fwhy)
     # readiness is NOT strength
     app = c.get("application") or "unknown"
-    if strength == "strong" and app == "established":
+    if strength == "strong" and app == "established" and not has_approved_finding_support(c):
+        readiness, rwhy = "not_ready", "linked findings need an explicit Keep before they can support this decision"
+    elif strength == "strong" and app == "established":
         readiness, rwhy = "ready", "evidence is strong and its application to this project is established"
     elif strength == "strong":
         readiness, rwhy = "not_ready", "evidence is strong but whether it applies to this project's situation is " + ("still developing" if app == "developing" else "not established")
@@ -1076,11 +1098,12 @@ def estimate_api_work(payload: dict[str, Any]) -> tuple[int, float]:
             """SELECT COUNT(*), COALESCE(SUM(LENGTH(n.content)+COALESCE(LENGTH(n.title),0)),0)
                FROM project_notes n
                WHERE n.project_id=? AND n.status IN ('approved','suggested')
+                 AND (?=0 OR n.status='approved')
                  AND LENGTH(TRIM(COALESCE(n.title,'') || COALESCE(n.content,'')))>=20
                  AND LOWER(LTRIM(n.content)) NOT LIKE 'gap:%'
                  AND NOT EXISTS (SELECT 1 FROM project_claims c WHERE c.project_id=n.project_id AND c.origin_note_id=n.id)
                  AND n.id NOT IN (SELECT note_id FROM claim_evidence_notes)""",
-            (project_id,),
+            (project_id, db.retains_findings(project_id)),
         ).fetchone()
         count += notes
         chars += note_chars
@@ -1333,10 +1356,16 @@ def unharvested_note_ids(project_id: str) -> set[int]:
     """The cheap question harvest asks first: which approved/suggested notes have no Claim and no evidence link yet.
     IDs only — never note bodies — so it answers "is there anything to do" for a few KB (L-18)."""
     conn = db.connect()
-    have = {r["origin_note_id"] for r in conn.execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
-    have |= {r["note_id"] for r in conn.execute("SELECT note_id FROM claim_evidence_notes")}
-    ids = {r["id"] for r in conn.execute("SELECT id FROM project_notes WHERE project_id=? AND status IN ('approved','suggested')", (project_id,))}
-    return ids - have
+    existing = {r["origin_note_id"] for r in conn.execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
+    existing.update(r["note_id"] for r in conn.execute("SELECT note_id FROM claim_evidence_notes"))
+    return _harvestable_note_ids(project_id) - existing
+
+
+def _harvestable_note_ids(project_id: str) -> set[int]:
+    return {r["id"] for r in db.connect().execute(
+        "SELECT id FROM project_notes WHERE project_id=? AND status IN ('approved','suggested') AND (?=0 OR status='approved')",
+        (project_id, db.retains_findings(project_id)),
+    )}
 
 
 def request_harvest(project_id: str, reason: str) -> dict[str, Any] | None:

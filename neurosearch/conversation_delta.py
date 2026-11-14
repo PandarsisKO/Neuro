@@ -385,8 +385,9 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
 
     # category: new Finding (5), overlap-routed — old OR new sources, both allowed (plan §3)
     findings = conn.execute(
-        "SELECT id, content, source_id FROM project_notes WHERE project_id=? AND created_at>? AND status IN ('approved','suggested')",
-        (project_id, since)).fetchall()
+        "SELECT id, content, source_id FROM project_notes WHERE project_id=? AND created_at>? "
+        "AND status IN ('approved','suggested') AND (?=0 OR status='approved')",
+        (project_id, since, db.retains_findings(project_id))).fetchall()
     scored = []
     for f in findings:
         ov = _claims.overlap(q["retrieval_query"], f["content"])
@@ -819,8 +820,9 @@ def for_conversation(conversation_id: str, project_id: str | None = None) -> dic
         if approx_since:
             explicit_finding_ids = {u.get("finding_id") for u in merged if u.get("finding_id")}
             all_findings = {r["id"] for r in db.connect().execute(
-                "SELECT id FROM project_notes WHERE project_id=? AND created_at>? AND status IN ('approved','suggested')",
-                (pid, min(approx_since))).fetchall()}
+                "SELECT id FROM project_notes WHERE project_id=? AND created_at>? "
+                "AND status IN ('approved','suggested') AND (?=0 OR status='approved')",
+                (pid, min(approx_since), db.retains_findings(pid))).fetchall()}
             findings_added = len(all_findings - explicit_finding_ids)
 
         rollups = {

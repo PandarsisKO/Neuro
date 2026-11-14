@@ -432,7 +432,8 @@ def _suggest_updates(project_id: str) -> list[dict[str, Any]]:
     conn = db.connect()
     new_notes = conn.execute(
         "SELECT content FROM project_notes WHERE project_id=? AND created_at>? AND status<>'reserve' "
-        "ORDER BY created_at DESC, id DESC LIMIT 200", (project_id, since)).fetchall()
+        "AND (?=0 OR status='approved') ORDER BY created_at DESC, id DESC LIMIT 200",
+        (project_id, since, db.retains_findings(project_id))).fetchall()
     new_facts = conn.execute(
         "SELECT kind, content FROM project_facts WHERE project_id=? AND created_at>? "
         "ORDER BY created_at DESC, id DESC LIMIT 100", (project_id, since)).fetchall()
