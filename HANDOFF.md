@@ -5590,3 +5590,20 @@ Isolated pytest passed 2,739 tests across six shards. Tier 1 and
 confirmed an exact quote can pass while a quote missing its
 percentage sign stays in Keep vs Lose. Release report:
 `evals/release/release-check-0.64.34-2298eb5-20261113-204020.json`.
+
+### 2026-11-13 — Open held findings by review reason (0.64.35)
+
+Base `3c4f746`, runtime `393a320`. The five-star review dialog
+shows its current reasons and counts. Select one reason to open
+that group in Keep vs Lose, or open the full queue. This reuses
+existing rows, reasons and verdicts. Opening a group makes no
+status change. Manual replay retained a useful observation or
+question for all 15 wording holds in the prior 20-item sample.
+That was a draft exercise on the same cases. Future retention
+tests should measure preservation and decision use separately.
+
+Isolated pytest passed all 2,739 cases across six shards. Tier 1
+and deterministic release checks passed. Chrome verified counted
+groups, the full queue, and status preservation during navigation.
+Release report:
+`evals/release/release-check-0.64.35-393a320-20261113-212517.json`.
