@@ -5645,3 +5645,40 @@ passed. Isolated Chrome verified distinct same-title groups, source
 context open by default, and separate verdicts restricted to that
 group. Release report:
 `evals/release/release-check-0.64.37-da47137-20261114-081138.json`.
+
+### 2026-11-14 — Retained research live for Buying Businesses (0.64.38)
+
+Base `ce8604b`, runtime `00390dc`. Isolated implementation and
+verification in `/private/tmp/neuro-retain-live`. The live host
+enables the pilot for Buying Businesses only through
+`NEUROSEARCH_RETAIN_FINDINGS_PROJECT`. Removing that setting and
+restarting restores the Suggested view of the same rows.
+
+Findings shows Retained research, searchable with the normal
+filters, and a smaller Needs review view with the reasons. Explicit
+returns, current Plan/Chat citations and accepted or contradictory
+Claim support keep a finding in review. Keep vs Lose remains the
+individual verdict path. The five-star review stays gated. The
+typing is a projection of Suggested rows; no bulk status changes or
+automated dismissals were applied. A rerun preserves pending
+research in the pilot project and skips same-revision repetitions.
+
+Ordinary approved findings still feed Chat and the Plan. For the
+pilot, the Plan updater and Chat change tracking also omit Suggested
+finding summaries. Claims harvest approved notes, and an existing
+Claim linked to pending findings cannot show ready for a decision.
+Original source passages remain available through normal research
+retrieval. The pilot does not certify previously approved research
+or retroactively revise the Plan.
+
+All 2,743 tests passed across six shards. Tier 1 and the
+deterministic release checks passed. Isolated Chrome verified
+searchable retained findings, the passage in Keep vs Lose, individual
+Keep and Lose, and project isolation. Live HTTP confirmed 4,362
+retained and 61 needing review from the 4,423 Suggested rows, with
+identical stored status counts before and after. Live search and
+the five-star preview returned successfully. Verified recovery
+backup `neurosearch-20261114-0937.db`. GitHub main verified.
+
+Release report:
+`evals/release/release-check-0.64.38-00390dc-20261114-093607.json`.
