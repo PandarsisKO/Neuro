@@ -5510,3 +5510,30 @@ Published `596abfe` and verified GitHub main. The Mac reloaded 0.64.31
 and served matching Chat and Home scripts. Authenticated project reads
 reported source readiness across seven projects, with zero expired
 job leases.
+
+### 2026-11-13 — Validate five-star findings before bulk approval (0.64.32)
+
+Base `9fd09b2`, runtime candidate `72a4307`. The Findings workbench
+can preview five-star Suggestions before approval. Existing bulk
+approval buttons also enforce the gate on five-star Suggestions and
+Reserve findings. The gate checks the quoted words against the
+indicated passage in the current project source and holds sensitive
+amounts and categorical rules. A hold keeps the row and its status.
+The results open the held rows in Keep vs Lose with the hold reason
+and available citation. Explicit Keep remains an individual verdict.
+
+The application gate ran against an integrity-checked private copy of
+the 19:11 Buying Businesses backup. It passed 36 of 114, held 45
+for sensitive amounts or rules and 33 for citation verification. A
+sample of the first pass caught an underwriting threshold written as
+a multiplier. The revised rule covers ratios and threshold language.
+Citation validation checks the quote and locator. Human review is
+still the decision point for flagged amounts, rules and unresolved
+questions. The measurement made no finding decisions.
+
+Isolated pytest passed 2,729 tests across six shards, including 124
+focused tests. Deterministic `neurosearch eval` and
+`neurosearch release-check --no-pytest` passed. Release report:
+`evals/release/release-check-0.64.32-72a4307-20261113-195427.json`.
+Chrome verified a read-only preview, approval of the passing row,
+and explicit Keep and Lose for the held rows on isolated data.
