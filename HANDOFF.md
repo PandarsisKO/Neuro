@@ -5607,3 +5607,21 @@ and deterministic release checks passed. Chrome verified counted
 groups, the full queue, and status preservation during navigation.
 Release report:
 `evals/release/release-check-0.64.35-393a320-20261113-212517.json`.
+
+### 2026-11-14 — Source context in Findings Keep vs Lose (0.64.36)
+
+Base `ac69ae8`, runtime `5a50ae5`. Open Source context on any
+Findings focus card to read the indexed passage around its saved
+locator. It stays open for subsequent cards in that review.
+The read-only project endpoint reuses the five-star locator lookup,
+labels quote mismatches and legacy revisions, and withholds stale
+or out-of-project passages. Existing Keep and Lose decisions still
+use the same endpoint.
+
+Chrome verified Suggested and held five-star review on isolated
+data. All 2,740 pytest cases, Tier 1 and deterministic release checks passed.
+The top 100 Suggestions in the 07:29 Buying Businesses snapshot
+returned 85 passages, of which 40 showed a matching quote. Human
+review time was not measured. No provider calls or findings writes
+were needed to load these cards. Release report:
+`evals/release/release-check-0.64.36-5a50ae5-20261114-080122.json`.
