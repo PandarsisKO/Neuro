@@ -5113,6 +5113,22 @@ def add_project_note(project_id: str, content: str, citations: list | None = Non
         return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (cur.lastrowid,)).fetchone())  # type: ignore[return-value]
 
 
+def rank_finding_text(rows: Iterable[tuple[int, str | None, str]], terms: list[str], *, limit: int) -> list[int]:
+    """Rank caller-scoped finding text in a transient index. The corpus is never persisted."""
+    from contextlib import closing
+
+    match = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms if term)
+    if not match:
+        return []
+    with closing(sqlite3.connect(":memory:")) as index:
+        index.execute("CREATE VIRTUAL TABLE leads USING fts5(title, content, tokenize='porter unicode61')")
+        index.executemany("INSERT INTO leads(rowid,title,content) VALUES(?,?,?)", rows)
+        return [nid for nid, in index.execute(
+            "SELECT rowid FROM leads WHERE leads MATCH ? ORDER BY bm25(leads,2,1),rowid LIMIT ?",
+            (match, limit),
+        )]
+
+
 def retains_findings(project_id: str) -> bool:
     configured_ids = (settings.retain_findings_project or "").split(",")
     return bool(project_id and project_id in (value.strip() for value in configured_ids))

@@ -2141,6 +2141,7 @@ def api_project(project_id: str, notes: str | None = None) -> dict[str, Any]:
     p["has_searchable_sources"] = db.has_searchable_sources(p["source_ids"])
     p["notes_inline_max"] = cap
     p["notes_truncated"] = bool(cap != 0 and cap and (p["counts"].get("approved", 0) > cap or p["counts"].get("suggested", 0) > cap))
+    p["retained_research"] = db.retains_findings(project_id)
     p["notes_omitted"] = cap == 0        # never silent: the rows are absent by choice, and `counts` is the number
     with perf.timed("project.analysing"):
         an = db.sources_being_analysed(project_id)
@@ -3805,6 +3806,19 @@ class BulkNotesIn(BaseModel):
     status: str
     individually_reviewed: bool = False  # Explicit Keep verdicts collected by Keep vs Lose.
     five_star_project_id: str | None = None  # Confirming a preview: only these pending five-stars.
+
+
+class RetainedLeadsIn(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+
+
+@app.post("/api/projects/{project_id}/findings/retained-leads", dependencies=[Depends(require_auth)])
+def api_retained_leads(project_id: str, body: RetainedLeadsIn) -> dict[str, Any]:
+    """Read-only UI lookup. The question stays out of the request URL and the results stay out of model context."""
+    from . import findings_view
+    if not db.retains_findings(project_id):
+        return {"leads": []}
+    return {"leads": findings_view.retained_leads(project_id, body.question)}
 
 
 @app.get("/api/projects/{project_id}/findings/{note_id}/source-context", dependencies=[Depends(require_auth)])

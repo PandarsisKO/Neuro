@@ -384,3 +384,47 @@ def test_retention_project_list_can_roll_back_independently_without_losing_verdi
     assert fv.query(buying, status="retained")["total"] == 1
     assert fv.query(real_estate, status="retained")["total"] == 1
     assert pending[ads] in claims.unharvested_note_ids(ads)
+
+
+def test_chat_leads_are_read_only_and_follow_current_project_and_evidence_scope(monkeypatch):
+    from fastapi.testclient import TestClient
+    from neurosearch import planner, qa
+
+    pid = db.create_project("Pilot")["id"]
+    other = db.create_project("Control")["id"]
+    monkeypatch.setattr(settings, "retain_findings_project", pid)
+    def source(label, attached=True):
+        sid = db.upsert_source(platform="web", external_id=label, url=f"https://example.test/{label}",
+                               title=label, status="ready")["id"]
+        if attached:
+            db.add_project_sources(pid, [sid])
+        return sid
+    normal = source("Normal")
+    private = source("Restricted")
+    detached = source("Detached", attached=False)
+    with db.tx() as conn:
+        conn.execute("UPDATE sources SET disclosure_class='restricted' WHERE id=?", (private,))
+    valid = db.add_project_note(pid, "The reviewer tracked booked leads and cash collected.", source_id=normal, status="suggested")
+    protected = db.add_project_note(pid, "The reviewer tracked booked leads in another report.", source_id=normal, status="suggested")
+    db.set_note_status(protected["id"], "suggested")
+    db.add_project_note(pid, "Booked leads with restricted data.", source_id=private, status="suggested")
+    db.add_project_note(pid, "Booked leads from another library.", source_id=detached, status="suggested")
+    db.add_project_note(pid, "Booked leads already approved.", source_id=normal, status="approved")
+    db.add_project_note(other, "Booked leads in a different project.", source_id=normal, status="suggested")
+
+    client = TestClient(api.app)
+    headers = {"Authorization": "Bearer t0k"}
+    path = f"/api/projects/{pid}/findings/retained-leads"
+    question = {"question": "How should we track leads through booking and revenue?"}
+    baseline = db.note_counts(pid)
+    assert client.post(path, json=question).status_code == 401
+    result = client.post(path, json=question, headers=headers)
+    assert result.status_code == 200
+    assert [x["id"] for x in result.json()["leads"]] == [valid["id"]]
+    assert db.note_counts(pid) == baseline
+    assert valid["id"] not in claims.unharvested_note_ids(pid)
+    assert "cash collected" not in str(qa.chat_system_blocks(db.get_project(pid), False, [], None))
+    assert "cash collected" not in str(planner._evidence(pid, db.get_project(pid)))
+    assert client.post(f"/api/projects/{other}/findings/retained-leads", json=question, headers=headers).json() == {"leads": []}
+    db.set_note_status(valid["id"], "approved")
+    assert client.post(path, json=question, headers=headers).json() == {"leads": []}

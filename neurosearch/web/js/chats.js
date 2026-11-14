@@ -25,7 +25,16 @@ globalThis.selectChat = async function selectChat(id, push = true) {
     catch (e) { $('#chat').innerHTML = listState('failed', { message: "Couldn't load this chat.", retry: `selectChat('${id}', false)` }); if (push) showView('chats'); $('#q').focus(); return; }
     if (state.conv !== id) return;   // a newer selectChat() call already took over
     if (!ms.length) { emptyChat(); if (state.project.has_searchable_sources && c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
-    else { ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false })); scheduleChatDelta(id, ms); }
+    else {
+      let latest = null, question = '';
+      for (const m of ms) {
+        const el = addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false });
+        if (m.role === 'user' && m.meta?.kind !== 'refresh') { question = m.content; latest = null; }
+        if (m.role === 'assistant' && question && !m.meta?.incomplete && !m.meta?.refresh && !m.meta?.kind) latest = el;
+      }
+      if (latest) showRetainedChatLeads(latest, state.project, id, question);
+      scheduleChatDelta(id, ms);
+    }
   } else emptyChat();
   if (push) { showView('chats'); }
   $('#q').focus();
@@ -123,6 +132,43 @@ globalThis.addMsg = function addMsg(role, text, cites = [], extra = {}) {
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
   return d;
 }
+// UI-only research links. These never enter the answer text, citations or pin/export data.
+async function showRetainedChatLeads(message, project, conversationId, question) {
+  if (!project?.retained_research || !message?.isConnected || !question) return;
+  const path = `/api/projects/${project.id}/findings`;
+  const stillHere = () => message.isConnected && state.project?.id === project.id && state.conv === conversationId;
+  try {
+    const result = await api(`${path}/retained-leads`, {
+      method: 'POST', body: JSON.stringify({question: question.slice(0, 4000)}), ack: false,
+    });
+    if (!stillHere() || !result?.leads?.length) return;
+    const box = document.createElement('details');
+    box.className = 'web chat-retained-leads';
+    box.innerHTML = `<summary>Retained research leads (${result.leads.length})</summary>
+      <div class="muted text-xs">Unverified findings to follow up on.</div>
+      ${result.leads.map(lead => `<details class="chat-retained-lead"><summary>${esc(lead.title || 'Untitled finding')}</summary>
+        <div>${esc(lead.content.replace(/\s*\[\d+\]/g, ''))}</div>
+        <div class="muted text-xs">${esc(lead.source_title)}</div>
+        <button type="button" class="small ghost">Read source context</button><div class="text-xs"></div>
+      </details>`).join('')}`;
+    message.insertBefore(box, message.querySelector('.tools'));
+    box.querySelectorAll('.chat-retained-lead button').forEach((button, i) => {
+      button.onclick = async () => {
+        const output = button.nextElementSibling;
+        try {
+          const source = await api(`${path}/${result.leads[i].id}/source-context`);
+          if (stillHere()) {
+            output.textContent = [source?.message, source?.text].filter(Boolean).join(' ') || 'No source context available.';
+            button.hidden = true;
+          }
+        } catch (e) {
+          if (stillHere()) output.textContent = 'Could not load source context. Try again.';
+        }
+      };
+    });
+  } catch (e) { /* Optional research lookup must not affect the answer. */ }
+}
+
 // ---- Portable Answers and Evidence: every assistant message copies with human-readable citations + original deep links.
 globalThis.citeLabel = function citeLabel(c) { return (c.title || 'Untitled source') + (c.timestamp ? ', ' + c.timestamp : ''); }
 globalThis.exportMsg = function exportMsg(d, mode) {
@@ -312,6 +358,7 @@ globalThis.ask = async function ask() {
   if (!state.conv) { const c = await post('/api/conversations', { project_id: state.project.id }); state.conv = c.id; await loadChats(); }
   const attached = state.attached.splice(0); $('#qAttach').innerHTML = '';
   $('#q').value = ''; addMsg('user', q + (attached.length ? `\n📎 ${attached.map(a => a.name).join(', ')}` : ''));
+  const askedProject = state.project, askedConversation = state.conv;
   const thinking = addMsg('assistant', '');
   const t0 = Date.now();
   let phase = "searching this project's sources…", live = '', tick = null;
@@ -340,6 +387,9 @@ globalThis.ask = async function ask() {
     if (!r) throw new Error('the answer stream ended before the answer did — nothing was saved; ask again');
     thinking.remove();
     const m = addMsg('assistant', r.answer, r.citations, r);
+    if (state.project?.id === askedProject.id && state.conv === askedConversation) {
+      showRetainedChatLeads(m, askedProject, askedConversation, q);
+    }
     clearChatDelta();   // CHR2 item 11: a new question invalidates the baseline the last What's New was computed against; recompute only the next time this chat is opened
     const c = state.chats.find(x => x.id === state.conv);
     if (c && !c.title) { await put('/api/conversations/' + state.conv, { title: q.slice(0, 60) }); await loadChats(); $('#chatTitle').textContent = q.slice(0, 60); }

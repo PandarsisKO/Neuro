@@ -10,6 +10,7 @@ folds nearly every finding into some weak Claim, and that is not use.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter, defaultdict
 from typing import Any
 
@@ -20,7 +21,6 @@ LOW_IMPORTANCE = 2      # the "low-value sweep": approved, importance ≤ LOW_IM
 
 
 def _tokens(s: str) -> list[str]:
-    import re
     return [w for w in re.findall(r"[a-z0-9][a-z0-9'-]+", (s or "").lower()) if len(w) > 2]
 
 
@@ -249,6 +249,45 @@ def review_reasons(project_id: str) -> dict[int, list[str]]:
         if reasons:
             result[nid] = reasons
     return result
+
+
+# Keep broad question wording from overwhelming the useful terms in a lead.
+_LEAD_STOP = frozenset(
+    "what how when which whether who can should would about under and the are including any for of in on by or "
+    "do does into evidence support supports current practical business businesses small applicable vary separately "
+    "using differ show does may management consequences".split()
+)
+
+
+def retained_leads(project_id: str, question: str) -> list[dict[str, Any]]:
+    """Rank unverified leads for the local Chat UI. Never include them in evidence or model input."""
+    if not db.retains_findings(project_id):
+        return []
+    terms = sorted(set(re.findall(r"[a-z]{3,}", question.lower())) - _LEAD_STOP)
+    if not terms:
+        return []
+    members = set(db.project_source_ids(project_id))
+    review = review_reasons(project_id)
+    candidates = {
+        r["id"]: r for r in db.connect().execute(
+            """SELECT n.id, n.title, n.content, n.source_id, s.title AS source_title
+               FROM project_notes n JOIN sources s ON s.id=n.source_id
+               WHERE n.project_id=? AND n.status='suggested' AND s.status='ready'
+                 AND s.disclosure_class IS NOT 'restricted' ORDER BY n.id""", (project_id,),
+        ) if r["id"] not in review and r["source_id"] in members
+    }
+    if not candidates:
+        return []
+    ranked = db.rank_finding_text(
+        ((nid, row["title"], row["content"]) for nid, row in candidates.items()),
+        terms,
+        limit=12,
+    )
+    return [
+        {"id": nid, "title": candidates[nid]["title"], "content": candidates[nid]["content"],
+         "source_title": candidates[nid]["source_title"]}
+        for nid in ranked
+    ]
 
 
 def parse_levels(importance: str | None) -> set[int] | None:
