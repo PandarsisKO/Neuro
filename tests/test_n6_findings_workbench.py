@@ -352,3 +352,35 @@ def test_retention_preserves_source_findings_and_holds_preexisting_claim_readine
     assert first["id"] in {x["id"] for x in rows}
     db.set_note_status(first["id"], "approved")
     assert claims.has_approved_finding_support(claim)
+
+
+def test_retention_project_list_can_roll_back_independently_without_losing_verdicts(monkeypatch):
+    buying = db.create_project("Buying Businesses")["id"]
+    ads = db.create_project("Advertising")["id"]
+    real_estate = db.create_project("Real Estate")["id"]
+    control = db.create_project("Control")["id"]
+    pending = {
+        pid: db.add_project_note(pid, "One source proposed an experiment.", status="suggested")["id"]
+        for pid in (buying, ads, real_estate, control)
+    }
+    kept = db.add_project_note(ads, "Existing reviewed case.", status="suggested")["id"]
+    dismissed = db.add_project_note(ads, "Existing rejected case.", status="suggested")["id"]
+    monkeypatch.setattr(settings, "retain_findings_project", f" {buying}, {ads},,{real_estate}, ")
+    for pid in (buying, ads, real_estate):
+        assert pending[pid] in {r["id"] for r in fv.query(pid, status="retained")["findings"]}
+        assert fv.query(pid, status="suggested")["total"] == 0
+        assert pending[pid] not in claims.unharvested_note_ids(pid)
+    assert fv.query(control, status="retained")["total"] == 0
+    assert pending[control] in claims.unharvested_note_ids(control)
+
+    keep_verdict = db.set_note_status(kept, "approved")["reviewed_at"]
+    lose_verdict = db.set_note_status(dismissed, "dismissed")["reviewed_at"]
+    monkeypatch.setattr(settings, "retain_findings_project", f"{buying},{real_estate}")
+    assert fv.query(ads, status="retained")["total"] == 0
+    assert [r["id"] for r in fv.query(ads, status="suggested")["findings"]] == [pending[ads]]
+    for nid, status, stamp in ((kept, "approved", keep_verdict), (dismissed, "dismissed", lose_verdict)):
+        row = db.list_project_notes(ads, status=status)[0]
+        assert row["id"] == nid and row["reviewed_at"] == stamp
+    assert fv.query(buying, status="retained")["total"] == 1
+    assert fv.query(real_estate, status="retained")["total"] == 1
+    assert pending[ads] in claims.unharvested_note_ids(ads)

@@ -5114,7 +5114,8 @@ def add_project_note(project_id: str, content: str, citations: list | None = Non
 
 
 def retains_findings(project_id: str) -> bool:
-    return bool(project_id and settings.retain_findings_project == project_id)
+    configured_ids = (settings.retain_findings_project or "").split(",")
+    return bool(project_id and project_id in (value.strip() for value in configured_ids))
 
 
 def list_project_notes(project_id: str, status: str | None = "approved", limit: int | None = None) -> list[dict[str, Any]]:
