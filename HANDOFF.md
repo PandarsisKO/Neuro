@@ -5780,3 +5780,35 @@ citations and exports. Live API verified unchanged counts and the
 same replay metrics. Artifact `findings-ranking` contains the
 comparator, labels and results. Release report:
 `evals/release/release-check-0.64.41-28fc768-20261114-121620.json`.
+
+### 2026-11-14 — Design findings canary and source-sampled retrieval replay
+
+Base `22baa3d`, live runtime 0.64.41. Enabled Design beautiful
+and modern web apps through the existing project allowlist after
+an isolated lifecycle test on a disposable copy of the 12:18
+backup. Repeated analysis preserved retained research, changing
+the source revision kept the old and new leads, unverified
+finding text stayed out of the Chat and Plan inputs and Claims
+harvest, and an individual Keep entered the Plan evidence list
+and Claims eligibility. Removing Design on the test copy
+restored its Suggested queue and preserved both human verdicts.
+Live HTTP and Chrome verified 1,943 retained, 16 needing review,
+and unchanged stored status counts. Four projects are enabled.
+No application code or automatic dismissal changed.
+
+Five reference findings per project were sampled before retrieval
+from distinct sources across the four previously disabled projects.
+Frozen paraphrases hit 9 of 20 target findings with keyword search,
+15 with local BGE-M3, and 10 with equal-weight reciprocal-rank
+fusion, all at depth 18. Semantic gained seven keyword misses and
+lost one keyword hit. A single-reviewer shuffled top-three audit
+on eight questions found 10 of 24 useful keyword results, 8 of 24
+semantic and 9 of 24 fusion. Keeping eight keyword slots then
+adding semantic results recovered 16 in a post-hoc replay and
+preserved the nine keyword hits. This arm needs independent
+replication on natural questions. The selected-reference test does
+not estimate corpus recall or validate finding wording. Full
+on-demand embedding of either large pool took more than a minute.
+No semantic ranking was enabled live. Findings remain unverified
+and out of model evidence. Report and scripts are in Codex
+artifact `findings-blind-rollout`.
