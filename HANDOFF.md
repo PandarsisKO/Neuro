@@ -5903,3 +5903,46 @@ truncated to 300 characters, so quote non-overlap is insufficient
 on its own. Adjudicate the 63 for passage and proposition overlap,
 including confirming whether the prior Chat used the finding or
 only cited its source. Keep current routing until this is tested.
+
+### 2026-11-14 — Test whether Chat citations justify findings review
+
+Read-only replay on Neuro 0.64.42 at `ac724d8`. Matched all 91
+live review IDs to an isolated copy of the Nov 14 13:43 verified
+backup, opened with `mode=ro&immutable=1`. The 63 target cards
+had Chat as their sole reason and no normalized containment
+between the finding quote and saved Chat snippet. Compared
+109 source+locator links in 57 assistant answers. Recovered a
+verified retrieved chunk for 14 of the 63 and found the saved
+finding quote outside the clipped Chat snippet for five. Of 13
+standard-source cards inspected for meaning, seven restated the
+Chat proposition, two were closely related with different
+qualifiers, and four were distinct from the cited answer. One
+reviewer adjudicated this subset; the other 50 had restricted,
+unclassified, or missing sources and were assessed by metadata
+only. Quote mismatch alone is not sufficient for rerouting.
+
+A same-locator chronology rule qualifies 41 Chat-only cards
+across the whole queue, including seven outside the 63-card
+quote-mismatch target. Changing the minimum time separation to
+24 hours leaves 39. A stricter rule examines every recorded
+assistant citation to the same project source, at any locator,
+and requires every citation to predate the finding, plus a
+currently attached source and matching source revision. This
+holds eight extra cards because their sources were cited again
+at other locators, leaving 33 candidates: 20 in Buying
+Businesses and 13 in Design. No candidate had a saved finding
+status-change event or a direct Chat note-ID binding. The shadow
+queue is 58 (Buying Businesses 41, Design three), down from 91.
+Plan, Claim and returned-for-review reasons remain guards.
+Twelve pure-rule boundary tests passed, including equal or
+missing timestamps, mixed earlier and later citations, direct
+binding, approval history, and missing source. Chronology rules
+out the current finding row as input to earlier answers; it
+cannot prove the underlying proposition is unrelated.
+
+No provider calls, app changes, verdicts, or deploy. Authenticated
+before/after HTTP check matched stored statuses, projected
+counts, review reasons and ordered IDs across every project.
+Use a rollbackable shadow flag on a newer batch before changing
+live routing. The proposed disposition is searchable retained
+research, with approval and dismissal decisions left untouched.
