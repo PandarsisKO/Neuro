@@ -5545,3 +5545,31 @@ Published `c230b39` and verified GitHub main. The Mac reloaded
 read-only Buying Businesses preview returned 36 eligible and 78 for
 review, with identical status counts before and after. The live app
 reported zero expired job leases.
+
+### 2026-11-13 — Audit the first five-star batch and preserve returned findings
+
+Base `21eb04f`, runtime candidate `c5b7797` (0.64.33). Buying
+Businesses approved 36 of 114 pending five-stars through the gate.
+The follow-up compared those rows to their cited passages and
+returned ten unused findings to Suggested through the app API.
+Examples include an anecdote promoted to a general SBA rule, a
+personal concentration cutoff, and testing an existing location
+presented as a rule for buying any business. No dismissals or
+deletions. A prior status decision now routes a pending five-star
+finding to individual review, including when it had passed before.
+
+A read-only census on a checked copy of the 19:57 backup found six
+unique exact quote locations among 33 citation holds. The restored
+locators did not validate the original findings. Applying the initial
+gate to 663 four-stars in shadow passed 227 mechanically. A
+20-source sample contained meaningful scope and support errors. The
+narrow request-only probe found zero candidates. Four diligence
+questions were drafted from the held passages. No four-star status
+changes. Full report and scripts are in the Codex
+`findings-follow-through` artifact.
+
+Isolated pytest passed 2,730 tests across six shards, including 74
+focused tests. Deterministic `neurosearch eval` and
+`neurosearch release-check --no-pytest` passed. Release report:
+`evals/release/release-check-0.64.33-c5b7797-20261113-200935.json`.
+Desktop Chrome verified the return-to-review reason and explicit Keep.
