@@ -22,7 +22,7 @@ def test_each_source_group_has_its_own_approve_all():
 
 def test_groups_open_by_default_and_a_collapse_never_leaks_between_projects():
     assert "if (FGRP.project !== state.project.id) { FGRP.project = state.project.id; FGRP.collapsed = new Set(); }" in JS
-    assert "const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);" in JS, "open unless closed by hand"
+    assert "const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(sid || '');" in JS, "open unless closed by hand"
 
 
 def test_the_tab_lands_where_the_findings_are_and_the_chips_count():
@@ -35,3 +35,12 @@ def test_the_tab_lands_where_the_findings_are_and_the_chips_count():
     assert "const go = ['suggested', 'approved', 'reserve'].find(k => k !== cur && c[k]);" in JS
     assert "renderFbStatusChips(st, FB.statusCounts);" in JS
     assert "There are ${other.map(" in JS, "the empty state names the other statuses with counts"
+
+
+
+def test_source_reviews_use_source_identity_and_start_with_evidence():
+    assert "const key = n.source_id || '';" in JS
+    assert "grouped.get(key)[2].push(n)" in JS
+    assert "fbReviewSource(${JSON.stringify(sugg)}" in JS
+    review = JS.split("globalThis.fbReviewSource =")[1].split("// The bar above")[0]
+    assert "pending.has(n.id)" in review and "sourceContext: true" in review

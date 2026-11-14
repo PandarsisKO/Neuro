@@ -30,7 +30,7 @@ globalThis.focusOpen = function focusOpen(opts) {
     // and scClass's 60/30 thresholds would paint every one of them red -- the same class of lie as the pool
     // showing `potential` in the slot labelled relevance (fixed 2026-09-20).
     scoreClass: opts.scoreClass || scClass,
-    submitting: false, contextOpen: false, loadContext: opts.loadContext,
+    submitting: false, contextOpen: Boolean(opts.sourceContext), loadContext: opts.loadContext,
     // scores are shown by default: this is work, not a blind measurement — but they anchor, so it toggles.
     // Storage can throw outright (private window, blocked site data), so the default must survive that.
     showScores: (() => { try { return JSON.parse(localStorage.getItem('focusShowScores') ?? 'true'); }

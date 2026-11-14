@@ -1620,6 +1620,16 @@ globalThis.fbReviewSelected = function fbReviewSelected() {
     onDone: fbSelClear,
   });
 }
+globalThis.fbReviewSource = function fbReviewSource(ids, title) {
+  const pending = new Set(ids);
+  const rows = (FB.rows || []).filter(n => pending.has(n.id) && ['suggested', 'reserve'].includes(n.status));
+  if (!rows.length) return toast('No pending findings from this source on this page');
+  fbFocusOpen(rows, {
+    title,
+    sourceContext: true,
+    subtitle: `${rows.length} pending findings from this source on this page. Choose Keep or Lose for each one you review.`,
+  });
+}
 // The bar above the list: select-all-shown, the count, and the three things a selection can become. The
 // suggested-only "Approve all shown" pair (CL-2) is kept as it was, beside it.
 globalThis.renderFbBulk = function renderFbBulk() {
@@ -1689,8 +1699,13 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   $('#fbSweep').innerHTML = sw.count && !sw.pending && st === 'approved' ? reviewItem(`Review ${sw.count} low-value finding${sw.count === 1 ? '' : 's'}`, `${esc(sw.line)}; nothing has used them`, `<button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button>`) : '';
   syncFindingsReview();
   const rows = r.findings || [];
-  const bySrc = []; const idx = {};
-  for (const n of rows) { const k = n.source_title || 'Pinned from chat'; if (!(k in idx)) { idx[k] = bySrc.length; bySrc.push([k, n.source_id, []]); } bySrc[idx[k]][2].push(n); }
+  const grouped = new Map();
+  for (const n of rows) {
+    const key = n.source_id || '';
+    if (!grouped.has(key)) grouped.set(key, [n.source_title || 'Pinned from chat', n.source_id, []]);
+    grouped.get(key)[2].push(n);
+  }
+  const bySrc = [...grouped.values()];
   // 0.63.27 — Kyle: "it's unclear in the app how to approve or reject sometimes." On the `suggested` filter, where
   // the approving actually happens, these were a bare ✓ and ✕ with NO label and NO title — two glyphs. The Claims
   // workbench one tab away says "Accept" and "Reject" in words, so the same verdict was spoken in one place and
@@ -1710,7 +1725,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   // THIS project: a collapse remembered from another project must never carry over, and "Collapse all" is a choice
   // for one visit, not a default.
   if (FGRP.project !== state.project.id) { FGRP.project = state.project.id; FGRP.collapsed = new Set(); }
-  if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([title]) => title));
+  if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([, sid]) => sid || ''));
   const grpSearching = !!($('#fbQ').value || $('#fbImp').value || $('#fbUsed').value || $('#fbStale').value || $('#fbArea').value);
   $('#fbGroupCtl').hidden = !(bySrc.length > 1);
   // CL-2: bulk approve/dismiss for the suggested filter used to live above a separate, now-removed 100-card
@@ -1719,14 +1734,15 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   // S99: the same bar now also carries the hand-picked selection (tick boxes on every row, any filter).
   renderFbBulk();
   $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => {
-    const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);
-    const keyJs = JSON.stringify(title).replace(/"/g, '&quot;');
+    const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(sid || '');
+    const keyJs = esc(JSON.stringify(sid || ''));
     // S87 (Kyle): "there should be an 'approve all' for a single source (per video, article, etc) and not just an
     // 'approve all' for EVERYTHING." Per group, over exactly the suggested rows shown in it — same door as every
     // other status change (/api/notes/bulk-status).
     const sugg = list.filter(n => n.status === 'suggested' || n.status === 'reserve').map(n => n.id);
     const grpBulk = sugg.length ? `<button class="small" title="Approve the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'approved')">Approve all ${sugg.length}</button><button class="small ghost" title="Dismiss the ${sugg.length} waiting finding${sugg.length === 1 ? '' : 's'} from this source (nothing is deleted)" onclick="event.preventDefault();bulkNotes(${JSON.stringify(sugg).replace(/"/g, '&quot;')},'dismissed')">Dismiss all</button>` : '';
-    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${grpBulk}${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
+    const sourceReview = sid && sugg.length ? `<button class="small ghost" title="Review the pending findings from this source on this page" onclick="event.preventDefault();fbReviewSource(${JSON.stringify(sugg)},${esc(JSON.stringify(title))})">Review ${sugg.length}</button>` : '';
+    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sourceReview}${grpBulk}${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
       list.map(n => findingCard({ ...n, _badges: useBadges(n), _sel: FB.sel.has(n.id) }, act(n))).join('') + `</details>`; }).join('')
     : `<div class="empty">${r.total ? '' : (() => { const c = FB.statusCounts || {}; const other = FB_STATUS_CHIPS.filter(([k]) => k !== st && k !== 'all' && c[k]); return `No ${st === 'all' ? '' : st + ' '}findings${$('#fbQ').value || $('#fbUsed').value || $('#fbImp').value || $('#fbStale').value || $('#fbArea').value ? ' match these filters' : ' in this project yet'}.` + (other.length ? ` There are ${other.map(([k, l]) => `<a href="#" onclick="setFbStatus('${k}');return false"><b>${c[k]}</b> ${l.toLowerCase()}</a>`).join(', ')}.` : st === 'approved' ? ' Approve suggestions as they arrive, or ask questions in a chat and pin the answers worth keeping.' : ''); })()}</div>`;
   const pages = Math.ceil(r.total / FB.limit);
@@ -2086,6 +2102,7 @@ globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
   const impClass = v => (v >= 4 ? 'hi' : v >= 3 ? 'mid' : '');   // importance is 1-5, NOT the 0-100 relevance scale
   focusOpen({
     kind: 'findings',
+    sourceContext: opts.sourceContext,
     loadContext: projectId ? id => api(`/api/projects/${projectId}/findings/${id}/source-context`, { ack: false }) : null,
     title: opts.title,
     subtitle: opts.subtitle,
