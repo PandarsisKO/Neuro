@@ -30,7 +30,7 @@ globalThis.focusOpen = function focusOpen(opts) {
     // and scClass's 60/30 thresholds would paint every one of them red -- the same class of lie as the pool
     // showing `potential` in the slot labelled relevance (fixed 2026-09-20).
     scoreClass: opts.scoreClass || scClass,
-    submitting: false,
+    submitting: false, contextOpen: false, loadContext: opts.loadContext,
     // scores are shown by default: this is work, not a blind measurement — but they anchor, so it toggles.
     // Storage can throw outright (private window, blocked site data), so the default must survive that.
     showScores: (() => { try { return JSON.parse(localStorage.getItem('focusShowScores') ?? 'true'); }
@@ -130,6 +130,9 @@ globalThis.focusRender = function focusRender() {
       ${it.description ? `<div class="fx-desc">${esc(String(it.description).slice(0, 700))}</div>` : ''}
       ${why}
       ${it.quote ? `<div class="fx-quote">“${esc(String(it.quote).slice(0, 600))}”</div>` : ''}
+      ${F.loadContext ? `<details class="mt-2 fx-context" ${F.contextOpen ? 'open' : ''}>
+        <summary>Source context</summary><div class="fx-context-body" aria-live="polite"></div>
+      </details>` : ''}
       ${it.note ? `<div class="fwhy">${esc(it.note)}</div>` : ''}
       ${it.access_gate ? `<div class="fx-gate">🔒 ${esc(it.access_gate === 'members_only' ? 'members-only — cannot be downloaded without your own channel membership' : it.access_gate)}</div>` : ''}
     </div>
@@ -146,6 +149,31 @@ globalThis.focusRender = function focusRender() {
       ${decided ? `<button class="primary" onclick="focusSubmit(this)"${F.submitting ? ' disabled' : ''}>${done ? `Apply all ${n}` : `Apply ${decided} so far`}</button>` : '<span class="muted fx-hint">K to keep · L to lose · ← → to move</span>'}
     </div>
   </div>`;
+  const context = layer.querySelector('.fx-context');
+  if (!context) return;
+  const showContext = async () => {
+    if (!context.open) return;
+    const body = context.querySelector('.fx-context-body');
+    if (!it.context) body.textContent = 'Loading source passage…';
+    try {
+      it.contextRequest ??= F.loadContext(it.id);
+      it.context ??= await it.contextRequest;
+      if (!context.isConnected) return;
+      const { text, source, locator, message, matched } = it.context;
+      const label = [source, locator, matched ? 'Quote matched' : ''].filter(Boolean).join(' · ');
+      body.innerHTML = `${label ? `<div class="fwhy">${esc(label)}</div>` : ''}
+        ${message ? `<div class="fwhy">${esc(message)}</div>` : ''}
+        ${text ? `<div class="fx-quote">${esc(text)}</div>` : ''}`;
+    } catch (e) {
+      it.contextRequest = null;
+      if (context.isConnected) body.textContent = 'Could not load the passage. Close and reopen Source context to retry.';
+    }
+  };
+  context.ontoggle = () => {
+    F.contextOpen = context.open;
+    showContext();
+  };
+  showContext();
 };
 
 globalThis.focusSubmit = async function focusSubmit(btn) {

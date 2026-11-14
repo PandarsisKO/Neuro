@@ -2082,9 +2082,11 @@ globalThis.fbFocus = function fbFocus() {
 // One opener for both entry points: the card, the scale, the submit path and the refresh are identical whether
 // the rows came from the page on screen or from the second-look query, and only the framing differs.
 globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
+  const projectId = state.project?.id;
   const impClass = v => (v >= 4 ? 'hi' : v >= 3 ? 'mid' : '');   // importance is 1-5, NOT the 0-100 relevance scale
   focusOpen({
     kind: 'findings',
+    loadContext: projectId ? id => api(`/api/projects/${projectId}/findings/${id}/source-context`, { ack: false }) : null,
     title: opts.title,
     subtitle: opts.subtitle,
     scoreTitle: 'importance, 1-5', scoreWord: 'importance',

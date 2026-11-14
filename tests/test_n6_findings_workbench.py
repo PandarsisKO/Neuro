@@ -256,3 +256,30 @@ def test_five_star_bulk_validation_preserves_quote_meaning(quote, passage, eligi
     result = api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="approved"))
     assert result["n"] == int(eligible)
     assert len(result["held"]) == int(not eligible)
+
+
+def test_findings_review_context_is_read_only_and_checks_source_scope():
+    pid, sid, add, cite = _five_star_fixture()
+    quote = cite["snippet"]
+    db.replace_transcript(sid, [{"start": 1, "end": 1,
+                                 "text": f"The seller described the handover. {quote} Ask to see their agenda."}], [])
+    good = add(importance=3)
+    mismatch = add(citations=[dict(cite, snippet="The seller runs every meeting with an agenda.")])
+    old = add(revision="older")
+    legacy = add(revision=None)
+    absent = add(citations=[])
+    before = db.list_project_notes(pid, status=None)
+    result = api.api_finding_source_context(pid, good)
+    assert result["matched"] and quote in result["text"] and "Ask to see their agenda." in result["text"]
+    result = api.api_finding_source_context(pid, mismatch)
+    assert not result["matched"] and "could not be verified" in result["message"] and quote in result["text"]
+    assert "changed" in api.api_finding_source_context(pid, old)["message"]
+    result = api.api_finding_source_context(pid, legacy)
+    assert not result["matched"] and "no recorded source revision" in result["message"]
+    assert "No indexed passage" in api.api_finding_source_context(pid, absent)["message"]
+    with pytest.raises(api.HTTPException) as error:
+        api.api_finding_source_context("different-project", good)
+    assert error.value.status_code == 404
+    assert db.list_project_notes(pid, status=None) == before
+    db.remove_project_sources(pid, [sid])
+    assert "unavailable" in api.api_finding_source_context(pid, good)["message"]

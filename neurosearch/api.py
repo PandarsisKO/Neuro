@@ -3807,6 +3807,15 @@ class BulkNotesIn(BaseModel):
     five_star_project_id: str | None = None  # Confirming a preview: only these pending five-stars.
 
 
+@app.get("/api/projects/{project_id}/findings/{note_id}/source-context", dependencies=[Depends(require_auth)])
+def api_finding_source_context(project_id: str, note_id: int) -> dict[str, Any]:
+    from . import findings_quality
+    result = findings_quality.review_context(project_id, note_id)
+    if result is None:
+        raise HTTPException(404)
+    return result
+
+
 @app.get("/api/projects/{project_id}/findings/five-star-review", dependencies=[Depends(require_auth)])
 def api_five_star_review(project_id: str) -> dict[str, Any]:
     from . import findings_quality

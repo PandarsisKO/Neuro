@@ -74,27 +74,68 @@ def five_star_hold(note: dict[str, Any], members: set[str]) -> str | None:
     if source["disclosure_class"] == "restricted":
         return "The source is restricted and needs individual review."
 
-    citations = note["citations"]
-    if not isinstance(citations, list):
+    if not isinstance(note["citations"], list):
         return "The finding needs a usable source citation."
-    for citation in citations:
-        if not isinstance(citation, dict) or citation.get("source_id") != source_id or citation.get("removed"):
+    for _, quote, passage in _citation_passages(note, source["platform"]):
+        if evidence.approval_quote_matches(quote, passage):
+            return None
+    return "The citation quote could not be verified at its source location."
+
+
+def _citation_passages(note: dict[str, Any], platform: str):
+    """Read the indexed passage at a recorded locator, for review and verification."""
+    citations = note["citations"]
+    for citation in citations if isinstance(citations, list) else ():
+        if not isinstance(citation, dict) or citation.get("source_id") != note["source_id"] or citation.get("removed"):
             continue
         start, snippet, link = citation.get("start"), citation.get("snippet"), citation.get("link")
         if type(start) not in (int, float) or not 0 <= start < math.inf:
             continue
         if not isinstance(snippet, str) or not snippet.strip() or not isinstance(link, str) or not link.strip():
             continue
-        # Timed captions often split a sentence around the recorded second. Pages and
-        # sections must match at the recorded locator, even if the quote occurs elsewhere.
-        back, ahead = (14, 27) if source["platform"] in _TIMED_SOURCES else (0, 0)
+        # Timed captions can split a sentence around the locator.
+        back, ahead = (14, 27) if platform in _TIMED_SOURCES else (0, 0)
         passage = " ".join(row["text"] for row in db.connect().execute(
             "SELECT text FROM segments WHERE source_id=? AND start<=? AND end>=? ORDER BY idx"
             if back else "SELECT text FROM segments WHERE source_id=? AND start=? AND end>=? ORDER BY idx",
-            (source_id, start + ahead, start - back)))
-        if evidence.approval_quote_matches(snippet, passage):
-            return None
-    return "The citation quote could not be verified at its source location."
+            (note["source_id"], start + ahead, start - back)))
+        if passage:
+            yield citation, snippet, passage
+
+
+def review_context(project_id: str, note_id: int) -> dict[str, Any] | None:
+    note = db.row_to_dict(db.connect().execute(
+        "SELECT * FROM project_notes WHERE project_id=? AND id=?", (project_id, note_id)).fetchone())
+    if note is None:
+        return None
+    sid = note["source_id"]
+    if not sid or sid not in db.project_source_ids(project_id):
+        return {"message": "The cited source is unavailable in this project."}
+    source = db.get_source(sid)
+    if not source or source["disclosure_class"] == "restricted":
+        return {"message": "Open the source directly to review restricted material."}
+    if note["source_revision"] and source["revision"] != note["source_revision"]:
+        return {"message": "The source changed since this finding was written. Open the source to verify it."}
+    first = None
+    for citation, quote, passage in _citation_passages(note, source["platform"]):
+        # Prefer the citation that can be demonstrated in the excerpt when one verifies.
+        at = passage.casefold().find(quote[:35].casefold())
+        start = max(0, at - 500)
+        snippet = passage[start:start + 1800]
+        matched = evidence.approval_quote_matches(quote, snippet)
+        row = {
+            "text": ("…" if start else "") + snippet + ("…" if start + len(snippet) < len(passage) else ""),
+            "source": source["title"],
+            "locator": citation.get("timestamp"),
+            "matched": bool(matched and note["source_revision"]),
+            "message": ("This finding has no recorded source revision." if not note["source_revision"] else
+                        "" if matched else "The saved quote could not be verified in the displayed passage."),
+        }
+        if matched:
+            return row
+        if first is None:
+            first = row
+    return first or {"message": "No indexed passage is available at the saved citation."}
 
 
 def five_star_preview(project_id: str) -> dict[str, Any]:
