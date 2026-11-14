@@ -5812,3 +5812,36 @@ on-demand embedding of either large pool took more than a minute.
 No semantic ranking was enabled live. Findings remain unverified
 and out of model evidence. Report and scripts are in Codex
 artifact `findings-blind-rollout`.
+
+### 2026-11-14 — Aviation findings canary and natural-question retrieval
+
+Base `6fe8835`, runtime 0.64.41. Enabled AI powered Aviation
+Detailing through the existing allowlist. Live HTTP and Chrome
+verified 823 retained findings, two in Needs review, keyword
+search and individual review entry. Live Chat lead lookup also
+returned results. Stored status counts stayed identical. Five
+projects are enabled. Personal Wealth and Bryson's Stock Trading
+remain on the existing review workflow.
+
+A disposable copy of the 12:36 backup verified source-revision
+preservation, retry deduplication, the five-star gate, Chat/Plan
+input isolation, Claims harvest eligibility, explicit Keep, and
+rollback preserving Keep and Lose for each of the three projects
+that had been disabled. No application code changed and no live
+finding verdict was issued.
+
+Twelve existing evidence questions across the four later-stage
+projects had 44 lead labels selected by one reviewer before
+ranking. These came from targeted text inspection and therefore
+favor lexical coverage. Keyword matched 20, local BGE-M3 matched
+15, and eight keyword slots followed by distinct semantic results
+matched 18, under the same 18-slot cap. The blend gained four
+and displaced six. A shuffled first-three review found 15 of 36
+useful keyword results and 17 of 36 useful semantic results.
+Retaining 18 keyword results and adding six optional unique
+semantic results reached 23 in a post-hoc comparison with a larger
+result budget. Full local pool embedding took 4–43 seconds.
+Warm local query embedding and scoring had a 45 ms median.
+No semantic ranking shipped. Reproduce any extra-slot gain before
+adding a local background vector path. Report and scripts are in
+Codex artifact `findings-natural-replay`.
