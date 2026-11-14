@@ -2008,24 +2008,45 @@ globalThis.fbFiveStarReview = async function fbFiveStarReview() {
 
 function fbFiveStarDialog({ summary, held, approveCount, onApprove }) {
   const body = $('#dlgBody');
+  const groups = new Map();
+  for (const finding of held) {
+    const reason = finding.hold_reason || 'Needs individual review';
+    if (!groups.has(reason)) groups.set(reason, []);
+    groups.get(reason).push(finding);
+  }
+  const reviewGroups = [...groups].sort((a, b) => b[1].length - a[1].length);
   body.innerHTML = `<h3>Five-star bulk review</h3>
     <p>${esc(summary)}</p>
-    ${held.length ? '<p class="muted">Findings that need a decision stay in Suggested or Reserve. Review them in Keep vs Lose.</p>' : ''}
-    <div class="row">
+    ${held.length ? '<p class="muted">Choose a reason to review similar findings together. Each finding has its own Keep or Lose decision.</p>' : ''}
+    ${reviewGroups.map(([reason, rows], index) => `<div class="row mt-2">
+      <span class="grow">${esc(reason)}</span>
+      <button class="small" data-held-group="${index}" aria-label="${esc(`Review ${rows.length}. ${reason}`)}">Review ${rows.length}</button>
+    </div>`).join('')}
+    <div class="row mt-2">
       ${approveCount ? `<button class="small primary" id="fbConfirmFiveStar">Approve ${approveCount} validated</button>` : ''}
-      ${held.length ? '<button class="small" id="fbReviewHeld">Open Keep vs Lose</button>' : ''}
+      ${held.length ? '<button class="small" id="fbReviewHeld">Open all in Keep vs Lose</button>' : ''}
     </div>`;
-  const review = $('#fbReviewHeld');
-  if (review) review.onclick = () => {
+  const open = (rows, reason) => {
     dlg.close();
-    fbFocusOpen(held, { title: 'Five-star findings for review', subtitle: 'Use Keep or Lose to decide each finding.' });
+    fbFocusOpen(rows, {
+      title: 'Five-star findings for review',
+      subtitle: reason || 'Use Keep or Lose to decide each finding.',
+    });
   };
+  const review = $('#fbReviewHeld');
+  if (review) review.onclick = () => open(held);
+  const groupButtons = [...body.querySelectorAll('[data-held-group]')];
+  groupButtons.forEach((button, index) => {
+    const [reason, rows] = reviewGroups[index];
+    button.onclick = () => open(rows, reason);
+  });
   const approve = $('#fbConfirmFiveStar');
   if (approve) approve.onclick = async () => {
     // The app's shared request feedback owns the busy state. Removing this
     // handler also prevents keyboard re-submission while the request runs.
     approve.onclick = null;
     if (review) review.onclick = null;
+    groupButtons.forEach(button => { button.onclick = null; });
     try {
       await onApprove(approve);
     } catch (e) {
