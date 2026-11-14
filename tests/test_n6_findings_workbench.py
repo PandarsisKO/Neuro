@@ -233,3 +233,26 @@ def test_returning_an_approval_to_suggested_requires_another_individual_verdict(
     assert result["n"] == 0 and [n["id"] for n in result["held"]] == [note_id]
     assert api.api_notes_bulk(api.BulkNotesIn(
         note_ids=[note_id], status="approved", individually_reviewed=True))["n"] == 1
+
+
+
+@pytest.mark.parametrize(("quote", "passage", "eligible"), [
+    ("The posted usage reached 15", "The posted usage reached 15% on Friday.", False),
+    ("The agreed ratio was 1.25x", "The agreed ratio was 1.25 on Friday.", False),
+    ("The account adjustment was 300 dollars", "The account adjustment was −300 dollars.", False),
+    ("The recording shows > 500 trips", "The recording shows ≥ 500 trips.", False),
+    ("The recorded cost was £1500", "The recorded cost was $1,500.", False),
+    ("The recorded cost was $1500", "The recorded cost was $1,500.", True),
+    ("The report shows 15 gallons", "The report shows 1.5 gallons.", False),
+    ("THE OWNER’S logs were available", "The owner's logs were available.", True),
+    ("The owner approved the transfer", "The owner did not approve the transfer.", False),
+])
+def test_five_star_bulk_validation_preserves_quote_meaning(quote, passage, eligible):
+    pid, sid, add, cite = _five_star_fixture()
+    db.replace_transcript(sid, [{"start": 1, "end": 1, "text": passage}], [])
+    note_id = add(citations=[dict(cite, snippet=quote)])
+    preview = api.api_five_star_review(pid)
+    assert (note_id in preview["eligible_ids"]) is eligible
+    result = api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="approved"))
+    assert result["n"] == int(eligible)
+    assert len(result["held"]) == int(not eligible)

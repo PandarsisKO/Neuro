@@ -37,6 +37,37 @@ def normalize(text: str) -> str:
     return _WS.sub(" ", t).strip()
 
 
+# For approval, formatting may vary. Quantities, units and operators can
+# change the claim even when every surrounding word matches.
+_APPROVAL_NUMBER = re.compile(
+    r"(?:[<>≤≥=~≈]\s*)?(?:[+−-]\s*)?(?:[$€£¥]\s*)?"
+    r"(?:\d{1,3}(?:,\d{3})+(?!\d)|\d+)(?:\.\d+)?"
+    r"(?:\s*(?:%|×|x\b))?"
+)
+_APPROVAL_TOKEN = re.compile(
+    _APPROVAL_NUMBER.pattern + r"|[^\W\d_]+(?:'[^\W\d_]+)*|[<>≤≥=~≈+−$€£¥%×]"
+)
+_APPROVAL_WORD = re.compile(r"[^\W\d_]", re.UNICODE)
+
+
+def _approval_tokens(text: str) -> list[str]:
+    return [
+        _WS.sub("", token).replace(",", "").replace("−", "-")
+        for token in _APPROVAL_TOKEN.findall(text.translate(_QUOTES).casefold())
+    ]
+
+
+def approval_quote_matches(quote: str, passage: str) -> bool:
+    """Require a contiguous quote with its quantities and operators intact."""
+    if ELLIPSIS.search(quote):
+        return False
+    quoted = _approval_tokens(quote)
+    if sum(bool(_APPROVAL_WORD.match(token)) for token in quoted) < FRAGMENT_MIN_WORDS:
+        return False
+    return f" {' '.join(quoted)} " in f" {' '.join(_approval_tokens(passage))} "
+
+
+
 def quote_in_text(quote: str, text: str, min_ratio: float = 0.8) -> bool:
     """True when the quote occurs verbatim (after normalisation) or as a near-verbatim contiguous run — transcripts
     are auto-generated, so "gonna"/"going to" and a dropped filler word should not fail a real quote."""

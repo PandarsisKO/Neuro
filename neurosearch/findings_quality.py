@@ -92,8 +92,7 @@ def five_star_hold(note: dict[str, Any], members: set[str]) -> str | None:
             "SELECT text FROM segments WHERE source_id=? AND start<=? AND end>=? ORDER BY idx"
             if back else "SELECT text FROM segments WHERE source_id=? AND start=? AND end>=? ORDER BY idx",
             (source_id, start + ahead, start - back)))
-        quote = evidence.normalize(snippet)
-        if len(quote.split()) >= 3 and f" {quote} " in f" {evidence.normalize(passage)} ":
+        if evidence.approval_quote_matches(snippet, passage):
             return None
     return "The citation quote could not be verified at its source location."
 
