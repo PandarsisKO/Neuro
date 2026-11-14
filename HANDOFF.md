@@ -5753,3 +5753,30 @@ answers, source context and separate citations and export. Live
 HTTP verified 0.64.40, valid ranked results and unchanged stored
 counts. Release report:
 `evals/release/release-check-0.64.40-12c50ba-20261114-121023.json`.
+
+### 2026-11-14 — Optional additional retained Chat leads (0.64.41)
+
+Base `e3f506e`, runtime `28fc768`, isolated worktree
+`/private/tmp/neuro-chat-retained`. Chat keeps its first 12
+ranked leads and offers up to six more in place. The endpoint
+defaults to 12 and validates the maximum of 18. Search and evidence
+scope remain the same. No stored statuses or project scope changed.
+
+Same-query replay on the 12:11 immutable backup and then against
+live HTTP. The first 12 were identical to the prefix of the
+expanded response across all 14 questions. The six earlier
+questions went from seven to eight of 11 labeled leads, recovering
+the missing impression-share diagnostic at position 18. Eight
+additional existing questions went from 16 to 18 of 18 labeled
+leads. Additional labels were selected by one reviewer from the
+candidate pool before comparing variants. This replay measures
+known lexical leads and cannot estimate general recall. Splitting
+clauses and forcing source diversity did not preserve coverage.
+
+All 2,746 tests passed across six shards, along with Tier 1 and
+deterministic release checks. Isolated Chrome verified the new and
+reopened Chat panels, 12-to-18 reveal, source context, and separate
+citations and exports. Live API verified unchanged counts and the
+same replay metrics. Artifact `findings-ranking` contains the
+comparator, labels and results. Release report:
+`evals/release/release-check-0.64.41-28fc768-20261114-121620.json`.
