@@ -218,3 +218,18 @@ def test_five_star_gate_does_not_overwrite_a_concurrent_human_verdict(monkeypatc
     r = api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="approved"))
     assert r["n"] == 0 and r["skipped"] == 1
     assert db.list_project_notes(pid, status="dismissed")[0]["id"] == note_id
+
+
+
+def test_returning_an_approval_to_suggested_requires_another_individual_verdict():
+    pid, _, add, _ = _five_star_fixture()
+    note_id = add()
+    assert api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="approved"))["n"] == 1
+    assert api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="suggested"))["n"] == 1
+    preview = api.api_five_star_review(pid)
+    assert preview["eligible_ids"] == []
+    assert preview["held"][0]["hold_reason"] == "This finding was sent back for individual review."
+    result = api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="approved"))
+    assert result["n"] == 0 and [n["id"] for n in result["held"]] == [note_id]
+    assert api.api_notes_bulk(api.BulkNotesIn(
+        note_ids=[note_id], status="approved", individually_reviewed=True))["n"] == 1

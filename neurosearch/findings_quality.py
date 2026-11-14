@@ -57,6 +57,10 @@ def needs_five_star_gate(note: dict[str, Any]) -> bool:
 
 
 def five_star_hold(note: dict[str, Any], members: set[str]) -> str | None:
+    # Newly extracted findings have no verdict timestamp. Returning a finding
+    # to Suggested is a deliberate handoff to individual review.
+    if note["reviewed_at"] is not None:
+        return "This finding was sent back for individual review."
     text = f"{note['title'] or ''} {note['content']}"
     if _SENSITIVE.search(text) and (_CERTAINTY.search(text) or _AMOUNT.search(text)):
         return "Check the amount or rule before relying on this finding."
