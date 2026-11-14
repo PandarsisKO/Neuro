@@ -5573,3 +5573,20 @@ focused tests. Deterministic `neurosearch eval` and
 `neurosearch release-check --no-pytest` passed. Release report:
 `evals/release/release-check-0.64.33-c5b7797-20261113-200935.json`.
 Desktop Chrome verified the return-to-review reason and explicit Keep.
+
+### 2026-11-13 — Preserve quantities in five-star quote validation
+
+Base `539a2d5`, runtime candidate `2298eb5` (0.64.34). Bulk
+approval uses contiguous matches that preserve money symbols,
+signs, percentages, ratios, decimal amounts and comparisons.
+The extraction matcher keeps its existing behavior. The designed
+replay accepted all ten unchanged quotes and blocked all thirteen
+changes of meaning. The previous bulk matcher passed four
+altered quotes. The 20:11 Buying Businesses snapshot still had
+zero eligible and 88 held with either gate.
+
+Isolated pytest passed 2,739 tests across six shards. Tier 1 and
+`neurosearch release-check --no-pytest` passed. Desktop Chrome
+confirmed an exact quote can pass while a quote missing its
+percentage sign stays in Keep vs Lose. Release report:
+`evals/release/release-check-0.64.34-2298eb5-20261113-204020.json`.
