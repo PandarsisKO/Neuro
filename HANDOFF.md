@@ -5870,3 +5870,36 @@ semantic results returned 18. At the same 24-slot budget,
 keyword alone also returned 18 and surfaced a different extra
 lead. No semantic mode or backfill shipped. Report, scripts
 and staged HTTP counts are in `findings-all-projects`.
+
+### 2026-11-14 — Put findings with dependencies first in Keep vs Lose
+
+Runtime 0.64.42 at `a935041`, based on `acc87f9`. The Needs
+review pass puts Master Plan, Chat, and accepted or disputed Claim
+matches first. Importance and recency order findings within each
+group. Cards show their review reason, Plan version, Chat title,
+Claim text, and the existing source passage or availability message.
+Legacy Suggested keeps importance order. The change uses existing
+provenance rules and does not alter verdicts or evidence eligibility.
+
+macOS isolated checkout, fake provider, private test data. Full
+`python -m pytest -q` across six shards passed 2,747 tests.
+`neurosearch release-check --no-pytest` passed, including Tier 1
+and frozen totals; see `evals/release/release-check-0.64.42-a935041-20261114-134104.json`.
+Chrome on a disposable database verified lower-star linked rows
+appear first, source context opens, and Keep and Lose write only after
+Apply. On live HTTP all seven projects kept identical status totals
+and review membership (12,219 retained, 91 in review, two reserve).
+Chrome opened the reordered queue on the five projects with review
+findings. No live verdicts were issued.
+
+HTTP checked all 91 source contexts. 38 quotes verified in their
+passage, 26 showed a quote warning, and 27 showed no passage (23
+restricted and four unavailable). The 12:56 immutable backup had
+all 91 rows. Of 79 Chat citation matches by source and locator, 69
+had no normalized containment between either saved quote. 63 of
+those 69 had Chat as their sole reason for review, making 28 the
+arithmetic remainder under that shadow rule. Chat stores quotes
+truncated to 300 characters, so quote non-overlap is insufficient
+on its own. Adjudicate the 63 for passage and proposition overlap,
+including confirming whether the prior Chat used the finding or
+only cited its source. Keep current routing until this is tested.
