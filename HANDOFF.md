@@ -5845,3 +5845,28 @@ Warm local query embedding and scoring had a 45 ms median.
 No semantic ranking shipped. Reproduce any extra-slot gain before
 adding a local background vector path. Report and scripts are in
 Codex artifact `findings-natural-replay`.
+
+### 2026-11-14 — Retained research live across all seven existing projects
+
+Base `a37e3e6`, runtime 0.64.41. Added Personal Wealth to the
+existing explicit allowlist, verified it live, then added Bryson's
+Stock Trading and verified all seven projects. Live counts were
+2,159 retained / eight review in Personal Wealth, 209 / zero in
+Stock Trading, and 12,219 / 91 overall. Two Reserve rows are
+outside the 12,310 Suggested total. Live stored status counts
+match before and after for every project. Chrome verified the
+two new projects' counts, retained search, labels and review
+entry. Both returned retained Chat leads over HTTP. Existing
+decision-boundary and rollback checks had passed on disposable
+backup copies. No runtime code changed and no automatic
+approval or dismissal ran. The allowlist covers the seven
+existing projects; new projects are opt-in.
+
+On six existing questions from the 12:52 immutable backup,
+one reviewer selected 23 lead references before retrieval using
+targeted text inspection. Keyword at 18 returned 17 references;
+local BGE-M3 at 18 returned 13; keyword 18 plus six unique
+semantic results returned 18. At the same 24-slot budget,
+keyword alone also returned 18 and surfaced a different extra
+lead. No semantic mode or backfill shipped. Report, scripts
+and staged HTTP counts are in `findings-all-projects`.
