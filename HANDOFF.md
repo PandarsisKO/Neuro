@@ -5625,3 +5625,23 @@ returned 85 passages, of which 40 showed a matching quote. Human
 review time was not measured. No provider calls or findings writes
 were needed to load these cards. Release report:
 `evals/release/release-check-0.64.36-5a50ae5-20261114-080122.json`.
+
+### 2026-11-14 — Review pending Findings by source (0.64.37)
+
+Base `24fab58`, runtime candidate `da47137`. Each source group
+with pending findings offers Review N for the rows on that page.
+Keep vs Lose opens with the indexed passage visible and limits
+verdicts to the selected group. Grouping uses source identity,
+including when two sources have identical titles.
+
+On an immutable 08:03 snapshot, a routine-action screen found 81
+of 12,310 Suggestions with a matching citation, eight in Buying
+Businesses. In a seeded 29-source sample the local Gemma verifier
+and quote check proposed 19 approvals, seven of which the wording
+audit held. No approval policy or live finding status changed.
+
+All 2,741 pytest cases, Tier 1 and the deterministic release checks
+passed. Isolated Chrome verified distinct same-title groups, source
+context open by default, and separate verdicts restricted to that
+group. Release report:
+`evals/release/release-check-0.64.37-da47137-20261114-081138.json`.
