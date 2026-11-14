@@ -231,7 +231,7 @@ globalThis.sourceArchived = async function sourceArchived(sid) {
       <a class="muted" href="${esc(c.archived_url || '#')}" target="_blank" title="the page exactly as captured, without the archive's own navigation">raw ↗</a>
     </div></div>`;
 }
-globalThis.drawerBulk = async function drawerBulk(ids, status, sid) { if (!ids.length) return; await post('/api/notes/bulk-status', { note_ids: ids, status }); toast(`${status === 'approved' ? '✓ approved' : 'dismissed'} ${ids.length}`); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
+globalThis.drawerBulk = async function drawerBulk(ids, status, sid) { if (!ids.length) return; const r = await post('/api/notes/bulk-status', { note_ids: ids, status }); if (!fbBulkHolds(r, status)) { toast(fbBulkSummary(r, status)); sourceDrawer(sid); } if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerNote = async function drawerNote(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
 globalThis.drawerReadAction = async function drawerReadAction(sid, action) {
   try {
@@ -1778,9 +1778,12 @@ globalThis.openPromotable = async function openPromotable() {
 }
 globalThis.promoteReserve = async function promoteReserve(ids) {
   if (!ids || !ids.length) return toast('nothing ticked');
-  await post('/api/notes/bulk-status', { note_ids: ids, status: 'approved' });
-  try { dlg.close(); } catch (e) { /* the banner path has no dialog open */ }
-  toast(`${ids.length} approved`); loadNotes();
+  const r = await post('/api/notes/bulk-status', { note_ids: ids, status: 'approved' });
+  if (!fbBulkHolds(r, 'approved')) {
+    if (dlg.open) dlg.close();
+    toast(fbBulkSummary(r, 'approved'));
+  }
+  loadNotes();
 }
 globalThis.openQuality = async function openQuality(st) {   // opened deliberately: this one waits for a current answer
   st = st || $('#fbStatus').value || 'approved';
@@ -1973,6 +1976,78 @@ globalThis.fbReviewFiltered = async function fbReviewFiltered() {
   });
 }
 
+globalThis.fbFiveStarReview = async function fbFiveStarReview() {
+  const projectId = state.project?.id;
+  if (!projectId) return;
+  let review;
+  try {
+    review = await api(`/api/projects/${projectId}/findings/five-star-review`);
+  } catch (e) {
+    toast('Could not check five-star findings');
+    return;
+  }
+  if (state.project?.id !== projectId) return;
+  const count = review.eligible_ids.length;
+  fbFiveStarDialog({
+    summary: `${count} passed validation · ${review.held.length} for individual review`,
+    held: review.held,
+    approveCount: count,
+    onApprove: async (button) => {
+      const r = await post('/api/notes/bulk-status', {
+        note_ids: review.eligible_ids, status: 'approved', five_star_project_id: projectId,
+      });
+      if (state.project?.id !== projectId) return;
+      const held = [...review.held, ...r.held];
+      const summary = fbBulkSummary(r, 'approved', held.length);
+      if (dlg.open && button.isConnected) fbFiveStarDialog({ summary, held });
+      else toast(summary);
+      loadNotes();
+    },
+  });
+}
+
+function fbFiveStarDialog({ summary, held, approveCount, onApprove }) {
+  const body = $('#dlgBody');
+  body.innerHTML = `<h3>Five-star bulk review</h3>
+    <p>${esc(summary)}</p>
+    ${held.length ? '<p class="muted">Findings that need a decision stay in Suggested or Reserve. Review them in Keep vs Lose.</p>' : ''}
+    <div class="row">
+      ${approveCount ? `<button class="small primary" id="fbConfirmFiveStar">Approve ${approveCount} validated</button>` : ''}
+      ${held.length ? '<button class="small" id="fbReviewHeld">Open Keep vs Lose</button>' : ''}
+    </div>`;
+  const review = $('#fbReviewHeld');
+  if (review) review.onclick = () => {
+    dlg.close();
+    fbFocusOpen(held, { title: 'Five-star findings for review', subtitle: 'Use Keep or Lose to decide each finding.' });
+  };
+  const approve = $('#fbConfirmFiveStar');
+  if (approve) approve.onclick = async () => {
+    // The app's shared request feedback owns the busy state. Removing this
+    // handler also prevents keyboard re-submission while the request runs.
+    approve.onclick = null;
+    if (review) review.onclick = null;
+    try {
+      await onApprove(approve);
+    } catch (e) {
+      toast('Could not complete bulk approval. Reopen the preview to check the current results.');
+      if (dlg.open && approve.isConnected) dlg.close();
+    }
+  };
+  if (!dlg.open) dlg.showModal();
+}
+
+function fbBulkSummary(r, status, heldCount = r.held.length) {
+  const word = status === 'approved' || status === 'dismissed' ? status : `moved to ${status}`;
+  return [`${r.n} ${word}`, heldCount ? `${heldCount} for individual review` : '',
+    r.skipped ? `${r.skipped} skipped` : ''].filter(Boolean).join(' · ');
+}
+
+function fbBulkHolds(r, status) {
+  if (!r.held.length) return false;
+  fbFiveStarDialog({ summary: fbBulkSummary(r, status), held: r.held });
+  return true;
+}
+
 globalThis.fbFocus = function fbFocus() {
   const rows = FB.rows || [];
   if (!rows.length) { toast('Nothing to review here'); return; }
@@ -2008,12 +2083,13 @@ globalThis.fbFocusOpen = function fbFocusOpen(rows, opts) {
           n.source_title ? ['source', n.source_title] : null,
           n.area ? ['area', n.area] : null,
           n.status ? ['now', n.status] : null,
+          n.hold_reason ? ['review', n.hold_reason] : null,
         ].filter(Boolean),
       };
     }),
     onSubmit: async ({ keep, drop }) => {
       // the same /api/notes/bulk-status every other status change goes through -- there is no second door
-      if (keep.length) await post('/api/notes/bulk-status', { note_ids: keep.map(Number), status: 'approved' });
+      if (keep.length) await post('/api/notes/bulk-status', { note_ids: keep.map(Number), status: 'approved', individually_reviewed: true });
       if (drop.length) await post('/api/notes/bulk-status', { note_ids: drop.map(Number), status: 'dismissed' });
       toast(`${keep.length} approved · ${drop.length} dismissed`);
       if (opts.onDone) opts.onDone();
@@ -2045,13 +2121,9 @@ globalThis.findingCard = function findingCard(n, actions) {
 globalThis.noteStatus = async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
 globalThis.bulkNotes = async function bulkNotes(ids, status) {
   if (!ids || !ids.length) return toast('nothing to do');
-  await post('/api/notes/bulk-status', { note_ids: ids, status });
-  // Say what happened BEFORE the reload: loadNotes() destroys the button that was pressed (there is
-  // nothing left to approve, so the whole block re-renders without it) and takes several seconds. Kyle
-  // approved 59 findings, it worked, and the app told him nothing — so he reported the button as broken.
-  const n = ids.length, word = status === 'approved' ? 'approved' : status === 'dismissed' ? 'dismissed' : `moved to ${status}`;
-  toast(`✓ ${n} finding${n === 1 ? '' : 's'} ${word}`);
-  for (const id of ids) FB.sel.delete(id);      // S99: a pick that has been acted on is done
+  const r = await post('/api/notes/bulk-status', { note_ids: ids, status });
+  if (!fbBulkHolds(r, status)) toast(`✓ ${fbBulkSummary(r, status)}`);
+  for (const id of ids) FB.sel.delete(id);
   loadNotes();
 }
 // Now vs background: the same analysis through two transports. Wording is deliberate — the background option may take

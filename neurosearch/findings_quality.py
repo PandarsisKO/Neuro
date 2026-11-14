@@ -29,13 +29,95 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from collections import defaultdict
 from typing import Any
 
-from . import db
+from . import db, evidence
 
 log = logging.getLogger(__name__)
+
+# Five-star bulk approval. These are exceptions for review, never dismissal rules.
+_PENDING_FIVE_STAR = ("suggested", "reserve")
+_TIMED_SOURCES = {"youtube", "media", "instagram", "video", "audio", "podcast"}
+_SENSITIVE = re.compile(
+    r"\b(?:SBA|IRS|tax(?:es|able)?|lender\w*|financ\w*|loans?|guarant\w*|liabilit\w*|permit\w*|"
+    r"licen[cs]\w*|regulat\w*|legal|zoning|non.compete|valuation|mortgage|equity injection|earnouts?|"
+    r"escrow|credit score|DSCR|collateral|underwrit\w*|amorti[sz]\w*|balloon(?: payment)?|"
+    r"equity|purchase price|capital gains|earnings multiples?|(?:seller.?s? discretionary earnings|SDE))\b", re.I)
+_CERTAINTY = re.compile(
+    r"\b(?:always|never|must|guarantee\w*|mandatory|requir\w*|thresholds?|non.negotiable|"
+    r"all (?:buyers|lenders|sellers)|only (?:way|option))\b", re.I)
+_AMOUNT = re.compile(r"[$£€]\s*\d|\b\d+(?:\.\d+)?\s*(?:%|percent\b|[x×](?!\w))", re.I)
+
+
+def needs_five_star_gate(note: dict[str, Any]) -> bool:
+    return note["importance"] == 5 and note["status"] in _PENDING_FIVE_STAR
+
+
+def five_star_hold(note: dict[str, Any], members: set[str]) -> str | None:
+    text = f"{note['title'] or ''} {note['content']}"
+    if _SENSITIVE.search(text) and (_CERTAINTY.search(text) or _AMOUNT.search(text)):
+        return "Check the amount or rule before relying on this finding."
+    source_id = note["source_id"]
+    if not source_id or source_id not in members:
+        return "The source is unavailable in this project."
+    source = db.connect().execute(
+        "SELECT revision, platform, disclosure_class FROM sources WHERE id=?", (source_id,)).fetchone()
+    if not source or not note["source_revision"] or source["revision"] != note["source_revision"]:
+        return "The finding needs a citation from the current source revision."
+    if source["disclosure_class"] == "restricted":
+        return "The source is restricted and needs individual review."
+
+    citations = note["citations"]
+    if not isinstance(citations, list):
+        return "The finding needs a usable source citation."
+    for citation in citations:
+        if not isinstance(citation, dict) or citation.get("source_id") != source_id or citation.get("removed"):
+            continue
+        start, snippet, link = citation.get("start"), citation.get("snippet"), citation.get("link")
+        if type(start) not in (int, float) or not 0 <= start < math.inf:
+            continue
+        if not isinstance(snippet, str) or not snippet.strip() or not isinstance(link, str) or not link.strip():
+            continue
+        # Timed captions often split a sentence around the recorded second. Pages and
+        # sections must match at the recorded locator, even if the quote occurs elsewhere.
+        back, ahead = (14, 27) if source["platform"] in _TIMED_SOURCES else (0, 0)
+        passage = " ".join(row["text"] for row in db.connect().execute(
+            "SELECT text FROM segments WHERE source_id=? AND start<=? AND end>=? ORDER BY idx"
+            if back else "SELECT text FROM segments WHERE source_id=? AND start=? AND end>=? ORDER BY idx",
+            (source_id, start + ahead, start - back)))
+        quote = evidence.normalize(snippet)
+        if len(quote.split()) >= 3 and f" {quote} " in f" {evidence.normalize(passage)} ":
+            return None
+    return "The citation quote could not be verified at its source location."
+
+
+def five_star_preview(project_id: str) -> dict[str, Any]:
+    members = set(db.project_source_ids(project_id))
+    eligible, held = [], []
+    for row in db.connect().execute(
+        "SELECT * FROM project_notes WHERE project_id=? AND status='suggested' "
+        "AND importance=5 ORDER BY created_at DESC, id DESC", (project_id,)
+    ):
+        note = db.row_to_dict(row)
+        reason = five_star_hold(note, members)
+        if reason:
+            held.append(five_star_review_row(note, reason))
+        else:
+            eligible.append(note["id"])
+    return {"eligible_ids": eligible, "held": held}
+
+
+def five_star_review_row(note: dict[str, Any], reason: str) -> dict[str, Any]:
+    citations = note["citations"] if isinstance(note["citations"], list) else []
+    return {
+        **{key: note[key] for key in ("id", "title", "content", "importance", "status")},
+        "citations": [c for c in citations if isinstance(c, dict)],
+        "hold_reason": reason,
+    }
+
 
 # ---- duplicate detection ------------------------------------------------------------------------
 # CALIBRATED 2026-09-10 against Kyle's live corpus (10,380 approved findings in one project, read-only from the

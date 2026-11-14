@@ -3803,6 +3803,16 @@ def api_note_status(note_id: int, body: NoteStatusIn) -> dict[str, Any]:
 class BulkNotesIn(BaseModel):
     note_ids: list[int]
     status: str
+    individually_reviewed: bool = False  # Explicit Keep verdicts collected by Keep vs Lose.
+    five_star_project_id: str | None = None  # Confirming a preview: only these pending five-stars.
+
+
+@app.get("/api/projects/{project_id}/findings/five-star-review", dependencies=[Depends(require_auth)])
+def api_five_star_review(project_id: str) -> dict[str, Any]:
+    from . import findings_quality
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return findings_quality.five_star_preview(project_id)
 
 
 @app.get("/api/projects/{project_id}/findings/reserve-promotable", dependencies=[Depends(require_auth)])
@@ -3836,9 +3846,42 @@ def api_findings_quality(project_id: str, status: str | None = "approved", limit
 
 @app.post("/api/notes/bulk-status", dependencies=[Depends(require_auth)])
 def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
-    for nid in body.note_ids:
-        db.set_note_status(nid, body.status)
-    return {"ok": True, "n": len(body.note_ids)}
+    from . import findings_quality
+    if body.five_star_project_id is not None and (body.status != "approved" or body.individually_reviewed):
+        raise HTTPException(422, "A five-star preview can only confirm gated approvals.")
+    n, skipped, held = 0, 0, []
+    members: dict[str, set[str]] = {}
+    for nid in dict.fromkeys(body.note_ids):
+        if body.status != "approved" or body.individually_reviewed:
+            n += db.set_note_status(nid, body.status) is not None
+            continue
+        note = db.row_to_dict(db.connect().execute("SELECT * FROM project_notes WHERE id=?", (nid,)).fetchone())
+        if not note:
+            skipped += 1
+            continue
+        project_id = note["project_id"]
+        gated = findings_quality.needs_five_star_gate(note)
+        if body.five_star_project_id is not None and (
+                project_id != body.five_star_project_id or not gated or note["status"] != "suggested"):
+            skipped += 1
+            continue
+        if gated:
+            if project_id not in members:
+                members[project_id] = set(db.project_source_ids(project_id))
+            reason = findings_quality.five_star_hold(note, members[project_id])
+            if reason:
+                held.append(findings_quality.five_star_review_row(note, reason))
+            elif db.set_note_status(nid, body.status, checked_finding=note) is not None:
+                n += 1
+            else:
+                skipped += 1
+        elif note["importance"] == 5:
+            # An ordinary bulk approval cannot replay a stale list over a human dismissal.
+            skipped += 1
+        else:
+            n += db.set_note_status(nid, body.status) is not None
+    return {"ok": True, "n": n, "held": held, "skipped": skipped}
+
 
 
 class NoteIn(BaseModel):

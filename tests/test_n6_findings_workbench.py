@@ -3,6 +3,7 @@ staleness, Research Area), facets that show what choosing them would give, sorts
 and the low-value sweep (approved, importance ≤ 2, never used — reviewed, never automatic). $0. (Sorts after test_n5.)"""
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 
@@ -128,3 +129,92 @@ def test_a_populated_embedding_blob_does_not_break_json_serialization(monkeypatc
     claim = claims._claim(claim_row)
     assert "embedding" not in claim
     json.dumps(claim)  # must not raise TypeError on a raw bytes value
+
+
+def _five_star_fixture():
+    pid = db.create_project("Buying a small business")["id"]
+    quote = "Ask the owner what they track in the weekly operations meeting."
+    src = db.upsert_source(platform="web", external_id="weekly-ops", url="https://example.com/ops",
+                           title="Operating handover", status="ready")
+    sid = src["id"]
+    db.add_project_sources(pid, [sid])
+    db.replace_transcript(sid, [
+        {"start": 1, "end": 1, "text": quote},
+        {"start": 2, "end": 2, "text": "Other advice is on the following page."},
+    ], [])
+    citation = {"source_id": sid, "link": src["url"], "start": 1, "snippet": quote, "title": src["title"]}
+
+    def add(**kwargs):
+        note = {"title": "Operations handover", "content": quote, "citations": [citation],
+                "status": "suggested", "importance": 5, **kwargs}
+        with db.tx() as conn:
+            return conn.execute(
+                "INSERT INTO project_notes (project_id, source_id, source_revision, created_at, "
+                "title, content, citations, status, importance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (pid, sid, note.get("revision", db.source_revision(sid)), db.now(), note["title"], note["content"],
+                 json.dumps(note["citations"]), note["status"], note["importance"]),
+            ).lastrowid
+
+    return pid, sid, add, citation
+
+
+def test_five_star_preview_and_bulk_hold_leave_the_manual_review_pile_intact():
+    pid, sid, add, cite = _five_star_fixture()
+    safe = add()
+    sensitive = add(content="All buyers must pay a 20 percent equity injection for an SBA loan.")
+    hard_threshold = add(content="The financing plan faces a hard 1.25x DSCR threshold.")
+    altered_quote = add(citations=[dict(cite, snippet="Ask the broker what they track in the weekly operations meeting.")])
+    absent = add(citations=[])
+    wrong_location = add(citations=[dict(cite, start=2)], status="reserve")
+    wrong_source = add(citations=[dict(cite, source_id="some-other-deal")])
+    legacy = add(revision=None)
+    ordinary = add(importance=4, citations=[])
+    dismissed = add(status="dismissed")
+    held = {sensitive, hard_threshold, altered_quote, absent, wrong_location, wrong_source, legacy}
+    before = db.list_project_notes(pid, status=None)
+    preview = api.api_five_star_review(pid)
+    assert preview["eligible_ids"] == [safe]
+    assert {n["id"] for n in preview["held"]} == held - {wrong_location}
+    assert all(n["hold_reason"] for n in preview["held"])
+    assert db.list_project_notes(pid, status=None) == before
+
+    result = api.api_notes_bulk(api.BulkNotesIn(note_ids=[safe, *held, ordinary, dismissed], status="approved"))
+    assert result["n"] == 2 and result["skipped"] == 1
+    assert {n["id"] for n in result["held"]} == held
+    assert {n["id"] for n in db.list_project_notes(pid)} == {safe, ordinary}
+    unchanged = {n["id"]: n for n in db.list_project_notes(pid, status=None) if n["id"] in held}
+    assert unchanged == {n["id"]: n for n in before if n["id"] in held}
+    assert api.api_notes_bulk(api.BulkNotesIn(note_ids=[absent], status="approved", individually_reviewed=True))["n"] == 1
+    assert api.api_notes_bulk(api.BulkNotesIn(note_ids=[wrong_location], status="dismissed"))["n"] == 1
+    assert {n["id"] for n in db.list_project_notes(pid, status="dismissed")} == {dismissed, wrong_location}
+
+
+def test_five_star_confirmation_rechecks_source_revision_and_project_scope():
+    pid, sid, add, _ = _five_star_fixture()
+    safe = add()
+    other_id = db.create_project("Another deal")["id"]
+    other = db.add_project_note(other_id, "Another project's note.", status="suggested", importance=4)
+    assert api.api_five_star_review(pid)["eligible_ids"] == [safe]
+    db.replace_transcript(sid, [{"start": 1, "end": 1, "text": "The source changed after preview."}], [])
+    r = api.api_notes_bulk(api.BulkNotesIn(note_ids=[safe, other["id"]], status="approved", five_star_project_id=pid))
+    assert r["n"] == 0 and r["skipped"] == 1 and [n["id"] for n in r["held"]] == [safe]
+    assert db.list_project_notes(pid, status="suggested")[0]["id"] == safe
+    assert db.list_project_notes(other_id, status="suggested")[0]["id"] == other["id"]
+
+
+def test_five_star_gate_does_not_overwrite_a_concurrent_human_verdict(monkeypatch):
+    from neurosearch import findings_quality
+
+    pid, _, add, _ = _five_star_fixture()
+    note_id = add()
+    hold = findings_quality.five_star_hold
+
+    def dismiss_after_check(note, members):
+        assert hold(note, members) is None
+        db.set_note_status(note_id, "dismissed")
+        return None
+
+    monkeypatch.setattr(findings_quality, "five_star_hold", dismiss_after_check)
+    r = api.api_notes_bulk(api.BulkNotesIn(note_ids=[note_id], status="approved"))
+    assert r["n"] == 0 and r["skipped"] == 1
+    assert db.list_project_notes(pid, status="dismissed")[0]["id"] == note_id

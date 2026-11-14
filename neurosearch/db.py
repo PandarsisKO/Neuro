@@ -5237,14 +5237,29 @@ def note_counts(project_id: str) -> dict[str, int]:
     return out
 
 
-def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:
+def set_note_status(note_id: int, status: str, *, checked_finding: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """The one door every status change goes through, so stamping `reviewed_at` here covers every path -- the
     drawer, the workbench, bulk, focus review and the sweeps -- and cannot be bypassed by adding a caller."""
     with tx() as conn:
         before = conn.execute("SELECT status, project_id FROM project_notes WHERE id=?", (note_id,)).fetchone()
-        conn.execute("UPDATE project_notes SET status=?, reviewed_at=?, "
-                     "created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?",
-                     (status, now(), status, now(), note_id))
+        sql = ("UPDATE project_notes SET status=?, reviewed_at=?, "
+               "created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?")
+        args = (status, now(), status, now(), note_id)
+        if checked_finding is not None:
+            # The passage was checked outside the write transaction. Refuse to apply an
+            # obsolete result if a reviewer or source refresh got there first.
+            sql += (
+                " AND project_id=? AND status=? AND reviewed_at IS ? AND importance=5"
+                " AND source_id=? AND source_revision=? AND EXISTS ("
+                "SELECT 1 FROM sources WHERE id=project_notes.source_id AND status='ready'"
+                " AND revision=project_notes.source_revision AND disclosure_class IS NOT 'restricted')"
+                " AND NOT EXISTS (SELECT 1 FROM project_sources WHERE project_id=project_notes.project_id"
+                " AND source_id=project_notes.source_id AND excluded=1)"
+            )
+            args += tuple(checked_finding[key] for key in
+                          ("project_id", "status", "reviewed_at", "source_id", "source_revision"))
+        if not conn.execute(sql, args).rowcount:
+            return None
         row = row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
         if before is not None:
             from . import ledger
