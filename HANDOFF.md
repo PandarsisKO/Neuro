@@ -5682,3 +5682,42 @@ backup `neurosearch-20261114-0937.db`. GitHub main verified.
 
 Release report:
 `evals/release/release-check-0.64.38-00390dc-20261114-093607.json`.
+
+### 2026-11-14 — Retained research live on two more canaries (0.64.39)
+
+Base `471607f`, runtime `df02c20`. Worktree
+`/private/tmp/neuro-retention-canaries`. The existing
+`NEUROSEARCH_RETAIN_FINDINGS_PROJECT` setting accepts a comma-separated
+project list. Removing one project and restarting restores its previous
+queue. The existing single-project configuration remains valid.
+
+The release test preserves both human verdicts and timestamps when
+removing a project. Disposable copies of the verified 10:37 backup
+exercised new findings, source-revision refresh, retry deduplication,
+the five-star gate, Chat and Plan inputs, Claims harvest and an
+individual Keep followed by rollback on both canaries. The other
+enabled projects were unaffected by removing either canary.
+
+Service Business Advertising Intelligence is live with 2,591
+retained and four to review. Real Estate Investment Strategy is live
+with 132 retained and zero to review. Buying Businesses remains live
+with 4,362 retained and 61 to review. The other four projects are
+outside the allowlist. The live API verified unchanged stored statuses.
+Chrome verified project-specific counts, search and the individual
+review entry. All 2,744 pytest tests and the Tier 1/deterministic
+release gates passed. No automatic dismissals or human verdicts
+were performed on live data.
+
+Six existing evidence questions tested retrieval of 11 known leads.
+The source passage keyword leg hit a known source on two questions
+(three of 11 references, at source level). A separate retained-note
+prototype hit a known finding on five questions (seven of 11
+references, at note level). This tests the keyword path and a local
+prototype, and is not a measurement of production Chat with hybrid
+retrieval. One missing lead concerned impression share and separating
+budget/demand from offer problems. The prototype is not live in Chat.
+Integrate a way to surface retained leads as research questions and
+test decision use before widening the rollout. The read-only report
+and scripts are in the `findings-canary-rollout` Codex artifact.
+Release report:
+`evals/release/release-check-0.64.39-df02c20-20261114-113423.json`.
