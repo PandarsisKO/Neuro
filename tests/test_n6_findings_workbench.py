@@ -428,3 +428,25 @@ def test_chat_leads_are_read_only_and_follow_current_project_and_evidence_scope(
     assert client.post(f"/api/projects/{other}/findings/retained-leads", json=question, headers=headers).json() == {"leads": []}
     db.set_note_status(valid["id"], "approved")
     assert client.post(path, json=question, headers=headers).json() == {"leads": []}
+
+
+def test_retained_chat_leads_expansion_keeps_first_twelve_in_order(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    pid = db.create_project("Retained leads expansion")["id"]
+    monkeypatch.setattr(settings, "retain_findings_project", pid)
+    sid = db.upsert_source(platform="web", external_id="lead-expand", url="https://example.test/lead-expand",
+                           title="Booking", status="ready")["id"]
+    db.add_project_sources(pid, [sid])
+    for i in range(20):
+        db.add_project_note(pid, f"Booking campaign tracking scenario {i}.", source_id=sid, status="suggested")
+    client = TestClient(api.app)
+    headers = {"Authorization": "Bearer t0k"}
+    path = f"/api/projects/{pid}/findings/retained-leads"
+    data = {"question": "How should we track a booking campaign?"}
+    first = client.post(path, json=data, headers=headers).json()["leads"]
+    expanded = client.post(path, json=data | {"limit": 18}, headers=headers).json()["leads"]
+    assert len(first) == 12 and len(expanded) == 18
+    assert first == expanded[:12]
+    assert len({item["id"] for item in expanded}) == 18
+    assert client.post(path, json=data | {"limit": 19}, headers=headers).status_code == 422

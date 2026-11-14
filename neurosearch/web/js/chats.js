@@ -139,18 +139,27 @@ async function showRetainedChatLeads(message, project, conversationId, question)
   const stillHere = () => message.isConnected && state.project?.id === project.id && state.conv === conversationId;
   try {
     const result = await api(`${path}/retained-leads`, {
-      method: 'POST', body: JSON.stringify({question: question.slice(0, 4000)}), ack: false,
+      method: 'POST', body: JSON.stringify({question: question.slice(0, 4000), limit: 18}), ack: false,
     });
     if (!stillHere() || !result?.leads?.length) return;
     const box = document.createElement('details');
     box.className = 'web chat-retained-leads';
-    box.innerHTML = `<summary>Retained research leads (${result.leads.length})</summary>
+    const initialCount = Math.min(12, result.leads.length);
+    const extraCount = result.leads.length - initialCount;
+    box.innerHTML = `<summary>Retained research leads (${initialCount})</summary>
       <div class="muted text-xs">Unverified findings to follow up on.</div>
-      ${result.leads.map(lead => `<details class="chat-retained-lead"><summary>${esc(lead.title || 'Untitled finding')}</summary>
+      ${result.leads.map((lead, i) => `<details class="chat-retained-lead"${i >= initialCount ? ' hidden' : ''}><summary>${esc(lead.title || 'Untitled finding')}</summary>
         <div>${esc(lead.content.replace(/\s*\[\d+\]/g, ''))}</div>
         <div class="muted text-xs">${esc(lead.source_title)}</div>
         <button type="button" class="small ghost">Read source context</button><div class="text-xs"></div>
-      </details>`).join('')}`;
+      </details>`).join('')}
+      ${extraCount ? `<button type="button" class="small ghost chat-retained-more">Show ${extraCount} more leads</button>` : ''}`;
+    const more = box.querySelector('.chat-retained-more');
+    if (more) more.onclick = () => {
+      box.querySelectorAll('.chat-retained-lead[hidden]').forEach(lead => { lead.hidden = false; });
+      box.firstElementChild.textContent = `Retained research leads (${result.leads.length})`;
+      more.remove();
+    };
     message.insertBefore(box, message.querySelector('.tools'));
     box.querySelectorAll('.chat-retained-lead button').forEach((button, i) => {
       button.onclick = async () => {

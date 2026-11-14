@@ -259,7 +259,7 @@ _LEAD_STOP = frozenset(
 )
 
 
-def retained_leads(project_id: str, question: str) -> list[dict[str, Any]]:
+def retained_leads(project_id: str, question: str, *, limit: int = 12) -> list[dict[str, Any]]:
     """Rank unverified leads for the local Chat UI. Never include them in evidence or model input."""
     if not db.retains_findings(project_id):
         return []
@@ -281,7 +281,7 @@ def retained_leads(project_id: str, question: str) -> list[dict[str, Any]]:
     ranked = db.rank_finding_text(
         ((nid, row["title"], row["content"]) for nid, row in candidates.items()),
         terms,
-        limit=12,
+        limit=limit,
     )
     return [
         {"id": nid, "title": candidates[nid]["title"], "content": candidates[nid]["content"],

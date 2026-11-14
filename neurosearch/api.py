@@ -3810,6 +3810,7 @@ class BulkNotesIn(BaseModel):
 
 class RetainedLeadsIn(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
+    limit: int = Field(default=12, ge=1, le=18)
 
 
 @app.post("/api/projects/{project_id}/findings/retained-leads", dependencies=[Depends(require_auth)])
@@ -3818,7 +3819,7 @@ def api_retained_leads(project_id: str, body: RetainedLeadsIn) -> dict[str, Any]
     from . import findings_view
     if not db.retains_findings(project_id):
         return {"leads": []}
-    return {"leads": findings_view.retained_leads(project_id, body.question)}
+    return {"leads": findings_view.retained_leads(project_id, body.question, limit=body.limit)}
 
 
 @app.get("/api/projects/{project_id}/findings/{note_id}/source-context", dependencies=[Depends(require_auth)])
