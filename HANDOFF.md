@@ -5721,3 +5721,35 @@ test decision use before widening the rollout. The read-only report
 and scripts are in the `findings-canary-rollout` Codex artifact.
 Release report:
 `evals/release/release-check-0.64.39-df02c20-20261114-113423.json`.
+
+### 2026-11-14 — Retained research leads beside Chat answers (0.64.40)
+
+Base `f25a384`, runtime `12c50ba`. Worktree
+`/private/tmp/neuro-chat-retained`. On the three projects already
+enabled for retained research, Chat now looks up relevant findings
+after a new answer and beneath the latest eligible answer when
+reopening a conversation. The collapsed panel labels the items
+unverified and opens the existing source-context endpoint. The
+lookup is local, read-only, scoped to attached ready sources,
+and excludes the review queue and restricted sources. The lookup
+never enters the model request, answer, evidence, pin, export,
+Plan or Claim inputs. There is no new persisted index or finding
+state; full-text ranking runs in a disposable in-memory SQLite
+connection owned by the existing DB module.
+
+Live HTTP replay matched seven of 11 labeled leads on five of
+six prior canary questions, the same count as the local prototype.
+It still missed the impression-share diagnostic and surfaced a
+different anecdotal troubleshooting lead. Three Buying Businesses
+spot-checks surfaced usable diligence leads and some tangential
+results. This is a lexical ranking test, not a measure of recall
+over all useful research. The other four projects are outside the
+allowlist. Live before/after counts matched. No findings changed
+status, and automatic dismissal remains outside this release.
+
+All 2,745 tests passed across six shards. Tier 1 and deterministic
+release checks passed. Isolated Chrome verified new and reopened
+answers, source context and separate citations and export. Live
+HTTP verified 0.64.40, valid ranked results and unchanged stored
+counts. Release report:
+`evals/release/release-check-0.64.40-12c50ba-20261114-121023.json`.
