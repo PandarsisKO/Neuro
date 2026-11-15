@@ -5946,3 +5946,40 @@ counts, review reasons and ordered IDs across every project.
 Use a rollbackable shadow flag on a newer batch before changing
 live routing. The proposed disposition is searchable retained
 research, with approval and dismissal decisions left untouched.
+
+### 2026-11-14 — Prepare a rollbackable Chat chronology pilot
+
+Candidate `3cb9930` on `codex/chat-finding-chronology`, based on
+`e72106b`. `NEUROSEARCH_RETAIN_OLDER_CHAT_CITATIONS_PROJECT`
+is an independent, default-off project allowlist that works with
+the existing Retained research workflow. The gate checks all
+recorded assistant citations to the current source across
+locators, keeps direct note bindings and status-history rows
+in review, and requires current project membership and the same
+source revision. Incomplete Chat citation provenance fails
+closed. A later Chat citation puts a finding back in review.
+Routing is derived, with no status write or schema change.
+
+The Nov 14 15:44 verified snapshot has the same 45,806 notes,
+361 messages, 3,992 project-source rows and 115,311 project
+events as the 13:43 snapshot. It contains zero new note,
+message, or event IDs and no changed note status, note citation,
+message content or message citation. Replaying the candidate on
+a private immutable copy reproduced 91 to 58 and switching off
+restored identical review membership across all seven projects.
+In a temporal replay, hiding and revealing eight existing late
+Chat citations correctly restored all eight holds. These are
+regression controls drawn from the same snapshot. Live authenticated
+counts and IDs stayed at the baseline.
+
+Use the next distinct real findings or Chat batch to validate
+the pilot. No live config, app version, review routing, or
+finding verdict changed. The candidate remains in the isolated
+worktree.
+
+The isolated Mac pytest suite passed 2,763 tests across six shards.
+`neurosearch release-check --no-pytest` passed including Tier 1
+at `3cb9930`. Candidate proof is
+`evals/release/release-check-0.64.42-3cb9930-20261114-163317.json`
+in the worktree. Live authenticated lookups confirmed no newer
+findings or Chat updates after the verified snapshot.
