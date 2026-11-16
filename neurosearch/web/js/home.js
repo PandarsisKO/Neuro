@@ -127,7 +127,8 @@ globalThis.resetProjectState = function resetProjectState() {
   globalThis.CAPTURE_SEEN = null; globalThis.lastRev = null; globalThis.notesRev = null; globalThis.QUAL = null; globalThis.COMM_MISSIONS = [];
   if (globalThis.JOBSHIST) JOBSHIST.clear();
   if (globalThis.CW) { CW.offset = 0; if (CW.sel) CW.sel.clear(); }
-  for (const [sel, html] of [['#srcList', ''], ['#reviewWrap', ''], ['#jobs', ''], ['#backlog', ''], ['#notes', ''], ['#fbBulk', ''], ['#chat', ''], ['#chatList', ''], ['#planWrap', ''], ['#captureCard', ''], ['#srcCount', ''], ['#fbCount', ''], ['#jobsSummary', 'In progress']]) {
+  renderCollectionImport(null);
+  for (const [sel, html] of [['#srcList', ''], ['#reviewWrap', ''], ['#jobs', ''], ['#backlog', ''], ['#notes', ''], ['#fbBulk', ''], ['#chat', ''], ['#chatList', ''], ['#planWrap', ''], ['#captureCard', ''], ['#srcCount', ''], ['#fbCount', ''], ['#jobsSummary', 'Progress queue']]) {
     const el = document.querySelector(sel); if (el) { el.innerHTML = html; }
   }
   const pager = document.querySelector('#srcPager'); if (pager) pager.hidden = true;

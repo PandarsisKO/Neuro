@@ -136,6 +136,7 @@ def test_collection_import_counts_latest_retry_once(fresh):
     assert api.api_project_jobs(project, with_import=True)["collection_import"]["counts"]["failed"] == 1
     new = db.retry_job(job["id"])
     batch = api.api_project_jobs(project, with_import=True)["collection_import"]
+    assert batch["id"] == job["payload"]["collection_import_id"]
     assert batch["total"] == 1 and batch["counts"]["queued"] == 1 and batch["counts"]["done"] == 0
     db.update_job(new["id"], status="failed")
     api.api_dismiss_job(new["id"])

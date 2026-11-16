@@ -1069,9 +1069,26 @@ globalThis.toggleJobsBox = function toggleJobsBox() {
   loadJobs();
 }
 globalThis.collectionImportVisible = false;
+const dismissedImports = new Map();
+const importDismissKey = projectId => 'ns_dismissed_import:' + projectId;
 globalThis.renderCollectionImport = function renderCollectionImport(batch) {
   const slot = $('#collectionImport');
   if (!slot) return;
+  const projectId = state.project?.id;
+  const c = batch?.counts;
+  const pending = c && (c.queued || c.running || c.external_pending || c.shared);
+  if (batch && projectId) {
+    let dismissed = dismissedImports.get(projectId);
+    try { dismissed ??= localStorage.getItem(importDismissKey(projectId)); } catch (e) {}
+    if (dismissed === batch.id) {
+      if (pending) {
+        // A retry of the same batch makes it visible again, including its next result.
+        dismissedImports.delete(projectId);
+        try { localStorage.removeItem(importDismissKey(projectId)); } catch (e) {}
+      } else batch = null;
+    }
+  }
+  globalThis.collectionImportVisible = Boolean(batch);
   const revision = JSON.stringify(batch || null);
   if (slot.dataset.revision === revision) return;
   slot.dataset.revision = revision;
@@ -1080,23 +1097,33 @@ globalThis.renderCollectionImport = function renderCollectionImport(batch) {
     slot.replaceChildren();
     return;
   }
-  const c = batch.counts;
+  const previous = slot.querySelector('details');
+  const open = previous?.dataset.batch === batch.id && previous.open;
   const outcomes = [
     [c.queued, 'queued'], [c.running, 'processing'], [c.external_pending, 'waiting on external work'],
     [c.shared, 'being imported elsewhere'], [c.failed, 'failed'], [c.skipped, 'skipped'], [c.cancelled, 'cancelled'],
   ].filter(([count]) => count).map(([count, label]) => `${count} ${label}`);
-  slot.innerHTML = `<div class="row" style="align-items:baseline;flex-wrap:wrap;padding-bottom:4px">
-    <strong>${esc(batch.title)}</strong><span class="muted">${c.done} of ${batch.total} import jobs completed${outcomes.length ? ' · ' + outcomes.join(' · ') : ''}</span></div>
-    <div class="row" style="align-items:baseline;flex-wrap:wrap;padding-bottom:8px">
+  slot.innerHTML = `<details class="jobsPanel" data-batch="${esc(batch.id)}" ${open ? 'open' : ''}>
+    <summary>${esc(batch.title)} <span class="muted">· ${pending ? 'Import in progress' : 'Import finished'} · ${c.done} of ${batch.total} import jobs completed${outcomes.length ? ' · ' + outcomes.join(' · ') : ''}</span></summary>
+    <div class="row mt-1" style="align-items:baseline;flex-wrap:wrap">
       ${batch.source ? `<span>${batch.searchable} searchable</span><button type="button" class="small ghost" data-import-source="${esc(batch.source.id)}">Open ${esc(batch.source.title)}</button>`
         : '<span class="muted">No searchable sources yet</span>'}
       ${batch.finding ? `<button type="button" class="small ghost" data-import-finding="${esc(batch.finding.source_id)}" data-import-status="${esc(batch.finding.status)}">View cited findings</button>`
-        : '<span class="muted">No cited findings yet</span>'}</div>`;
+        : '<span class="muted">No cited findings yet</span>'}
+      ${pending ? '' : '<button type="button" class="small ghost" data-import-dismiss>Dismiss summary</button>'}</div></details>`;
 };
 $('#collectionImport')?.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (button?.dataset.importSource) sourceDrawer(button.dataset.importSource);
   if (button?.dataset.importFinding) openSourceSuggestions(button.dataset.importFinding, button.dataset.importStatus);
+  if (button?.hasAttribute('data-import-dismiss') && state.project) {
+    const id = button.closest('details').dataset.batch;
+    const projectId = state.project.id;
+    dismissedImports.set(projectId, id);
+    try { localStorage.setItem(importDismissKey(projectId), id); } catch (e) {}
+    renderCollectionImport(null);
+    $('#jobsSummary')?.focus();
+  }
 });
 globalThis.loadJobs = async function loadJobs(quiet) {
   // `quiet` (L-19, 2026-09-15): true only when pollTick's own background /tick loop called this --
@@ -1148,11 +1175,8 @@ globalThis.loadJobs = async function loadJobs(quiet) {
     return;
   }
   const u = usage || state.usage;
-  globalThis.collectionImportVisible = Boolean(collectionImport);
   renderCollectionImport(collectionImport);
-  const showQueue = Boolean(show.length || st.youtube?.paused || u?.blocked);
-  $('#jobsCard').hidden = !(showQueue || collectionImport);
-  if ($('#jobsDetails')) $('#jobsDetails').hidden = !showQueue && Boolean(collectionImport);
+  $('#jobsCard').hidden = false;
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
   // S106: the wait now doubles on each consecutive bot-check, so say how long in hours when it is long, and — once it
   // has repeated — that this is YouTube's bot check (not a quick limit) and what usually clears it.
@@ -1175,20 +1199,21 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   // is unchanged; it is just one click away instead of open by default.
   const runningNow = show.filter(j => !j._budget && (j.status === 'running' || (j.state || j.status) === 'external_pending'));
   const resumingNow = show.filter(j => !j._budget && j.state === 'resuming');
-  const queuedCount = show.filter(j => !j._budget).length;
-  const waitingCount = queuedCount - runningNow.length;
+  const waitingCount = active.length - runningNow.length;
   const jobsSummaryEl = $('#jobsSummary');
   // The header adds up to the rows below it (Kyle, 2026-09-29: "3 jobs running" over 5 bars): running, then what is
   // waiting, and how many of those are resumable jobs that kept their progress.
   const waitBit = waitingCount ? ` · ${waitingCount} waiting${resumingNow.length ? ` (${resumingNow.length} resum${resumingNow.length === 1 ? 'es' : 'e'} where ${resumingNow.length === 1 ? 'it' : 'they'} left off)` : ''}` : '';
-  if (jobsSummaryEl) jobsSummaryEl.textContent = !queuedCount ? 'In progress'
-    : runningNow.length ? `${runningNow.length} running · ${jobLabel(runningNow[0])}${waitBit}`
-    : `${queuedCount} job${queuedCount === 1 ? '' : 's'} waiting`;
+  const failedBit = recentFailed.length ? ` · ${recentFailed.length} failed` : '';
+  const queueStatus = runningNow.length ? `${runningNow.length} running · ${jobLabel(runningNow[0])}${waitBit}`
+    : waitingCount ? `${waitingCount} job${waitingCount === 1 ? '' : 's'} waiting` : 'No jobs in progress';
+  if (jobsSummaryEl) jobsSummaryEl.textContent = `Progress queue · ${queueStatus}${failedBit}`;
 
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted grow">Estimated: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + subredditRecovery(recentFailed.filter(subredditJobNeedsHelp).map(j => j.payload.url)) + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._ytretry ? ` <button class="small ghost" title="Clear YouTube's wait and try the held downloads now. If YouTube still refuses, Neuro backs off again." onclick="ytRetry()">↻ Try YouTube again now</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">Re-check account</button>` : ''}</div>` : `<div class="job" data-job="${j.id || ''}" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : (j.status === 'external_pending' && j.external_provider === 'browser' ? 'needs your browser' : STATE_LABEL[j.state || j.status] || j.status)}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'Provider switch: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : (j.executed_by === 'ollama' ? 'On this Mac' : j.executed_by === 'chatgpt_plan' ? 'ChatGPT plan' : '☁ API') + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
     ${jobDetails(j)}${j.status === 'external_pending' && j.external_provider === 'browser' && j.external_handle ? `<button class="small primary" title="Opens the page in a new tab; the Neuro Search extension captures it as soon as it loads (Reddit blocks the server, your browser is allowed)" onclick="openAndCapture('${esc(j.external_handle)}')">Open & capture in Chrome</button>` : ''}${j.id && (j.state === 'paused' || j.state === 'pausing') ? `<button class="small primary" title="${j.state === 'pausing' ? 'Never mind — keep going' : 'Continue from where it stopped — nothing is redone'}" onclick="resumeJob('${j.id}')">▶ Resume</button>` : j.id && (j.status === 'queued' || j.status === 'running') && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Hold this job until you press Resume' : 'Stop at the next safe point and hold — everything done so far is kept'}" aria-label="Pause job" onclick="pauseJob('${j.id}')">⏸</button>` : ''}${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && j.state === 'scheduled' ? `<button class="small ghost" title="Start it now instead of waiting for its scheduled time" onclick="runNowJob('${j.id}')">Run now</button>` : j.status === 'queued' && j.id && !j.bumped && j.state !== 'paused' ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="${subredditJobNeedsHelp(j) ? 'Retry after fixing Reddit API access; see the browser scan instructions above' : 'Try again'}" onclick="retryJob('${j.id}')">${subredditJobNeedsHelp(j) ? 'Retry server scan' : '↻ Retry'}</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   restoreJobHistories();
+  if (!show.length) $('#jobs').insertAdjacentHTML('beforeend', '<div class="muted">No active jobs for this project.</div>');
   refreshJobActivity();
   clearTimeout(jobsTimer);
   const analysing = (SRCG.rows || []).some(s => s.analysing || (s.job && s.job.status === 'running'));

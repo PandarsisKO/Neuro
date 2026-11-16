@@ -3232,7 +3232,7 @@ def latest_collection_import(project_id: str, project_sources: set[str]) -> dict
 
     first_source = next(iter(searchable.items()), None)
     collection = conn.execute("SELECT title FROM collections WHERE id=?", (latest["collection_id"],)).fetchone()
-    return {"title": (collection["title"] if collection else None) or "Collection import",
+    return {"id": latest["batch_id"], "title": (collection["title"] if collection else None) or "Collection import",
             "total": len(rows), "counts": counts, "searchable": len(searchable),
             "source": {"id": first_source[0], "title": first_source[1]} if first_source else None,
             "finding": first_finding}
