@@ -1106,10 +1106,10 @@ globalThis.renderCollectionImport = function renderCollectionImport(batch) {
   slot.innerHTML = `<details class="jobsPanel" data-batch="${esc(batch.id)}" ${open ? 'open' : ''}>
     <summary>${esc(batch.title)} <span class="muted">· ${pending ? 'Import in progress' : 'Import finished'} · ${c.done} of ${batch.total} import jobs completed${outcomes.length ? ' · ' + outcomes.join(' · ') : ''}</span></summary>
     <div class="row mt-1" style="align-items:baseline;flex-wrap:wrap">
-      ${batch.source ? `<span>${batch.searchable} searchable</span><button type="button" class="small ghost" data-import-source="${esc(batch.source.id)}">Open ${esc(batch.source.title)}</button>`
-        : '<span class="muted">No searchable sources yet</span>'}
+      ${batch.source ? `<span class="fixed">${batch.searchable} searchable</span><button type="button" class="small ghost" style="max-width:100%;white-space:normal;overflow-wrap:anywhere" data-import-source="${esc(batch.source.id)}">Open ${esc(batch.source.title)}</button>`
+        : '<span class="fixed muted">No searchable sources yet</span>'}
       ${batch.finding ? `<button type="button" class="small ghost" data-import-finding="${esc(batch.finding.source_id)}" data-import-status="${esc(batch.finding.status)}">View cited findings</button>`
-        : '<span class="muted">No cited findings yet</span>'}
+        : '<span class="fixed muted">No cited findings yet</span>'}
       ${pending ? '' : '<button type="button" class="small ghost" data-import-dismiss>Dismiss summary</button>'}</div></details>`;
 };
 $('#collectionImport')?.addEventListener('click', event => {
