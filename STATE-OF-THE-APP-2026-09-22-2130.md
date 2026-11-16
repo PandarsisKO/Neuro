@@ -209,3 +209,22 @@ The milestone summarizes immediate work. The same page shows all phases,
 rationale, alternatives, decisions, assumptions, costs, risks, and cited
 evidence. Section shortcuts scroll without hiding other sections. History
 opens earlier versions and retains applied and rejected proposals.
+
+## 2026-11-16 — Sources progress queue and finished imports (0.64.43)
+
+The Sources progress queue remains available when the project has no active
+jobs. The latest collection import is a separate disclosure with the import
+outcomes, searchable-source and cited-findings links, and a Dismiss summary
+action after the work finishes. Dismissal is stored in the browser for that
+project and batch. A retry can bring the same batch back. This does not
+change import scheduling, source data, or the lifetime of the API summary.
+
+Nikonomics was already finished on the live instance: 26 searchable sources,
+four skipped, and no active import jobs. Chrome on private fixture data
+verified keyboard expansion and dismissal, persistence on reload, the idle
+queue, and layout at desktop and 430 px widths. Tier 1 and the deterministic
+release gates passed at `00a4dae`; see
+`evals/release/release-check-0.64.43-00a4dae-20261116-124127.json`.
+The full isolated macOS `python -m pytest -q` run passed 2,747 tests.
+The affected browser regression and the deterministic gates were verified again
+after the narrow-screen layout adjustment.
